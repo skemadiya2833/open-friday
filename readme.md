@@ -304,3 +304,25 @@ Built on top of:
 - [PyAutoGUI](https://github.com/asweigart/pyautogui) — GUI automation
 - [pynput](https://github.com/moses-palmer/pynput) — low-level input control
 - [Google Generative AI SDK](https://github.com/google/generative-ai-python) — Gemini cloud fallback
+
+
+
+flowchart TD
+    A[input: task objective] --> B[run_friday loop]
+    B --> C[capture_screen - mss/PIL/base64]
+    C --> D[get_action_plan - router]
+    D --> E{local model}
+    E -->|OK + steps| F[plan.steps]
+    E -->|fallback / empty| G[cloud model - Gemini/OpenAI]
+    G --> F
+    F --> H[execute_step]
+    H --> I{risky?}
+    I -->|yes| J[input yes/no approval]
+    J -->|no| K[halt - exit]
+    J -->|yes| L[PyAutoGUI action]
+    I -->|no| L
+    L --> M{result}
+    M -->|screenshot| B
+    M -->|complete| N[exit success]
+    M -->|continue| O[sleep 0.5s - next step]
+    O --> H

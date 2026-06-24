@@ -1,4 +1,4 @@
-from config import RISKY_ACTIONS
+from config import RISKY_ACTIONS, OVERLAY_ENABLED, USE_OVERLAY_APPROVAL
 
 
 def is_risky_step(step: dict) -> bool:
@@ -15,6 +15,11 @@ def prompt_user_approval(step: dict) -> bool:
     Blocks execution and asks the operator for explicit approval.
     Returns True if approved, False if rejected.
     """
+    if OVERLAY_ENABLED and USE_OVERLAY_APPROVAL:
+        from engine.overlay import await_approval
+
+        return await_approval(step)
+
     print("\n" + "=" * 60)
     print("[SAFETY GATE] Risky action detected. Approval required.")
     print(f"  Action     : {step.get('action')}")

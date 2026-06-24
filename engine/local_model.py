@@ -31,11 +31,24 @@ RULES:
 """
 
 
-def query_local_model(objective: str, base64_image: str) -> dict:
+def query_local_model(
+    objective: str,
+    base64_image: str,
+    system_prompt: str | None = None,
+    native_size: tuple[int, int] | None = None,
+    image_size: tuple[int, int] | None = None,
+) -> dict:
     """Sends screenshot + objective to local Ollama VLM."""
+    prompt = system_prompt or SYSTEM_PROMPT
+    screen_line = ""
+    if native_size and image_size:
+        screen_line = (
+            f"\nMonitor: {native_size[0]}x{native_size[1]}. "
+            f"Screenshot: {image_size[0]}x{image_size[1]}."
+        )
     payload = {
         "model": LOCAL_MODEL_NAME,
-        "prompt": f"{SYSTEM_PROMPT}\n\nUser Objective: {objective}",
+        "prompt": f"{prompt}{screen_line}\n\nUser Objective: {objective}",
         "images": [base64_image],
         "stream": False,
         "format": "json"

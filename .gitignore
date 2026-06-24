@@ -1,2 +1,4 @@
 .env
 friday_venv/
+*__pycache__/
+assets/

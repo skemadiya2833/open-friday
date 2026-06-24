@@ -5,17 +5,31 @@ from config import CLOUD_PROVIDER, GEMINI_API_KEY, OPENAI_API_KEY
 from engine.local_model import SYSTEM_PROMPT
 
 
-def query_cloud_model(objective: str, base64_image: str) -> dict:
+def query_cloud_model(
+    objective: str,
+    base64_image: str,
+    system_prompt: str | None = None,
+    native_size: tuple[int, int] | None = None,
+    image_size: tuple[int, int] | None = None,
+) -> dict:
     """Routes to the configured cloud provider."""
+    prompt = system_prompt or SYSTEM_PROMPT
+    screen_line = ""
+    if native_size and image_size:
+        screen_line = (
+            f"\nMonitor: {native_size[0]}x{native_size[1]}. "
+            f"Screenshot: {image_size[0]}x{image_size[1]}."
+        )
+    full_prompt = f"{prompt}{screen_line}"
     if CLOUD_PROVIDER == "gemini":
-        return _query_gemini(objective, base64_image)
+        return _query_gemini(objective, base64_image, full_prompt)
     elif CLOUD_PROVIDER == "openai":
-        return _query_openai(objective, base64_image)
+        return _query_openai(objective, base64_image, full_prompt)
     else:
         raise ValueError(f"Unknown CLOUD_PROVIDER: {CLOUD_PROVIDER}")
 
 
-def _query_gemini(objective: str, base64_image: str) -> dict:
+def _query_gemini(objective: str, base64_image: str, system_prompt: str) -> dict:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
@@ -27,7 +41,7 @@ def _query_gemini(objective: str, base64_image: str) -> dict:
             "data": base64_image
         }
 
-        prompt = f"{SYSTEM_PROMPT}\n\nUser Objective: {objective}"
+        prompt = f"{system_prompt}\n\nUser Objective: {objective}"
         response = model.generate_content([prompt, image_part])
 
         raw = response.text.strip().strip("```json").strip("```").strip()
@@ -38,7 +52,7 @@ def _query_gemini(objective: str, base64_image: str) -> dict:
         return {"steps": [], "message": f"Cloud model error: {e}"}
 
 
-def _query_openai(objective: str, base64_image: str) -> dict:
+def _query_openai(objective: str, base64_image: str, system_prompt: str) -> dict:
     try:
         import httpx
         headers = {
@@ -52,7 +66,7 @@ def _query_openai(objective: str, base64_image: str) -> dict:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"{SYSTEM_PROMPT}\n\nUser Objective: {objective}"},
+                        {"type": "text", "text": f"{system_prompt}\n\nUser Objective: {objective}"},
                         {
                             "type": "image_url",
                             "image_url": {
