@@ -28,7 +28,10 @@ RISKY_ACTIONS = ["DELETE", "FORMAT", "EXECUTE_SCRIPT", "BROWSER_MUTATION"]
 
 # Maximum number of plan-capture-execute iterations before Friday gives up.
 # Prevents infinite loops when the model cannot make progress.
-MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "5"))
+MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "30"))
+
+# Maximum low-level action steps the model may return per screenshot cycle.
+MAX_STEPS_PER_BATCH = int(os.getenv("MAX_STEPS_PER_BATCH", "8"))
 
 # ---------------------------------------------------------------------------
 # Display

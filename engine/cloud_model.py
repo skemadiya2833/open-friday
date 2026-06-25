@@ -7,7 +7,7 @@ from engine.local_model import SYSTEM_PROMPT
 
 def query_cloud_model(
     objective: str,
-    base64_image: str,
+    base64_image: str | None = None,
     system_prompt: str | None = None,
     native_size: tuple[int, int] | None = None,
     image_size: tuple[int, int] | None = None,
@@ -29,20 +29,18 @@ def query_cloud_model(
         raise ValueError(f"Unknown CLOUD_PROVIDER: {CLOUD_PROVIDER}")
 
 
-def _query_gemini(objective: str, base64_image: str, system_prompt: str) -> dict:
+def _query_gemini(objective: str, base64_image: str | None, system_prompt: str) -> dict:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
 
         model = genai.GenerativeModel("gemini-1.5-pro-latest")
 
-        image_part = {
-            "mime_type": "image/png",
-            "data": base64_image
-        }
-
         prompt = f"{system_prompt}\n\nUser Objective: {objective}"
-        response = model.generate_content([prompt, image_part])
+        parts: list = [prompt]
+        if base64_image:
+            parts.append({"mime_type": "image/png", "data": base64_image})
+        response = model.generate_content(parts)
 
         raw = response.text.strip().strip("```json").strip("```").strip()
         return json.loads(raw)
@@ -52,7 +50,7 @@ def _query_gemini(objective: str, base64_image: str, system_prompt: str) -> dict
         return {"steps": [], "message": f"Cloud model error: {e}"}
 
 
-def _query_openai(objective: str, base64_image: str, system_prompt: str) -> dict:
+def _query_openai(objective: str, base64_image: str | None, system_prompt: str) -> dict:
     try:
         import httpx
         headers = {
@@ -60,22 +58,20 @@ def _query_openai(objective: str, base64_image: str, system_prompt: str) -> dict
             "Content-Type": "application/json"
         }
 
+        content: list = [
+            {"type": "text", "text": f"{system_prompt}\n\nUser Objective: {objective}"},
+        ]
+        if base64_image:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"},
+                }
+            )
+
         payload = {
             "model": "gpt-4o",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"{system_prompt}\n\nUser Objective: {objective}"},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{base64_image}"
-                            }
-                        }
-                    ]
-                }
-            ],
+            "messages": [{"role": "user", "content": content}],
             "max_tokens": 1500
         }
 
