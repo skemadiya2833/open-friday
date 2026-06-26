@@ -1,121 +1,212 @@
-import httpx
-import json
-from config import OLLAMA_API_URL, LOCAL_MODEL_NAME
-
-SYSTEM_PROMPT = """You are Friday, an autonomous desktop automation agent.
-Analyze the screenshot and the user's task. Respond ONLY with a valid JSON object.
-
-{
-  "message": "What you are about to do, in plain language.",
-  "routing": "LOCAL" or "FALLBACK_TO_CLOUD",
-  "reason": "Brief explanation of routing decision.",
-  "steps": [
-    {
-      "action": "ACTION_NAME",
-      "description": "What this step does.",
-      "x": null_or_integer,
-      "y": null_or_integer,
-      "x2": null_or_integer,
-      "y2": null_or_integer,
-      "text": null_or_string,
-      "key": null_or_string,
-      "keys": null_or_array_of_strings,
-      "direction": null | "up" | "down" | "left" | "right",
-      "amount": null_or_integer,
-      "duration": null_or_float,
-      "button": "left" | "right" | "middle",
-      "clicks": null_or_integer,
-      "risky": true | false
-    }
-  ]
-}
-
-AVAILABLE ACTIONS:
-  WIN_SEARCH    — press Win key, type query, press Enter to launch an app {"text": str}
-  CLICK         — left-click at coordinate {"x": int, "y": int}
-  DOUBLE_CLICK  — double-click at coordinate {"x": int, "y": int}
-  RIGHT_CLICK   — right-click at coordinate {"x": int, "y": int}
-  MIDDLE_CLICK  — middle-click (scroll-wheel click) {"x": int, "y": int}
-  MOUSE_DOWN    — press and hold a mouse button {"x": int, "y": int, "button": "left"|"right"|"middle"}
-  MOUSE_UP      — release a held mouse button {"x": int, "y": int, "button": "left"|"right"|"middle"}
-  MOUSE_MOVE    — move the cursor without clicking {"x": int, "y": int}
-  HOVER         — move mouse to coordinate and pause {"x": int, "y": int}
-  DRAG          — click-drag from one point to another {"x": int, "y": int, "x2": int, "y2": int}
-  DRAG_DROP     — drag from point to target using hold-move-release sequence {"x": int, "y": int, "x2": int, "y2": int}
-  SCROLL        — scroll at position {"x": int, "y": int, "direction": "up"|"down"|"left"|"right", "amount": int (clicks, default 3)}
-  TYPE          — type a string via clipboard paste {"text": str}
-  PASTE         — explicitly paste clipboard text {"text": str}
-  PRESS_KEY     — press a single key {"key": "enter"|"tab"|"escape"|"backspace"|"delete"|"space"|"home"|"end"|"pageup"|"pagedown"|"up"|"down"|"left"|"right"|"f1"…"f12"|"printscreen"|"insert"|...}
-  HOTKEY        — press a key combination simultaneously {"keys": ["ctrl","c"] | ["alt","tab"] | ["ctrl","shift","esc"] | ...}
-  KEY_DOWN      — hold a key down without releasing {"key": str}
-  KEY_UP        — release a held key {"key": str}
-  SELECT_ALL    — Ctrl+A to select all content in focused element
-  COPY          — Ctrl+C to copy selection to clipboard
-  CUT           — Ctrl+X to cut selection to clipboard
-  UNDO          — Ctrl+Z to undo last action
-  REDO          — Ctrl+Y to redo last undone action
-  SEARCH        — open in-app Ctrl+F find bar {"text": str}
-  SAVE_FILE     — save current file via Ctrl+S, then type filename {"text": optional_filename}
-  SCREENSHOT    — capture a fresh screenshot before proceeding
-  WAIT          — pause execution {"duration": float (seconds)}
-  DELETE        — select all and delete content (RISKY — always set risky: true)
-  COMPLETE      — signal the task is fully finished
-
-RULES:
-- x and y must be absolute pixel coordinates in screenshot image space.
-- text must contain the full string for TYPE/PASTE/WIN_SEARCH/SEARCH steps.
-- key must be a valid pyautogui key name for PRESS_KEY/KEY_DOWN/KEY_UP.
-- keys must be an array of key names for HOTKEY (e.g. ["ctrl","alt","delete"]).
-- amount for SCROLL defaults to 3 scroll clicks if omitted.
-- direction for SCROLL defaults to "down" if omitted.
-- Mark risky: true for DELETE, FORMAT, irreversible file operations, or destructive actions.
-- Insert a SCREENSHOT step whenever you need to reassess screen state before continuing.
-- Never wrap output in markdown. Raw JSON only.
-"""
-
-
-def query_local_model(
-    objective: str,
-    base64_image: str | None = None,
-    system_prompt: str | None = None,
-    native_size: tuple[int, int] | None = None,
-    image_size: tuple[int, int] | None = None,
-) -> dict:
-    """Sends objective (and optional screenshot) to local Ollama VLM."""
-    prompt = system_prompt or SYSTEM_PROMPT
-    screen_line = ""
-    if native_size and image_size:
-        screen_line = (
-            f"\nMonitor: {native_size[0]}x{native_size[1]}. "
-            f"Screenshot: {image_size[0]}x{image_size[1]}."
-        )
-    payload = {
-        "model": LOCAL_MODEL_NAME,
-        "prompt": f"{prompt}{screen_line}\n\nUser Objective: {objective}",
-        "stream": False,
-        "format": "json",
-    }
-    if base64_image:
-        payload["images"] = [base64_image]
-
-    try:
-        response = httpx.post(OLLAMA_API_URL, json=payload, timeout=90.0)
-        response.raise_for_status()
-
-        raw = response.json().get("response", "{}")
-        return json.loads(raw)
-
-    except httpx.HTTPError as e:
-        print(f"[Local Model Error] {e}")
-        return {
-            "routing": "FALLBACK_TO_CLOUD",
-            "reason": f"Local model unreachable: {e}",
-            "steps": []
-        }
-    except json.JSONDecodeError:
-        print("[Local Model Error] Non-JSON response from model.")
-        return {
-            "routing": "FALLBACK_TO_CLOUD",
-            "reason": "Malformed local model output.",
-            "steps": []
-        }
+import json
+
+import httpx
+
+from config import OLLAMA_API_URL, LOCAL_MODEL_NAME, OVERLAY_ENABLED
+from engine.response_parser import ACTION_DELIMITER, parse_reasoning_response
+
+if OVERLAY_ENABLED:
+    from engine import overlay
+
+# Models that emit chain-of-thought in Ollama's separate `thinking` field.
+# Friday uses its own reasoning format, so disable native thinking on /api/generate.
+_THINKING_MODEL_PREFIXES = (
+    "qwen3",
+    "qwen3.5",
+    "deepseek-r1",
+    "deepseek-r1:",
+    "gpt-oss",
+)
+
+SYSTEM_PROMPT = """You are Friday, an autonomous desktop automation agent.
+Analyze the screenshot and the user's task. Respond ONLY with a valid JSON object.
+
+{
+  "message": "What you are about to do, in plain language.",
+  "routing": "LOCAL",
+  "reason": "Brief explanation of routing decision.",
+  "steps": [
+    {
+      "action": "ACTION_NAME",
+      "description": "What this step does.",
+      "x": null,
+      "y": null,
+      "text": null,
+      "key": null,
+      "keys": null,
+      "direction": null,
+      "amount": null,
+      "duration": null,
+      "button": "left",
+      "risky": false
+    }
+  ]
+}
+
+RULES:
+- Return ONLY raw JSON. No markdown fences, no preamble, no prose outside the object.
+- x and y are absolute pixel coordinates in screenshot image space.
+- Mark risky: true for DELETE, FORMAT, or any irreversible destructive action.
+- Insert a SCREENSHOT step whenever you need to reassess screen state before continuing.
+"""
+
+
+def is_thinking_model(model_name: str | None = None) -> bool:
+    name = (model_name or LOCAL_MODEL_NAME).lower()
+    return any(name.startswith(prefix) for prefix in _THINKING_MODEL_PREFIXES)
+
+
+def _extract_stream_tokens(chunk: dict) -> tuple[str, str]:
+    """Return (thinking_tokens, response_tokens) from an Ollama stream chunk."""
+    thinking = chunk.get("thinking") or ""
+    response = chunk.get("response") or ""
+
+    message = chunk.get("message")
+    if isinstance(message, dict):
+        thinking = thinking or message.get("thinking") or ""
+        response = response or message.get("content") or ""
+
+    return str(thinking), str(response)
+
+
+def query_local_model(
+    objective: str,
+    base64_image: str | None = None,
+    system_prompt: str | None = None,
+    native_size: tuple[int, int] | None = None,
+    image_size: tuple[int, int] | None = None,
+    *,
+    reasoning_mode: bool = False,
+) -> dict:
+    """
+    Send objective and optional screenshot to the local Ollama VLM.
+
+    With reasoning_mode=True, the model streams plain-English reasoning to the
+    overlay first, then emits ---ACTION--- followed by JSON.
+    """
+    prompt_text = system_prompt or SYSTEM_PROMPT
+
+    screen_line = ""
+    if native_size and image_size:
+        screen_line = (
+            f"\nMonitor resolution: {native_size[0]}x{native_size[1]}. "
+            f"Screenshot image size: {image_size[0]}x{image_size[1]}. "
+            f"ALL coordinates must be in screenshot image space."
+        )
+
+    full_prompt = f"{prompt_text}{screen_line}\n\nUser Objective: {objective}"
+
+    payload: dict = {
+        "model": LOCAL_MODEL_NAME,
+        "prompt": full_prompt,
+        "stream": True,
+        "options": {"num_predict": 2048},
+    }
+    if not reasoning_mode:
+        payload["format"] = "json"
+
+    # Qwen3+ thinking models put all tokens in `thinking` and leave `response`
+    # empty unless native thinking is disabled. Friday has its own reasoning format.
+    if is_thinking_model():
+        payload["think"] = False
+
+    if base64_image:
+        payload["images"] = [base64_image]
+
+    if OVERLAY_ENABLED:
+        overlay.set_status("thinking")
+        overlay.clear_thinking()
+
+    accumulated = ""
+    native_thinking = ""
+    reasoning_shown = 0
+
+    def _stream_custom_reasoning() -> None:
+        nonlocal reasoning_shown
+        if not OVERLAY_ENABLED or not reasoning_mode:
+            return
+        if ACTION_DELIMITER in accumulated:
+            end = accumulated.index(ACTION_DELIMITER)
+            chunk = accumulated[reasoning_shown:end]
+        else:
+            chunk = accumulated[reasoning_shown:]
+        if chunk:
+            overlay.push_thinking(chunk)
+            reasoning_shown += len(chunk)
+
+    try:
+        with httpx.stream(
+            "POST",
+            OLLAMA_API_URL,
+            json=payload,
+            timeout=120.0,
+        ) as response:
+            response.raise_for_status()
+
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                thinking_tok, response_tok = _extract_stream_tokens(chunk)
+                if thinking_tok:
+                    native_thinking += thinking_tok
+                    if OVERLAY_ENABLED and not reasoning_mode:
+                        overlay.push_thinking(thinking_tok)
+
+                if response_tok:
+                    accumulated += response_tok
+                    if reasoning_mode:
+                        _stream_custom_reasoning()
+                    elif OVERLAY_ENABLED:
+                        overlay.push_thinking(response_tok)
+
+                if chunk.get("done"):
+                    break
+
+    except httpx.HTTPError as exc:
+        print(f"[Local Model Error] {exc}")
+        if OVERLAY_ENABLED:
+            overlay.set_status("idle")
+        return {
+            "routing": "FALLBACK_TO_CLOUD",
+            "reason": f"Local model unreachable: {exc}",
+            "steps": [],
+        }
+
+    if OVERLAY_ENABLED:
+        overlay.set_status("running")
+
+    if not accumulated.strip() and native_thinking.strip():
+        print(
+            "[Local Model] Model returned thinking trace but no response text. "
+            "If this persists, try a non-thinking model or update Ollama."
+        )
+        accumulated = native_thinking
+
+    if not accumulated.strip():
+        return {
+            "routing": "FALLBACK_TO_CLOUD",
+            "reason": "Empty response from local model.",
+            "steps": [],
+        }
+
+    try:
+        if reasoning_mode:
+            reasoning, plan = parse_reasoning_response(accumulated)
+            if reasoning and OVERLAY_ENABLED:
+                overlay.set_thinking(reasoning)
+            return plan
+        return parse_reasoning_response(accumulated)[1]
+    except json.JSONDecodeError as exc:
+        print(f"[Local Model Error] JSON parse failed: {exc}")
+        print(f"  Raw response (first 300 chars): {accumulated[:300]!r}")
+        return {
+            "routing": "FALLBACK_TO_CLOUD",
+            "reason": f"Malformed local model output: {exc}",
+            "steps": [],
+        }
+

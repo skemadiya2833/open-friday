@@ -8,7 +8,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL", "minicpm-v")
+LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL", "llava:7b")
 
 CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "gemini")   # "gemini" or "openai"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

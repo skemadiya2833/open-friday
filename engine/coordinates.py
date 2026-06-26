@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -82,25 +83,49 @@ def _scale_point(
     )
 
 
+def _extract_win_search_text(step: dict) -> str:
+    """Recover WIN_SEARCH query from alternate or missing field names."""
+    for key in ("text", "query", "search", "app"):
+        val = step.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+
+    desc = str(step.get("description", ""))
+    if not desc:
+        return ""
+
+    quoted = re.search(r"""['"]([^'"]{1,80})['"]""", desc)
+    if quoted:
+        return quoted.group(1).strip()
+
+    unquoted = re.search(
+        r"(?:search(?:ing)?(?:\s+for)?|open(?:ing)?|launch(?:ing)?)\s+"
+        r"([A-Za-z][\w\s.-]{0,40})",
+        desc,
+        re.I,
+    )
+    if unquoted:
+        return unquoted.group(1).strip().rstrip(".")
+
+    desc_lower = desc.lower()
+    for app in (
+        "notepad", "chrome", "edge", "explorer", "calculator", "paint",
+        "word", "excel", "powershell", "cmd",
+    ):
+        if app in desc_lower:
+            return app
+
+    return ""
+
+
 def normalize_step(step: dict, image_size: tuple[int, int]) -> dict:
     """Coerce alternate VLM field names and coordinate formats."""
     normalized = dict(step)
     action = str(normalized.get("action", "")).upper()
     normalized["action"] = action
 
-    if action == "WIN_SEARCH" and not normalized.get("text"):
-        normalized["text"] = (
-            normalized.get("query")
-            or normalized.get("search")
-            or normalized.get("app")
-            or ""
-        )
-        if not normalized.get("text"):
-            desc = str(normalized.get("description", "")).lower()
-            for app in ("notepad", "chrome", "edge", "explorer", "calculator", "paint"):
-                if app in desc:
-                    normalized["text"] = app
-                    break
+    if action == "WIN_SEARCH" and not str(normalized.get("text") or "").strip():
+        normalized["text"] = _extract_win_search_text(normalized)
 
     x, y = _extract_pair(
         normalized,

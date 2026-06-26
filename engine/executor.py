@@ -3,6 +3,8 @@ import pyautogui
 import pyperclip
 from config import OVERLAY_ENABLED
 from engine.safety import is_risky_step, prompt_user_approval
+from engine.coordinates import _extract_win_search_text
+from engine.session import TaskSession
 
 if OVERLAY_ENABLED:
     from engine import overlay
@@ -15,6 +17,7 @@ def execute_step(
     step: dict,
     step_index: int = 1,
     total_steps: int = 1,
+    session: TaskSession | None = None,
 ) -> str:
     """
     Executes a single action step.
@@ -22,6 +25,7 @@ def execute_step(
     Returns:
         "screenshot" — fresh capture needed before next step
         "continue"   — proceed to next step
+        "skipped"    — action not performed (guard or missing data)
         "complete"   — task is done, exit loop
         "halt"       — operator rejected a risky action, exit loop
     """
@@ -34,7 +38,6 @@ def execute_step(
     if OVERLAY_ENABLED:
         overlay.update(step_index, action, "running", step=step)
 
-    # Safety gate
     if is_risky_step(step):
         if OVERLAY_ENABLED:
             overlay.update(step_index, action, "waiting for approval", step=step)
@@ -48,7 +51,7 @@ def execute_step(
             overlay.update(step_index, action, "running", step=step)
 
     try:
-        result = _dispatch_action(action, step)
+        result = _dispatch_action(action, step, session=session)
     except Exception as exc:
         print(f"  -> Error: {exc}")
         if OVERLAY_ENABLED:
@@ -68,10 +71,8 @@ def execute_step(
 
 def _type_text(text: str) -> None:
     """
-    Paste text via clipboard. Far more reliable than typewrite for:
-    - Unicode characters
-    - Long strings
-    - Special characters that typewrite misses
+    Paste text via clipboard. Reliable for unicode, long strings,
+    and special characters that pyautogui.typewrite drops.
     """
     pyperclip.copy(text)
     pyautogui.hotkey("ctrl", "v")
@@ -79,34 +80,44 @@ def _type_text(text: str) -> None:
 
 
 def _resolve_xy(step: dict) -> tuple[int | None, int | None]:
-    """Extract and cast x/y coordinates from a step dict."""
     x, y = step.get("x"), step.get("y")
     if x is not None and y is not None:
         return int(x), int(y)
     return None, None
 
 
-def _dispatch_action(action: str, step: dict) -> str:
+def _dispatch_action(action: str, step: dict, session: TaskSession | None = None) -> str:
 
     # ------------------------------------------------------------------
-    # WIN_SEARCH — press Win key, wait for search bar, type query, Enter
+    # WIN_SEARCH
     # ------------------------------------------------------------------
     if action == "WIN_SEARCH":
         query = step.get("text") or step.get("query") or ""
-        if not query.strip():
-            print("  -> [GUARD] WIN_SEARCH blocked: 'text' field is empty. Model must specify an app name.")
-            return "halt"
+        if not str(query).strip():
+            query = _extract_win_search_text(step)
+        if not str(query).strip():
+            print("  -> [GUARD] WIN_SEARCH skipped: 'text' field is empty.")
+            return "skipped"
+        if session and session.has_recent_win_search(str(query)):
+            print(
+                f"  -> [GUARD] WIN_SEARCH skipped: '{query}' already launched. "
+                "Interact with the open window instead."
+            )
+            return "skipped"
         pyautogui.press("win")
-        time.sleep(1.2)
+        time.sleep(1.5)          # give the search bar time to appear
         _type_text(query)
-        time.sleep(0.6)
+        time.sleep(0.8)
         pyautogui.press("enter")
-        time.sleep(1.5)
+        time.sleep(2.5)          # give the launched app time to open
         print(f"  -> Win searched for: {query}")
-        return "continue"
+        # Always request a fresh screenshot after launching an app so the
+        # model sees the actual window state (including any profile pickers
+        # or permission dialogs) before deciding the next action.
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # CLICK — standard left-click
+    # CLICK
     # ------------------------------------------------------------------
     if action == "CLICK":
         x, y = _resolve_xy(step)
@@ -115,10 +126,10 @@ def _dispatch_action(action: str, step: dict) -> str:
             print(f"  -> Left-clicked at ({x}, {y})")
         else:
             print("  -> CLICK missing coordinates, skipped.")
-        return "continue"
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # DOUBLE_CLICK — two rapid left-clicks
+    # DOUBLE_CLICK
     # ------------------------------------------------------------------
     if action == "DOUBLE_CLICK":
         x, y = _resolve_xy(step)
@@ -127,10 +138,10 @@ def _dispatch_action(action: str, step: dict) -> str:
             print(f"  -> Double-clicked at ({x}, {y})")
         else:
             print("  -> DOUBLE_CLICK missing coordinates, skipped.")
-        return "continue"
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # RIGHT_CLICK — context menu click
+    # RIGHT_CLICK
     # ------------------------------------------------------------------
     if action == "RIGHT_CLICK":
         x, y = _resolve_xy(step)
@@ -139,10 +150,10 @@ def _dispatch_action(action: str, step: dict) -> str:
             print(f"  -> Right-clicked at ({x}, {y})")
         else:
             print("  -> RIGHT_CLICK missing coordinates, skipped.")
-        return "continue"
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # MIDDLE_CLICK — scroll-wheel button click (opens links in new tab, etc.)
+    # MIDDLE_CLICK
     # ------------------------------------------------------------------
     if action == "MIDDLE_CLICK":
         x, y = _resolve_xy(step)
@@ -154,7 +165,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # MOUSE_DOWN — press and hold a mouse button without releasing
+    # MOUSE_DOWN
     # ------------------------------------------------------------------
     if action == "MOUSE_DOWN":
         x, y = _resolve_xy(step)
@@ -168,7 +179,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # MOUSE_UP — release a held mouse button
+    # MOUSE_UP
     # ------------------------------------------------------------------
     if action == "MOUSE_UP":
         x, y = _resolve_xy(step)
@@ -182,7 +193,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # MOUSE_MOVE — move cursor to coordinate without clicking
+    # MOUSE_MOVE
     # ------------------------------------------------------------------
     if action == "MOUSE_MOVE":
         x, y = _resolve_xy(step)
@@ -195,7 +206,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # HOVER — move mouse to coordinate and pause briefly (triggers tooltips etc.)
+    # HOVER
     # ------------------------------------------------------------------
     if action == "HOVER":
         x, y = _resolve_xy(step)
@@ -206,7 +217,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # DRAG — click-drag from (x, y) to (x2, y2)
+    # DRAG
     # ------------------------------------------------------------------
     if action == "DRAG":
         x, y = _resolve_xy(step)
@@ -219,8 +230,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # DRAG_DROP — explicit mouseDown → moveTo → mouseUp sequence for
-    # stubborn drag targets (file managers, canvas apps, kanban boards)
+    # DRAG_DROP
     # ------------------------------------------------------------------
     if action == "DRAG_DROP":
         x, y = _resolve_xy(step)
@@ -238,15 +248,12 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # SCROLL — scroll wheel at position; supports all four directions
+    # SCROLL
     # ------------------------------------------------------------------
     if action == "SCROLL":
         x, y = _resolve_xy(step)
         direction = step.get("direction", "down").lower()
         amount = int(step.get("amount", 3))
-
-        # pyautogui.scroll: positive = up, negative = down
-        # pyautogui.hscroll: positive = right, negative = left
         if direction in ("up", "down"):
             clicks = amount if direction == "up" else -amount
             if x is not None:
@@ -266,7 +273,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # TYPE — paste via clipboard (handles unicode, special chars)
+    # TYPE
     # ------------------------------------------------------------------
     if action == "TYPE":
         text = step.get("text") or ""
@@ -274,37 +281,24 @@ def _dispatch_action(action: str, step: dict) -> str:
             print("  -> TYPE has no text, skipped.")
             return "continue"
 
-        # Guard: catch placeholder text the model should never emit.
-        # If it slips past the prompt rules, abort the whole plan here
-        # rather than pasting garbage into the user's file.
         _PLACEHOLDER_SIGNALS = (
-            "lyrics of",
-            "here are the lyrics",
-            "insert lyrics",
-            "insert content",
-            "insert poem",
-            "paste content",
-            "paste lyrics",
-            "[lyrics]",
-            "[content]",
-            "[poem]",
-            "[insert",
-            "...",          # trailing ellipsis = truncated placeholder
+            "lyrics of", "here are the lyrics", "insert lyrics",
+            "insert content", "insert poem", "paste content", "paste lyrics",
+            "[lyrics]", "[content]", "[poem]", "[insert", "...",
         )
         text_lower = text.strip().lower()
         if any(signal in text_lower for signal in _PLACEHOLDER_SIGNALS):
             print(
                 f"  -> [GUARD] TYPE blocked: placeholder text detected.\n"
-                f"     Content was: {text[:120]!r}\n"
-                f"     The model must fetch real content via browser before typing."
+                f"     Content: {text[:120]!r}"
             )
             return "halt"
 
         _type_text(text)
-        return "continue"
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # PASTE — explicit clipboard paste of provided text
+    # PASTE
     # ------------------------------------------------------------------
     if action == "PASTE":
         text = step.get("text") or ""
@@ -314,10 +308,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # PRESS_KEY — press a single named key
-    # Supports all pyautogui key names: enter, tab, escape, backspace,
-    # delete, space, home, end, pageup, pagedown, up, down, left, right,
-    # f1–f12, printscreen, insert, capslock, numlock, scrolllock, etc.
+    # PRESS_KEY
     # ------------------------------------------------------------------
     if action == "PRESS_KEY":
         key = step.get("key") or ""
@@ -326,11 +317,10 @@ def _dispatch_action(action: str, step: dict) -> str:
             print(f"  -> Pressed key: {key}")
         else:
             print("  -> PRESS_KEY has no key, skipped.")
-        return "continue"
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # HOTKEY — press multiple keys simultaneously
-    # e.g. ["ctrl","c"], ["ctrl","shift","esc"], ["alt","f4"]
+    # HOTKEY
     # ------------------------------------------------------------------
     if action == "HOTKEY":
         keys = step.get("keys") or []
@@ -339,10 +329,10 @@ def _dispatch_action(action: str, step: dict) -> str:
             print(f"  -> Hotkey: {'+'.join(keys)}")
         else:
             print("  -> HOTKEY has no keys, skipped.")
-        return "continue"
+        return "screenshot"
 
     # ------------------------------------------------------------------
-    # KEY_DOWN — hold a key without releasing (for shift-clicks, etc.)
+    # KEY_DOWN
     # ------------------------------------------------------------------
     if action == "KEY_DOWN":
         key = step.get("key") or ""
@@ -354,7 +344,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # KEY_UP — release a held key
+    # KEY_UP
     # ------------------------------------------------------------------
     if action == "KEY_UP":
         key = step.get("key") or ""
@@ -366,7 +356,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # SELECT_ALL — Ctrl+A
+    # SELECT_ALL
     # ------------------------------------------------------------------
     if action == "SELECT_ALL":
         pyautogui.hotkey("ctrl", "a")
@@ -374,7 +364,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # COPY — Ctrl+C
+    # COPY
     # ------------------------------------------------------------------
     if action == "COPY":
         pyautogui.hotkey("ctrl", "c")
@@ -383,7 +373,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # CUT — Ctrl+X
+    # CUT
     # ------------------------------------------------------------------
     if action == "CUT":
         pyautogui.hotkey("ctrl", "x")
@@ -392,7 +382,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # UNDO — Ctrl+Z
+    # UNDO
     # ------------------------------------------------------------------
     if action == "UNDO":
         pyautogui.hotkey("ctrl", "z")
@@ -400,7 +390,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # REDO — Ctrl+Y
+    # REDO
     # ------------------------------------------------------------------
     if action == "REDO":
         pyautogui.hotkey("ctrl", "y")
@@ -408,7 +398,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # SEARCH — Ctrl+F in-app find bar
+    # SEARCH
     # ------------------------------------------------------------------
     if action == "SEARCH":
         text = step.get("text") or ""
@@ -419,7 +409,7 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # SAVE_FILE — Ctrl+S, then optionally type a filename in the dialog
+    # SAVE_FILE
     # ------------------------------------------------------------------
     if action == "SAVE_FILE":
         pyautogui.hotkey("ctrl", "s")
@@ -434,15 +424,14 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # WIN_SEARCH — already handled above, but kept for reference
-    # SCREENSHOT — request fresh capture before next step
+    # SCREENSHOT
     # ------------------------------------------------------------------
     if action == "SCREENSHOT":
         print("  -> Requesting fresh screenshot before next step.")
         return "screenshot"
 
     # ------------------------------------------------------------------
-    # WAIT — pause execution for a given duration
+    # WAIT
     # ------------------------------------------------------------------
     if action == "WAIT":
         duration = float(step.get("duration", 1.5))
@@ -451,14 +440,14 @@ def _dispatch_action(action: str, step: dict) -> str:
         return "continue"
 
     # ------------------------------------------------------------------
-    # COMPLETE — task finished
+    # COMPLETE
     # ------------------------------------------------------------------
     if action == "COMPLETE":
         print("\n[Friday] Task marked complete.")
         return "complete"
 
     # ------------------------------------------------------------------
-    # DELETE — select all and delete (always risky, safety-gated above)
+    # DELETE
     # ------------------------------------------------------------------
     if action == "DELETE":
         pyautogui.hotkey("ctrl", "a")

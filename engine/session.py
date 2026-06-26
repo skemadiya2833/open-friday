@@ -38,8 +38,26 @@ class TaskSession:
             self.history.append(f"✗ {summary} (halted)")
         elif result == "error":
             self.history.append(f"✗ {summary} (error)")
+        elif result == "skipped":
+            self.history.append(f"⊘ {summary} (skipped)")
         else:
             self.history.append(f"✓ {summary}")
+
+    def record_guard(self, message: str) -> None:
+        self.history.append(f"⚠ {message}")
+
+    def has_recent_win_search(self, app_text: str, lookback: int = 20) -> bool:
+        """True if this app was already launched successfully via WIN_SEARCH."""
+        needle = app_text.lower().strip()
+        if not needle:
+            return False
+        for entry in self.history[-lookback:]:
+            if not entry.startswith("✓"):
+                continue
+            upper = entry.upper()
+            if "WIN_SEARCH" in upper and needle in entry.lower():
+                return True
+        return False
 
     def advance_phase(self) -> None:
         if self.current_phase_index < len(self.phases) - 1:
