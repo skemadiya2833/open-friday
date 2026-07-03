@@ -1,26 +1,44 @@
 import time
-from config import OVERLAY_ENABLED, MAX_ITERATIONS
-from engine.capture import capture_screen
+
+from config import LIVE_MODE, MAX_ITERATIONS, OVERLAY_ENABLED, STREAM_TICK_SECONDS
+from engine.context import maybe_summarize_context
 from engine.router import create_high_level_plan, get_next_steps
 from engine.executor import execute_step
 from engine.session import TaskSession
+from engine.stream import LiveScreenFeed
 
 if OVERLAY_ENABLED:
     from engine import overlay
+
 
 def run_friday(objective: str) -> None:
     print(f"\n[Friday] Starting task: {objective}\n")
     if OVERLAY_ENABLED:
         overlay.start(total_steps=0, task_name=objective)
+
+    feed = LiveScreenFeed()
     try:
-        _execute_loop(objective)
+        # Plan first (text-only) — live feed not running yet, no flicker.
+        session = _build_session(objective)
+
+        if LIVE_MODE:
+            feed.start()
+            if not feed.wait_until_ready(timeout=8.0):
+                print("[Friday] Warning: live feed did not produce frames in time.")
+
+        _action_loop(objective, session, feed)
     finally:
+        feed.stop()
         if OVERLAY_ENABLED:
             time.sleep(1.5)
             overlay.close()
 
-def _execute_loop(objective: str) -> None:
+
+def _build_session(objective: str) -> TaskSession:
     print("[Friday] Creating high-level plan...")
+    if OVERLAY_ENABLED:
+        overlay.set_status("thinking")
+
     high_plan = create_high_level_plan(objective)
     session = TaskSession(
         objective=objective,
@@ -38,117 +56,113 @@ def _execute_loop(objective: str) -> None:
 
     if OVERLAY_ENABLED:
         overlay.update_strategy(
-            session.plan_message,
-            session.phases,
-            session.current_phase_index,
+            session.plan_message, session.phases, session.current_phase_index,
         )
+        overlay.set_status("running")
 
+    return session
+
+
+def _action_loop(objective: str, session: TaskSession, feed: LiveScreenFeed) -> None:
     consecutive_empty = 0
+    print("[Friday] Live action loop started.")
 
     while session.iteration < MAX_ITERATIONS:
         session.iteration += 1
-        print(f"\n[Friday] --- Iteration {session.iteration} ---")
-        print(f"[Friday] Capturing screen...")
-        screen_b64, native_size, image_size, pil_image = capture_screen()
+        print(f"\n[Friday] --- Stream tick {session.iteration} ---")
 
-        if OVERLAY_ENABLED:
-            overlay.update_screenshot(pil_image)
+        vision = feed.snapshot_for_model()
+        if vision is None:
+            print("[Friday] No frames in live buffer yet, waiting...")
+            time.sleep(STREAM_TICK_SECONDS)
+            continue
 
-        native_w, native_h = native_size
-        image_w, image_h = image_size
-        print(f"[Friday] Screen resolution: {native_w}x{native_h}")
-        if image_size != native_size:
-            print(f"[Friday] Model image size: {image_w}x{image_h}")
+        input_kind = "video" if vision.is_video else f"{vision.frame_count} frame(s)"
+        print(
+            f"[Friday] Live input: {input_kind} "
+            f"({vision.native_size[0]}x{vision.native_size[1]} → "
+            f"model {vision.image_size[0]}x{vision.image_size[1]})"
+        )
+
         current_phase = session.current_phase
         if current_phase:
             print(
-                f"[Friday] Current phase: {current_phase.get('title', '?')} "
+                f"[Friday] Phase: {current_phase.get('title', '?')} "
                 f"({session.current_phase_index + 1}/{len(session.phases)})"
             )
 
-        plan = get_next_steps(session, screen_b64, native_size, image_size)
+        if OVERLAY_ENABLED:
+            overlay.set_status("thinking")
+        plan = get_next_steps(session, vision)
 
         if OVERLAY_ENABLED:
             overlay.sync_completed_steps(session.history)
+            if feed.is_running:
+                overlay.set_status("live")
 
         message = plan.get("message", "")
         steps = plan.get("steps", [])
         if OVERLAY_ENABLED:
             overlay.update_plan(message, steps)
             overlay.update_strategy(
-                session.plan_message,
-                session.phases,
-                session.current_phase_index,
+                session.plan_message, session.phases, session.current_phase_index,
             )
         if message:
             print(f"\n[Friday] {message}")
 
         if not steps:
             consecutive_empty += 1
-            if OVERLAY_ENABLED:
-                overlay.set_status("waiting")
-            if consecutive_empty >= 2:
-                print("[Friday] No steps returned on two consecutive iterations. Stopping.")
+            if consecutive_empty >= 4:
+                print("[Friday] No steps on four consecutive ticks. Stopping.")
                 break
-            print("[Friday] No steps returned. Retrying with fresh screenshot...")
+            print("[Friday] No steps returned. Waiting for next live frame...")
+            time.sleep(STREAM_TICK_SECONDS)
             continue
 
         consecutive_empty = 0
-
         step = steps[0]
         action = step.get("action", "").upper()
         print(f"[Friday] Next action: {action}")
 
         if OVERLAY_ENABLED:
-            overlay.start(total_steps=1, task_name=objective)
-            overlay.update(
-                1,
-                action,
-                "running",
-                step=step,
-                iteration=session.iteration,
-            )
+            overlay.update(1, action, "running", step=step, iteration=session.iteration)
 
-        result = execute_step(step, step_index=1, total_steps=1, session=session)
+        result = execute_step(
+            step,
+            step_index=1,
+            total_steps=1,
+            session=session,
+            feed=feed,
+            native_size=vision.native_size,
+            image_size=vision.image_size,
+        )
         session.record_action(step, result)
+        maybe_summarize_context(session)
+
+        if result == "screenshot":
+            time.sleep(1.5)
 
         if OVERLAY_ENABLED:
             overlay.sync_completed_steps(session.history)
+            if feed.is_running:
+                overlay.set_status("live")
 
         if result == "complete":
             print("[Friday] Task complete.")
             if OVERLAY_ENABLED:
-                overlay.update(
-                    1,
-                    action,
-                    "complete",
-                    step=step,
-                    iteration=session.iteration,
-                )
+                overlay.update(1, action, "complete", step=step, iteration=session.iteration)
             return
 
         if result == "halt":
             print("[Friday] Execution halted by operator.")
             if OVERLAY_ENABLED:
-                overlay.update(
-                    1,
-                    action,
-                    "halt",
-                    step=step,
-                    iteration=session.iteration,
-                )
+                overlay.update(1, action, "halt", step=step, iteration=session.iteration)
             return
 
         if OVERLAY_ENABLED:
-            overlay.update(
-                1,
-                action,
-                "complete",
-                step=step,
-                iteration=session.iteration,
-            )
+            overlay.update(1, action, "complete", step=step, iteration=session.iteration)
 
-        time.sleep(0.4)
+        time.sleep(STREAM_TICK_SECONDS)
 
         if plan.get("phase_complete") and session.current_phase_index < len(session.phases) - 1:
             session.advance_phase()
@@ -156,17 +170,15 @@ def _execute_loop(objective: str) -> None:
             print(f"[Friday] Phase complete. Moving to: {phase.get('title', '?')}")
             if OVERLAY_ENABLED:
                 overlay.update_strategy(
-                    session.plan_message,
-                    session.phases,
-                    session.current_phase_index,
+                    session.plan_message, session.phases, session.current_phase_index,
                 )
 
     if session.iteration >= MAX_ITERATIONS:
         print(
-            f"\n[Friday] Reached iteration limit ({MAX_ITERATIONS}) without completing the task.\n"
-            f"[Friday] Check that your model is a vision-language model (e.g. minicpm-v) "
-            f"and that the screen state is being read correctly."
+            f"\n[Friday] Reached iteration limit ({MAX_ITERATIONS}).\n"
+            f"[Friday] Ensure the model is loaded in Ollama and responding."
         )
+
 
 if __name__ == "__main__":
     task = input("[Friday] On Your Service: ").strip()

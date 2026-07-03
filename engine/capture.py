@@ -328,6 +328,45 @@ def _run_animation(img: Image.Image, screen_w: int, screen_h: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# UI exclusion — hide Friday windows before screenshot capture
+# ---------------------------------------------------------------------------
+
+def _hide_ui_for_capture() -> None:
+    """Hide overlay panel and click marker so they don't pollute VLM input."""
+    from config import HIDE_UI_FROM_CAPTURE, OVERLAY_ENABLED
+
+    if not HIDE_UI_FROM_CAPTURE:
+        return
+
+    try:
+        from engine.click_marker import dismiss_click_target
+        dismiss_click_target(wait=True)
+    except Exception:
+        pass
+
+    if OVERLAY_ENABLED:
+        try:
+            from engine import overlay
+            overlay.hide_for_capture()
+        except Exception:
+            pass
+
+
+def _restore_ui_after_capture() -> None:
+    from config import HIDE_UI_FROM_CAPTURE, OVERLAY_ENABLED
+
+    if not HIDE_UI_FROM_CAPTURE:
+        return
+
+    if OVERLAY_ENABLED:
+        try:
+            from engine import overlay
+            overlay.show_after_capture()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -352,11 +391,15 @@ def capture_screen(show_animation: bool = True) -> tuple[str, tuple[int, int], t
         passing them to pyautogui. Both paths are correct as long as the
         returned image_size matches the actual pixel dimensions of base64_png.
     """
-    with mss.mss() as sct:
-        monitor    = sct.monitors[PRIMARY_MONITOR_INDEX]
-        screenshot = sct.grab(monitor)
-        img        = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-        native_size = (monitor["width"], monitor["height"])
+    _hide_ui_for_capture()
+    try:
+        with mss.mss() as sct:
+            monitor    = sct.monitors[PRIMARY_MONITOR_INDEX]
+            screenshot = sct.grab(monitor)
+            img        = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+            native_size = (monitor["width"], monitor["height"])
+    finally:
+        _restore_ui_after_capture()
 
     if show_animation:
         t = threading.Thread(

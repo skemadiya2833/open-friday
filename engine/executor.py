@@ -1,10 +1,17 @@
 import time
 import pyautogui
 import pyperclip
-from config import OVERLAY_ENABLED
+from config import AIM_VERIFY_ENABLED, CLICK_MARKER_ENABLED, OVERLAY_ENABLED
 from engine.safety import is_risky_step, prompt_user_approval
 from engine.coordinates import _extract_win_search_text
 from engine.session import TaskSession
+from engine.stream import LiveScreenFeed
+
+if CLICK_MARKER_ENABLED:
+    from engine.click_marker import hide_aim_cursor, log_click_target, show_click_target
+
+if AIM_VERIFY_ENABLED:
+    from engine.aim_verify import refine_step_with_live_verification
 
 if OVERLAY_ENABLED:
     from engine import overlay
@@ -18,6 +25,9 @@ def execute_step(
     step_index: int = 1,
     total_steps: int = 1,
     session: TaskSession | None = None,
+    feed: LiveScreenFeed | None = None,
+    native_size: tuple[int, int] | None = None,
+    image_size: tuple[int, int] | None = None,
 ) -> str:
     """
     Executes a single action step.
@@ -50,6 +60,14 @@ def execute_step(
         if OVERLAY_ENABLED:
             overlay.update(step_index, action, "running", step=step)
 
+    if (
+        AIM_VERIFY_ENABLED
+        and feed is not None
+        and native_size is not None
+        and image_size is not None
+    ):
+        step = refine_step_with_live_verification(step, feed, native_size, image_size)
+
     try:
         result = _dispatch_action(action, step, session=session)
     except Exception as exc:
@@ -79,11 +97,49 @@ def _type_text(text: str) -> None:
     print(f"  -> Typed (via paste): {text[:80]}{'...' if len(text) > 80 else ''}")
 
 
+def _is_placeholder_type_text(text: str) -> bool:
+    """Reject short stubs like 'Lyrics of Back to December' — not the actual content."""
+    t = text.strip()
+    if not t or t in ("...", "…"):
+        return True
+    lower = t.lower()
+    if len(t) > 200 or t.count("\n") >= 2:
+        return False
+    if any(lower.startswith(p) for p in ("[lyrics]", "[content]", "[poem]", "[insert")):
+        return True
+    stub_phrases = (
+        "here are the lyrics", "insert lyrics", "insert content",
+        "insert poem", "paste content", "paste lyrics",
+        "type the lyrics", "enter the lyrics",
+    )
+    if len(t) < 80 and any(p in lower for p in stub_phrases):
+        return True
+    # Title-only stub with no verse body, e.g. "Lyrics of Back to December"
+    if lower.startswith("lyrics of") and "\n" not in t and len(t) < 100:
+        return True
+    return False
+
+
 def _resolve_xy(step: dict) -> tuple[int | None, int | None]:
     x, y = step.get("x"), step.get("y")
     if x is not None and y is not None:
         return int(x), int(y)
     return None, None
+
+
+def _with_click_marker(step: dict, x: int, y: int) -> None:
+    """Show diagnostic crosshair, brief pause, then caller performs the click."""
+    if step.get("_aim_verified"):
+        log_click_target(step, x, y)
+        return
+    if CLICK_MARKER_ENABLED:
+        log_click_target(step, x, y)
+        show_click_target(x, y, step=step)
+
+
+def _after_coord_action(step: dict) -> None:
+    if step.get("_aim_verified") and CLICK_MARKER_ENABLED:
+        hide_aim_cursor()
 
 
 def _dispatch_action(action: str, step: dict, session: TaskSession | None = None) -> str:
@@ -122,7 +178,9 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
     if action == "CLICK":
         x, y = _resolve_xy(step)
         if x is not None:
+            _with_click_marker(step, x, y)
             pyautogui.click(x, y)
+            _after_coord_action(step)
             print(f"  -> Left-clicked at ({x}, {y})")
         else:
             print("  -> CLICK missing coordinates, skipped.")
@@ -134,7 +192,9 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
     if action == "DOUBLE_CLICK":
         x, y = _resolve_xy(step)
         if x is not None:
+            _with_click_marker(step, x, y)
             pyautogui.doubleClick(x, y)
+            _after_coord_action(step)
             print(f"  -> Double-clicked at ({x}, {y})")
         else:
             print("  -> DOUBLE_CLICK missing coordinates, skipped.")
@@ -146,7 +206,9 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
     if action == "RIGHT_CLICK":
         x, y = _resolve_xy(step)
         if x is not None:
+            _with_click_marker(step, x, y)
             pyautogui.rightClick(x, y)
+            _after_coord_action(step)
             print(f"  -> Right-clicked at ({x}, {y})")
         else:
             print("  -> RIGHT_CLICK missing coordinates, skipped.")
@@ -158,7 +220,9 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
     if action == "MIDDLE_CLICK":
         x, y = _resolve_xy(step)
         if x is not None:
+            _with_click_marker(step, x, y)
             pyautogui.middleClick(x, y)
+            _after_coord_action(step)
             print(f"  -> Middle-clicked at ({x}, {y})")
         else:
             print("  -> MIDDLE_CLICK missing coordinates, skipped.")
@@ -211,8 +275,10 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
     if action == "HOVER":
         x, y = _resolve_xy(step)
         if x is not None:
+            _with_click_marker(step, x, y)
             pyautogui.moveTo(x, y, duration=0.3)
             time.sleep(0.4)
+            _after_coord_action(step)
             print(f"  -> Hovered at ({x}, {y})")
         return "continue"
 
@@ -254,6 +320,8 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
         x, y = _resolve_xy(step)
         direction = step.get("direction", "down").lower()
         amount = int(step.get("amount", 3))
+        if x is not None and y is not None:
+            _with_click_marker(step, x, y)
         if direction in ("up", "down"):
             clicks = amount if direction == "up" else -amount
             if x is not None:
@@ -270,6 +338,8 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
             print(f"  -> Scrolled horizontally {direction} {amount} clicks at ({x}, {y})")
         else:
             print(f"  -> Unknown scroll direction '{direction}', skipped.")
+        if x is not None and y is not None:
+            _after_coord_action(step)
         return "continue"
 
     # ------------------------------------------------------------------
@@ -281,18 +351,13 @@ def _dispatch_action(action: str, step: dict, session: TaskSession | None = None
             print("  -> TYPE has no text, skipped.")
             return "continue"
 
-        _PLACEHOLDER_SIGNALS = (
-            "lyrics of", "here are the lyrics", "insert lyrics",
-            "insert content", "insert poem", "paste content", "paste lyrics",
-            "[lyrics]", "[content]", "[poem]", "[insert", "...",
-        )
-        text_lower = text.strip().lower()
-        if any(signal in text_lower for signal in _PLACEHOLDER_SIGNALS):
+        if _is_placeholder_type_text(text):
             print(
-                f"  -> [GUARD] TYPE blocked: placeholder text detected.\n"
-                f"     Content: {text[:120]!r}"
+                f"  -> [GUARD] TYPE skipped: model sent a description, not real content.\n"
+                f"     Content: {text[:120]!r}\n"
+                f"     (Model must TYPE the full literal text — e.g. every line of lyrics.)"
             )
-            return "halt"
+            return "skipped"
 
         _type_text(text)
         return "screenshot"

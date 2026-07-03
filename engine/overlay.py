@@ -1,10 +1,9 @@
 """
 Tkinter floating overlay for Friday's live execution view.
 
-Shows screenshot, model reasoning stream, plan phases, step progress,
-completed-step log, and risky-action approval. Runs on a background thread
-so the main loop is never blocked. Mouse/keyboard events pass through on
-Windows except during approval dialogs.
+Minimal panel: live screen, frame counter, task, reasoning stream, next steps.
+Runs on a background thread; mouse/keyboard pass through on Windows except
+during approval dialogs.
 """
 
 from __future__ import annotations
@@ -18,13 +17,13 @@ from typing import Any
 from PIL import Image, ImageTk
 
 # ---------------------------------------------------------------------------
-# Layout constants
+# Layout
 # ---------------------------------------------------------------------------
 
-PANEL_W = 440
-THUMB_H = 140
-BASE_H = 580
-LOG_H = 100
+PANEL_W = 380
+THUMB_H = 150
+REASONING_H = 110
+BASE_H = 480
 MARGIN = 16
 
 # ---------------------------------------------------------------------------
@@ -34,16 +33,35 @@ MARGIN = 16
 _overlay: "OverlayController | None" = None
 
 
+def hide_for_capture() -> None:
+    if _overlay is not None:
+        _overlay.hide_for_capture()
+
+
+def show_after_capture() -> None:
+    if _overlay is not None:
+        _overlay.show_after_capture()
+
+
+def set_live_mode(enabled: bool) -> None:
+    if _overlay is not None:
+        _overlay.set_live_mode(enabled)
+
+
+def update_live_frame(pil_image: Image.Image, frame_index: int = 0) -> None:
+    if _overlay is not None:
+        _overlay.update_live_frame(pil_image, frame_index=frame_index)
+
+
+def update_screenshot(pil_image: Image.Image) -> None:
+    update_live_frame(pil_image)
+
+
 def start(total_steps: int, task_name: str = "") -> None:
     global _overlay
     if _overlay is None:
         _overlay = OverlayController()
     _overlay.start(total_steps, task_name)
-
-
-def update_screenshot(pil_image: Image.Image) -> None:
-    if _overlay is not None:
-        _overlay.update_screenshot(pil_image)
 
 
 def update_plan(message: str, steps: list) -> None:
@@ -56,6 +74,7 @@ def update_strategy(
     phases: list,
     current_phase_index: int = 0,
 ) -> None:
+    """Kept for API compatibility — not shown in the simplified overlay."""
     if _overlay is not None:
         _overlay.update_strategy(plan_message, phases, current_phase_index)
 
@@ -70,12 +89,8 @@ def update(
 ) -> None:
     if _overlay is not None:
         _overlay.update(
-            step_index,
-            action,
-            status,
-            step=step,
-            task_name=task_name,
-            iteration=iteration,
+            step_index, action, status,
+            step=step, task_name=task_name, iteration=iteration,
         )
 
 
@@ -85,30 +100,30 @@ def set_status(status: str) -> None:
 
 
 def push_thinking(token: str) -> None:
-    """
-    Append a token or chunk to the live reasoning stream display.
-    Call this from the model query loop as tokens arrive.
-    """
     if _overlay is not None:
         _overlay.push_thinking(token)
 
 
 def clear_thinking() -> None:
-    """Clear the reasoning stream buffer (call before each new model query)."""
     if _overlay is not None:
         _overlay.clear_thinking()
 
 
+def clear_perception() -> None:
+    pass
+
+
+def set_perception(scene: dict) -> None:
+    pass
+
+
 def set_thinking(text: str) -> None:
-    """Replace the reasoning stream with final reasoning text."""
     if _overlay is not None:
         _overlay.set_thinking(text)
 
 
 def sync_completed_steps(history: list[str]) -> None:
-    """Sync the completed-step log from session history."""
-    if _overlay is not None:
-        _overlay.sync_completed_steps(history)
+    pass
 
 
 def await_approval(step: dict) -> bool:
@@ -125,12 +140,15 @@ def close() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Status colours and labels
+# Status labels (shown inline next to frame counter)
 # ---------------------------------------------------------------------------
 
 STATUS_COLORS = {
+    "live":                 "#22c55e",
     "running":              "#3b82f6",
     "thinking":             "#8b5cf6",
+    "aiming":               "#f59e0b",
+    "verifying":            "#06b6d4",
     "waiting":              "#f59e0b",
     "waiting for approval": "#f59e0b",
     "complete":             "#22c55e",
@@ -140,11 +158,14 @@ STATUS_COLORS = {
 }
 
 STATUS_LABELS = {
+    "live":                 "LIVE",
     "running":              "RUNNING",
     "thinking":             "THINKING",
+    "aiming":               "AIMING",
+    "verifying":            "VERIFYING",
     "waiting":              "WAITING",
-    "waiting for approval": "AWAITING APPROVAL",
-    "complete":             "COMPLETE",
+    "waiting for approval": "APPROVAL",
+    "complete":             "DONE",
     "error":                "ERROR",
     "halt":                 "HALTED",
     "idle":                 "IDLE",
@@ -159,15 +180,15 @@ def format_action_target(step: dict | None, action: str = "") -> str:
 
     if act in ("CLICK", "DOUBLE_CLICK", "RIGHT_CLICK", "MIDDLE_CLICK", "HOVER"):
         x, y = step.get("x"), step.get("y")
-        return f"{act} at ({x}, {y})" if x is not None and y is not None else act
+        return f"{act} ({x}, {y})" if x is not None and y is not None else act
 
     if act in ("TYPE", "PASTE", "SEARCH", "WIN_SEARCH"):
         text = step.get("text") or ""
-        preview = text[:40] + ("..." if len(text) > 40 else "")
+        preview = text[:36] + ("…" if len(text) > 36 else "")
         return f'{act} "{preview}"'
 
     if act == "PRESS_KEY":
-        return f"PRESS_KEY {step.get('key') or ''}"
+        return f"PRESS {step.get('key') or ''}"
 
     if act == "HOTKEY":
         keys = step.get("keys") or []
@@ -175,87 +196,62 @@ def format_action_target(step: dict | None, action: str = "") -> str:
 
     if act == "SAVE_FILE":
         name = step.get("text") or ""
-        return f"SAVE_FILE {name}" if name else "SAVE_FILE (Ctrl+S)"
+        return f"SAVE {name}" if name else "SAVE"
 
     if act == "SCROLL":
         direction = step.get("direction", "down")
-        x, y = step.get("x"), step.get("y")
-        return f"SCROLL {direction} at ({x}, {y})" if x and y else f"SCROLL {direction}"
+        return f"SCROLL {direction}"
 
     if act == "WAIT":
         return f"WAIT {step.get('duration', 1.5)}s"
 
     if act in ("DRAG", "DRAG_DROP"):
-        return (
-            f"{act} ({step.get('x')},{step.get('y')})"
-            f" -> ({step.get('x2')},{step.get('y2')})"
-        )
-
-    if act == "DELETE":
-        return "DELETE selected content"
-
-    if act == "SCREENSHOT":
-        return "SCREENSHOT (refresh)"
+        return f"{act} → ({step.get('x2')},{step.get('y2')})"
 
     if act == "COMPLETE":
         return "COMPLETE"
 
-    desc = step.get("description") or ""
+    desc = (step.get("description") or "")[:50]
     return f"{act}: {desc}" if desc else act
 
 
-def _format_phases(phases: list, current_phase_index: int, limit: int = 6) -> str:
-    if not phases:
-        return "No phases defined."
+def _format_next_steps(message: str, steps: list, limit: int = 5) -> str:
     lines: list[str] = []
-    for i, phase in enumerate(phases[:limit]):
-        title = phase.get("title") or phase.get("goal") or f"Phase {i + 1}"
-        prefix = "Done" if i < current_phase_index else ("Now" if i == current_phase_index else f"  {i + 1}")
-        lines.append(f"{prefix}. {title}")
-    if len(phases) > limit:
-        lines.append(f"  ... {len(phases) - limit} more")
-    return "\n".join(lines)
-
-
-def _format_upcoming_steps(plan_steps: list, step_index: int, limit: int = 4) -> str:
-    if not plan_steps:
-        return "No steps queued."
-    remaining = plan_steps[step_index:] if step_index <= len(plan_steps) else []
-    if not remaining:
-        return "No steps queued."
-    lines: list[str] = []
-    for i, step in enumerate(remaining[:limit]):
-        num = step_index + i + 1
+    if message:
+        lines.append(message.strip()[:180])
+    if not steps:
+        return "\n".join(lines) if lines else "Waiting for next action…"
+    for i, step in enumerate(steps[:limit]):
         summary = format_action_target(step, step.get("action", ""))
-        prefix = "->" if i == 0 else "  "
-        lines.append(f"{prefix} {num}. {summary}")
-    if len(remaining) > limit:
-        lines.append(f"  ... and {len(remaining) - limit} more")
+        prefix = "→" if i == 0 else " "
+        lines.append(f"{prefix} {summary}")
+    if len(steps) > limit:
+        lines.append(f"  +{len(steps) - limit} more")
     return "\n".join(lines)
+
+
+def _frame_status_line(status: str, frame_index: int, live_mode: bool) -> str:
+    label = STATUS_LABELS.get(status, status.upper())
+    if live_mode and frame_index > 0:
+        return f"{label}  ·  frame {frame_index}"
+    if live_mode:
+        return label
+    return label
 
 
 # ---------------------------------------------------------------------------
-# State dataclass
+# State
 # ---------------------------------------------------------------------------
 
 @dataclass
 class OverlayState:
     task_name: str = ""
-    total_steps: int = 0
-    step_index: int = 0
-    iteration: int = 0
-    action: str = ""
-    description: str = ""
     status: str = "idle"
-    current_target: str = ""
     message: str = ""
-    plan_message: str = ""
-    phases: list = field(default_factory=list)
-    current_phase_index: int = 0
     plan_steps: list = field(default_factory=list)
     thumb_pil: Image.Image | None = None
-    log_entries: list[str] = field(default_factory=list)
-    log_expanded: bool = True
+    live_mode: bool = False
+    live_frame_index: int = 0
     awaiting_approval: bool = False
     approval_step: dict | None = None
     thinking_buffer: str = ""
@@ -269,35 +265,38 @@ class OverlayController:
     def __init__(self) -> None:
         self._cmd_queue: queue.Queue = queue.Queue()
         self._approval_event = threading.Event()
+        self._hide_event = threading.Event()
         self._approval_result: bool = False
         self._thread: threading.Thread | None = None
         self._running = False
         self._state = OverlayState()
         self._thumb_photo: ImageTk.PhotoImage | None = None
+        self._hidden_for_capture = False
 
     def start(self, total_steps: int, task_name: str = "") -> None:
         self._state.task_name = task_name
-        self._state.total_steps = total_steps
         if not self._running:
             self._running = True
             self._thread = threading.Thread(target=self._run_ui, daemon=True)
             self._thread.start()
 
-    def update_screenshot(self, pil_image: Image.Image) -> None:
+    def update_live_frame(self, pil_image: Image.Image, frame_index: int = 0) -> None:
         thumb = pil_image.copy()
         thumb.thumbnail((PANEL_W - 24, THUMB_H), Image.LANCZOS)
-        self._cmd_queue.put({"type": "screenshot", "image": thumb})
+        self._cmd_queue.put({
+            "type": "live_frame",
+            "image": thumb,
+            "frame_index": frame_index,
+        })
+
+    def set_live_mode(self, enabled: bool) -> None:
+        self._cmd_queue.put({"type": "live_mode", "enabled": enabled})
 
     def update_plan(self, message: str, steps: list) -> None:
         self._cmd_queue.put({"type": "plan", "message": message or "", "steps": steps or []})
 
     def update_strategy(self, plan_message: str, phases: list, current_phase_index: int = 0) -> None:
-        self._cmd_queue.put({
-            "type": "strategy",
-            "plan_message": plan_message or "",
-            "phases": phases or [],
-            "current_phase_index": current_phase_index,
-        })
+        pass
 
     def update(
         self,
@@ -310,12 +309,8 @@ class OverlayController:
     ) -> None:
         self._cmd_queue.put({
             "type": "update",
-            "step_index": step_index,
-            "action": action,
             "status": status,
-            "step": step,
             "task_name": task_name,
-            "iteration": iteration,
         })
 
     def set_status(self, status: str) -> None:
@@ -330,8 +325,17 @@ class OverlayController:
     def set_thinking(self, text: str) -> None:
         self._cmd_queue.put({"type": "thinking_set", "text": text or ""})
 
-    def sync_completed_steps(self, history: list[str]) -> None:
-        self._cmd_queue.put({"type": "sync_log", "entries": history or []})
+    def hide_for_capture(self) -> None:
+        if not self._running or self._hidden_for_capture:
+            return
+        self._hide_event.clear()
+        self._cmd_queue.put({"type": "hide_capture"})
+        self._hide_event.wait(timeout=1.0)
+
+    def show_after_capture(self) -> None:
+        if not self._running or not self._hidden_for_capture:
+            return
+        self._cmd_queue.put({"type": "show_capture"})
 
     def await_approval(self, step: dict) -> bool:
         self._cmd_queue.put({"type": "approval", "step": step})
@@ -351,10 +355,6 @@ class OverlayController:
         self._approval_result = approved
         self._approval_event.set()
 
-    # -------------------------------------------------------------------------
-    # UI thread
-    # -------------------------------------------------------------------------
-
     def _run_ui(self) -> None:
         import tkinter as tk
         from tkinter import font as tkfont
@@ -363,7 +363,7 @@ class OverlayController:
         root.title("Friday")
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        root.attributes("-alpha", 0.93)
+        root.attributes("-alpha", 0.94)
 
         screen_w = root.winfo_screenwidth()
 
@@ -372,142 +372,82 @@ class OverlayController:
 
         _position(BASE_H)
 
-        # Colours
-        bg       = "#0f0f1a"
-        fg       = "#e8e8f0"
-        muted    = "#7777aa"
-        panel_bg = "#13131f"
-        think_bg = "#0a0a18"
-        gold     = "#c8a85a"
+        bg = "#0d0d14"
+        fg = "#e8e8f0"
+        muted = "#6b6b8a"
+        panel_bg = "#12121c"
+        think_bg = "#0a0a12"
+        accent = "#a78bfa"
 
         root.configure(bg=bg)
 
-        title_font   = tkfont.Font(family="Segoe UI", size=10, weight="bold")
-        body_font    = tkfont.Font(family="Segoe UI", size=9)
-        small_font   = tkfont.Font(family="Segoe UI", size=8)
-        mono_font    = tkfont.Font(family="Consolas", size=8)
-        badge_font   = tkfont.Font(family="Segoe UI", size=8, weight="bold")
-        think_font   = tkfont.Font(family="Segoe UI", size=9)
+        hdr_font = tkfont.Font(family="Segoe UI", size=8, weight="bold")
+        task_font = tkfont.Font(family="Segoe UI", size=10)
+        body_font = tkfont.Font(family="Segoe UI", size=9)
+        mono_font = tkfont.Font(family="Consolas", size=9)
+        status_font = tkfont.Font(family="Consolas", size=8)
 
-        # -- Task name and iteration -----------------------------------------
-        task_lbl = tk.Label(root, text="", font=title_font, bg=bg, fg=fg, anchor="w")
-        task_lbl.pack(fill="x", padx=12, pady=(10, 0))
+        def _section(title: str) -> tk.Label:
+            return tk.Label(root, text=title, font=hdr_font, bg=bg, fg=muted, anchor="w")
 
-        step_lbl = tk.Label(root, text="", font=body_font, bg=bg, fg=muted, anchor="w")
-        step_lbl.pack(fill="x", padx=12, pady=(2, 4))
+        # -- Screen ----------------------------------------------------------
+        screen_hdr = tk.Frame(root, bg=bg)
+        screen_hdr.pack(fill="x", padx=12, pady=(10, 2))
+        tk.Label(screen_hdr, text="SCREEN", font=hdr_font, bg=bg, fg=muted, anchor="w").pack(
+            side="left",
+        )
+        frame_lbl = tk.Label(
+            screen_hdr, text="IDLE", font=status_font, bg=bg, fg="#22c55e", anchor="e",
+        )
+        frame_lbl.pack(side="right")
 
-        # -- Screenshot thumbnail --------------------------------------------
         thumb_frame = tk.Frame(root, bg=panel_bg, height=THUMB_H)
         thumb_frame.pack(fill="x", padx=12)
         thumb_frame.pack_propagate(False)
 
         thumb_lbl = tk.Label(
-            thumb_frame, text="Waiting for screenshot...",
-            font=body_font, bg=panel_bg, fg=muted,
+            thumb_frame, text="Starting…", font=body_font, bg=panel_bg, fg=muted,
         )
         thumb_lbl.pack(expand=True)
 
-        # -- Status badge + current action -----------------------------------
-        badge_frame = tk.Frame(root, bg=bg)
-        badge_frame.pack(fill="x", padx=12, pady=(8, 0))
-
-        badge = tk.Label(
-            badge_frame, text="IDLE", font=badge_font,
-            bg=STATUS_COLORS["idle"], fg="#ffffff", padx=8, pady=2,
+        # -- Task ------------------------------------------------------------
+        _section("TASK").pack(fill="x", padx=12, pady=(10, 2))
+        task_lbl = tk.Label(
+            root, text="", font=task_font, bg=bg, fg=fg,
+            anchor="nw", justify="left", wraplength=PANEL_W - 24,
         )
-        badge.pack(side="left")
+        task_lbl.pack(fill="x", padx=12)
 
-        action_lbl = tk.Label(
-            root, text="", font=mono_font, bg=bg, fg="#a8d8ff",
-            anchor="w", wraplength=PANEL_W - 24,
-        )
-        action_lbl.pack(fill="x", padx=12, pady=(4, 0))
-
-        desc_lbl = tk.Label(
-            root, text="", font=body_font, bg=bg, fg=fg,
-            anchor="w", wraplength=PANEL_W - 24, justify="left",
-        )
-        desc_lbl.pack(fill="x", padx=12, pady=(2, 0))
-
-        # -- Live reasoning stream -------------------------------------------
-        tk.Label(root, text="REASONING", font=small_font, bg=bg, fg=muted, anchor="w").pack(
-            fill="x", padx=12, pady=(8, 0)
-        )
-
-        think_frame = tk.Frame(root, bg=think_bg, height=88)
+        # -- Reasoning -------------------------------------------------------
+        _section("REASONING").pack(fill="x", padx=12, pady=(10, 2))
+        think_frame = tk.Frame(root, bg=think_bg, height=REASONING_H)
         think_frame.pack(fill="x", padx=12)
         think_frame.pack_propagate(False)
 
         think_text = tk.Text(
             think_frame,
-            font=think_font,
+            font=body_font,
             bg=think_bg,
-            fg="#c4b5fd",
+            fg=accent,
             relief="flat",
             highlightthickness=0,
             wrap="word",
             state="disabled",
             cursor="arrow",
         )
-        think_text.pack(fill="both", expand=True, padx=4, pady=4)
+        think_text.pack(fill="both", expand=True, padx=6, pady=6)
 
-        # -- Phase plan ------------------------------------------------------
-        tk.Label(root, text="PLAN", font=small_font, bg=bg, fg=muted, anchor="w").pack(
-            fill="x", padx=12, pady=(6, 0)
+        # -- Next steps ------------------------------------------------------
+        _section("NEXT STEPS").pack(fill="x", padx=12, pady=(10, 2))
+        steps_lbl = tk.Label(
+            root, text="Waiting for next action…", font=mono_font,
+            bg=bg, fg="#c8a85a", anchor="nw", justify="left",
+            wraplength=PANEL_W - 24,
         )
-        phases_lbl = tk.Label(
-            root, text="No phases defined.", font=mono_font,
-            bg=bg, fg=gold, anchor="nw", justify="left", wraplength=PANEL_W - 24,
-        )
-        phases_lbl.pack(fill="x", padx=12, pady=(0, 2))
+        steps_lbl.pack(fill="x", padx=12, pady=(0, 10))
 
-        # -- Next actions ----------------------------------------------------
-        tk.Label(root, text="NEXT ACTIONS", font=small_font, bg=bg, fg=muted, anchor="w").pack(
-            fill="x", padx=12, pady=(4, 0)
-        )
-        upcoming_lbl = tk.Label(
-            root, text="No steps queued.", font=mono_font,
-            bg=bg, fg=gold, anchor="nw", justify="left", wraplength=PANEL_W - 24,
-        )
-        upcoming_lbl.pack(fill="x", padx=12, pady=(0, 2))
-
-        # -- Model message ---------------------------------------------------
-        tk.Label(root, text="MODEL SAYS", font=small_font, bg=bg, fg=muted, anchor="w").pack(
-            fill="x", padx=12, pady=(4, 0)
-        )
-        message_lbl = tk.Label(
-            root, text="—", font=body_font, bg=bg, fg=fg,
-            anchor="w", wraplength=PANEL_W - 24, justify="left",
-        )
-        message_lbl.pack(fill="x", padx=12, pady=(0, 2))
-
-        # -- Completed steps log ---------------------------------------------
-        log_toggle = tk.Button(
-            root, text="- Completed steps", font=body_font,
-            bg="#1e1e35", fg=muted, relief="flat",
-            activebackground="#2a2a50", activeforeground=fg,
-            anchor="w", padx=8, command=lambda: None,
-        )
-        log_toggle.pack(fill="x", padx=8, pady=(4, 0))
-
-        log_frame = tk.Frame(root, bg=panel_bg, height=LOG_H)
-        log_frame.pack(fill="x", padx=8, pady=(2, 8))
-        log_frame.pack_propagate(False)
-
-        log_scroll = tk.Scrollbar(log_frame, orient="vertical")
-        log_list = tk.Listbox(
-            log_frame, font=mono_font, bg=panel_bg, fg="#88cc88",
-            relief="flat", highlightthickness=0,
-            selectbackground="#303060",
-            yscrollcommand=log_scroll.set,
-            activestyle="none",
-        )
-        log_scroll.config(command=log_list.yview)
-        log_scroll.pack(side="right", fill="y")
-        log_list.pack(fill="both", expand=True, padx=4, pady=4)
-
-        # -- Approval panel --------------------------------------------------
-        approval_frame = tk.Frame(root, bg="#2a1a10", relief="flat")
+        # -- Approval (hidden unless needed) ---------------------------------
+        approval_frame = tk.Frame(root, bg="#2a1a10")
         approval_lbl = tk.Label(
             approval_frame, text="", font=body_font,
             bg="#2a1a10", fg="#ffcc88",
@@ -517,32 +457,27 @@ class OverlayController:
 
         btn_row = tk.Frame(approval_frame, bg="#2a1a10")
         btn_row.pack(fill="x", padx=10, pady=(0, 8))
-
         tk.Button(
             btn_row, text="Approve", font=body_font,
-            bg="#166534", fg="#ffffff", relief="flat",
-            activebackground="#15803d", padx=12, pady=4,
+            bg="#166534", fg="#ffffff", relief="flat", padx=12, pady=4,
             command=lambda: self._set_approval_result(True),
         ).pack(side="left", padx=(0, 8))
-
         tk.Button(
             btn_row, text="Reject", font=body_font,
-            bg="#7f1d1d", fg="#ffffff", relief="flat",
-            activebackground="#991b1b", padx=12, pady=4,
+            bg="#7f1d1d", fg="#ffffff", relief="flat", padx=12, pady=4,
             command=lambda: self._set_approval_result(False),
         ).pack(side="left")
 
-        # -- Windows click-through helpers -----------------------------------
         def _apply_click_through() -> None:
             if platform.system() != "Windows":
                 return
             try:
                 import ctypes
                 hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
-                GWL_EXSTYLE    = -20
-                WS_EX_LAYERED  = 0x00080000
+                GWL_EXSTYLE = -20
+                WS_EX_LAYERED = 0x00080000
                 WS_EX_TRANSPARENT = 0x00000020
-                WS_EX_TOPMOST  = 0x00000008
+                WS_EX_TOPMOST = 0x00000008
                 style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
                 ctypes.windll.user32.SetWindowLongW(
                     hwnd, GWL_EXSTYLE,
@@ -557,9 +492,9 @@ class OverlayController:
             try:
                 import ctypes
                 hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
-                GWL_EXSTYLE    = -20
-                WS_EX_LAYERED  = 0x00080000
-                WS_EX_TOPMOST  = 0x00000008
+                GWL_EXSTYLE = -20
+                WS_EX_LAYERED = 0x00080000
+                WS_EX_TOPMOST = 0x00000008
                 WS_EX_TRANSPARENT = 0x00000020
                 style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
                 ctypes.windll.user32.SetWindowLongW(
@@ -569,30 +504,13 @@ class OverlayController:
             except Exception:
                 pass
 
-        def _current_height() -> int:
-            extra = 0
-            if not self._state.log_expanded:
-                extra -= LOG_H + 8
-            if self._state.awaiting_approval:
-                extra += 110
-            return BASE_H + extra
+        def _panel_height() -> int:
+            return BASE_H + (100 if self._state.awaiting_approval else 0)
 
-        def _toggle_log() -> None:
-            self._state.log_expanded = not self._state.log_expanded
-            log_toggle.config(text=("- Completed steps" if self._state.log_expanded else "+ Completed steps"))
-            if self._state.log_expanded:
-                log_frame.pack(fill="x", padx=8, pady=(2, 8))
-            else:
-                log_frame.pack_forget()
-            _position(_current_height())
-
-        log_toggle.config(command=_toggle_log)
-
-        # -- Refresh helpers -------------------------------------------------
         def _refresh_thumb() -> None:
             pil = self._state.thumb_pil
             if pil is None:
-                thumb_lbl.config(image="", text="Waiting for screenshot...")
+                thumb_lbl.config(image="", text="Starting…")
                 self._thumb_photo = None
                 return
             self._thumb_photo = ImageTk.PhotoImage(pil)
@@ -601,10 +519,9 @@ class OverlayController:
         def _append_thinking(text: str) -> None:
             think_text.config(state="normal")
             think_text.insert("end", text)
-            # Keep buffer under ~600 chars so it stays readable
             content = think_text.get("1.0", "end")
-            if len(content) > 700:
-                think_text.delete("1.0", f"1.{len(content) - 600}")
+            if len(content) > 800:
+                think_text.delete("1.0", f"1.{len(content) - 650}")
             think_text.see("end")
             think_text.config(state="disabled")
 
@@ -620,42 +537,14 @@ class OverlayController:
             think_text.see("end")
             think_text.config(state="disabled")
 
-        def _refresh_log() -> None:
-            log_list.delete(0, "end")
-            for entry in self._state.log_entries:
-                log_list.insert("end", entry)
-            if self._state.log_entries:
-                log_list.see("end")
-
         def _refresh_ui() -> None:
             s = self._state
             task_lbl.config(text=s.task_name or "Friday")
+            steps_lbl.config(text=_format_next_steps(s.message, s.plan_steps))
 
-            if s.iteration > 0 and s.total_steps > 0:
-                step_lbl.config(text=f"Iteration {s.iteration}  |  Step {s.step_index}/{s.total_steps}")
-            elif s.iteration > 0:
-                step_lbl.config(text=f"Iteration {s.iteration}")
-            elif s.total_steps > 0:
-                step_lbl.config(text=f"Step {s.step_index}/{s.total_steps}")
-            else:
-                step_lbl.config(text="")
-
-            action_lbl.config(text=s.current_target or s.action.upper())
-            desc_lbl.config(text=s.description or "")
-
-            color = STATUS_COLORS.get(s.status, STATUS_COLORS["running"])
-            label = STATUS_LABELS.get(s.status, s.status.upper())
-            badge.config(text=label, bg=color)
-
-            message_lbl.config(text=s.message or "—")
-            phases_lbl.config(text=_format_phases(s.phases, s.current_phase_index))
-            upcoming_lbl.config(text=_format_upcoming_steps(s.plan_steps, s.step_index))
-
-            log_list.delete(0, "end")
-            for entry in s.log_entries:
-                log_list.insert("end", entry)
-            if s.log_entries:
-                log_list.see("end")
+            status_text = _frame_status_line(s.status, s.live_frame_index, s.live_mode)
+            status_color = STATUS_COLORS.get(s.status, STATUS_COLORS["idle"])
+            frame_lbl.config(text=status_text, fg=status_color)
 
             _refresh_thumb()
 
@@ -663,17 +552,16 @@ class OverlayController:
                 step = s.approval_step or {}
                 summary = format_action_target(step, step.get("action", ""))
                 approval_lbl.config(
-                    text=f"Risky action — approval required:\n{summary}\n{step.get('description', '')}"
+                    text=f"Approve risky action?\n{summary}"
                 )
-                approval_frame.pack(fill="x", padx=8, pady=(6, 8))
+                approval_frame.pack(fill="x", padx=8, pady=(0, 8))
                 _disable_click_through()
             else:
                 approval_frame.pack_forget()
                 _apply_click_through()
 
-            _position(_current_height())
+            _position(_panel_height())
 
-        # -- Command dispatcher ----------------------------------------------
         def _process_cmd(cmd: dict[str, Any]) -> None:
             t = cmd.get("type")
 
@@ -681,28 +569,41 @@ class OverlayController:
                 root.quit()
                 return
 
-            if t == "screenshot":
+            if t == "live_frame":
                 self._state.thumb_pil = cmd["image"]
+                self._state.live_frame_index = cmd.get("frame_index", 0)
+                _refresh_thumb()
+                status_text = _frame_status_line(
+                    self._state.status,
+                    self._state.live_frame_index,
+                    self._state.live_mode,
+                )
+                status_color = STATUS_COLORS.get(self._state.status, STATUS_COLORS["idle"])
+                frame_lbl.config(text=status_text, fg=status_color)
+                return
+
+            if t == "live_mode":
+                self._state.live_mode = bool(cmd.get("enabled"))
+                if self._state.live_mode:
+                    self._state.status = "live"
                 _refresh_ui()
                 return
 
             if t == "plan":
                 self._state.message = cmd["message"]
                 self._state.plan_steps = cmd["steps"]
-                self._state.step_index = 0
-                _refresh_ui()
-                return
-
-            if t == "strategy":
-                self._state.plan_message = cmd["plan_message"]
-                self._state.phases = cmd["phases"]
-                self._state.current_phase_index = cmd["current_phase_index"]
                 _refresh_ui()
                 return
 
             if t == "set_status":
                 self._state.status = cmd["status"]
-                _refresh_ui()
+                status_text = _frame_status_line(
+                    self._state.status,
+                    self._state.live_frame_index,
+                    self._state.live_mode,
+                )
+                status_color = STATUS_COLORS.get(self._state.status, STATUS_COLORS["idle"])
+                frame_lbl.config(text=status_text, fg=status_color)
                 return
 
             if t == "thinking_token":
@@ -717,31 +618,26 @@ class OverlayController:
                 _set_thinking(cmd.get("text", ""))
                 return
 
-            if t == "sync_log":
-                self._state.log_entries = [
-                    f"{i + 1}. {entry}" for i, entry in enumerate(cmd.get("entries", []))
-                ]
-                _refresh_log()
+            if t == "hide_capture":
+                root.withdraw()
+                root.update_idletasks()
+                self._hidden_for_capture = True
+                self._hide_event.set()
+                return
+
+            if t == "show_capture":
+                root.deiconify()
+                root.update_idletasks()
+                self._hidden_for_capture = False
+                if not self._state.awaiting_approval:
+                    _apply_click_through()
                 return
 
             if t == "update":
-                new_index  = cmd["step_index"]
-                new_action = cmd["action"]
-                new_status = cmd["status"]
-                step       = cmd.get("step")
-
-                if cmd.get("task_name") is not None:
+                if cmd.get("task_name"):
                     self._state.task_name = cmd["task_name"]
-                if cmd.get("iteration") is not None:
-                    self._state.iteration = cmd["iteration"]
-                if step and step.get("description"):
-                    self._state.description = step["description"]
-
-                self._state.step_index    = new_index
-                self._state.action        = new_action
-                self._state.status        = new_status
-                if step:
-                    self._state.current_target = format_action_target(step, new_action)
+                if cmd.get("status"):
+                    self._state.status = cmd["status"]
                 self._state.awaiting_approval = False
                 _refresh_ui()
                 return
@@ -749,11 +645,8 @@ class OverlayController:
             if t == "approval":
                 step = cmd["step"]
                 self._state.awaiting_approval = True
-                self._state.approval_step     = step
-                self._state.status            = "waiting for approval"
-                self._state.current_target    = format_action_target(step, step.get("action", ""))
-                if step.get("description"):
-                    self._state.description   = step["description"]
+                self._state.approval_step = step
+                self._state.status = "waiting for approval"
                 _refresh_ui()
                 return
 

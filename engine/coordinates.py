@@ -199,5 +199,9 @@ def prepare_steps_for_execution(
     prepared: list[dict] = []
     for step in steps:
         normalized = normalize_step(step, image_size)
+        # Preserve pre-scale image-space coords for click-target diagnostics.
+        if normalized.get("x") is not None and normalized.get("y") is not None:
+            normalized["_model_x"] = normalized["x"]
+            normalized["_model_y"] = normalized["y"]
         prepared.append(scale_step_to_screen(normalized, image_size, native_size))
     return prepared
