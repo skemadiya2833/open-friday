@@ -5,11 +5,4 @@ pyautogui
 pyperclip
 python-dotenv
 google-generativeai
-
-# Optional — NPU-accelerated image preprocessing
-# Install provider-specific builds for full NPU support:
-#   pip install onnxruntime-openvino   # Intel NPU / iGPU
-#   pip install onnxruntime-vitisai    # AMD Ryzen AI NPU
-onnxruntime
-onnx
 numpy

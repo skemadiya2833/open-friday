@@ -1,128 +1,108 @@
 # Project Friday
 
-A Jarvis-inspired, screen-aware desktop automation agent built on a hybrid local-first AI architecture. Friday captures your screen, sends it to a vision model alongside your task, and executes a structured multi-step plan — clicking, typing, scrolling, and pasting — autonomously.
+A vision-driven autonomous desktop and browser agent. Friday watches your screen with a local vision model (**qwen2.5vl:7b-q4_K_M** by default), then repeatedly observes, thinks, and takes exactly one human-like action — clicking, typing, scrolling, navigating — until your objective is done.
 
-Designed to run primarily on local hardware via Ollama, with transparent fallback to cloud providers (Gemini, OpenAI) when the local model needs backup.
-
----
-
-## Core Principles
-
-- **Local-first**: Your screen data stays on your machine by default. The cloud is a fallback, not the default.
-- **Structured execution**: Every AI response is a typed action plan — no freeform command parsing, no ambiguity.
-- **Human-in-the-loop safety**: Any destructive or irreversible action pauses execution and requires your explicit approval before proceeding.
-- **Provider-agnostic**: Swap local models or cloud providers by changing a single environment variable.
-- **Open and extensible**: Every layer is a standalone module. Add new actions, new providers, or new safety rules without touching the core loop.
+It does not run scripted action chains. Every action is based on the latest visual observation.
 
 ---
 
-## Architecture Overview
+## How It Thinks
 
 ```
-User Task (text)
-      |
-      v
-Screen Capture (mss)
-      |
-      v
-Router (local first, cloud fallback)
-      |
-      +-------> Local VLM via Ollama (RTX GPU)
-      |               |
-      |         [FALLBACK_TO_CLOUD]
-      |               |
-      +-------> Cloud Model (Gemini / OpenAI / other)
-                      |
-                      v
-             Structured JSON Plan
-             {
-               "message": "What I am doing",
-               "steps": [
-                 { "action": "CLICK", "x": 940, "y": 320, "risky": false },
-                 { "action": "TYPE", "text": "Hello", "risky": false },
-                 { "action": "SCREENSHOT" },
-                 ...
-               ]
-             }
-                      |
-                      v
-             Step Executor (PyAutoGUI + pynput)
-                      |
-               [risky == true] --> Safety Gate --> Human Approval
+Observe screen
+      ↓
+Understand current UI
+      ↓
+Compare with objective
+      ↓
+Decide ONE best action
+      ↓
+Execute that action
+      ↓
+Wait for the UI to respond
+      ↓
+Observe again  ←─── until COMPLETE
 ```
 
----
-
-## Supported Actions
-
-| Action       | Description                                                  | Required Fields          |
-|--------------|--------------------------------------------------------------|--------------------------|
-| `CLICK`      | Left-click at a screen coordinate                            | `x`, `y`                 |
-| `HOVER`      | Move mouse to a coordinate without clicking                  | `x`, `y`                 |
-| `TYPE`       | Type a string character by character                         | `text`                   |
-| `PASTE`      | Copy text to clipboard and paste via Ctrl+V                  | `text`                   |
-| `SCROLL`     | Scroll up or down at a coordinate                            | `direction`, `x`, `y`    |
-| `SEARCH`     | Open in-app search (Ctrl+F) and enter a query                | `text`                   |
-| `DRAG`       | Click and drag between two coordinates                       | `x`, `y`, `x2`, `y2`     |
-| `WAIT`       | Pause for a fixed duration                                   | `duration` (seconds)     |
-| `SCREENSHOT` | Capture a fresh screen state before continuing               | —                        |
-| `DELETE`     | Select all and delete (always gated through safety approval) | —                        |
-| `COMPLETE`   | Signal that the task is fully done                           | —                        |
+If reality differs from expectations (popups, loaders, layout changes, login walls), Friday re-plans from what it sees. When it lacks factual knowledge, it can open a search tab, extract what it needs, and return to the original task.
 
 ---
 
-## Recommended Hardware
+## Architecture
 
-Friday is designed to run well on consumer-grade hardware with a modern GPU.
+```
+friday/
+├── agent/          # Observe → decide → act loop, session memory, planner
+├── vision/         # Live screen feed + image preprocessing
+├── actions/        # Action catalog, executor, coordinates, aim verification
+├── models/         # Ollama VLM client + cloud fallback + response parser
+├── knowledge/      # Web knowledge search when uncertain
+├── safety/         # Human-in-the-loop gate for risky actions
+└── ui/             # Overlay panel, aim cursor, Win32 helpers
+```
 
-| Component        | Minimum               | Recommended                        |
-|------------------|-----------------------|------------------------------------|
-| GPU              | 6GB VRAM (NVIDIA)     | 8GB+ GDDR6X/GDDR7 (RTX 40/50 series) |
-| CPU              | Any modern 6-core     | Ryzen 7 / Core i7, NPU optional    |
-| RAM              | 16GB DDR4             | 32GB DDR5                          |
-| Storage          | SSD                   | NVMe Gen4                          |
-| OS               | Windows 10 / Ubuntu 22| Windows 11 / Ubuntu 24             |
+Vision is the primary source of truth. The agent does not rely on DOM selectors — it looks at the screen the way a person would.
 
-The local VLM runs entirely on your GPU. No internet connection is required for local-only mode.
+Optional cloud fallback (Gemini / OpenAI) kicks in only if the local model fails.
+
+---
+
+## Interaction Capabilities
+
+| Category | Actions |
+|----------|---------|
+| Pointer | `CLICK`, `DOUBLE_CLICK`, `RIGHT_CLICK`, `MIDDLE_CLICK`, `HOVER`, `MOUSE_MOVE`, `MOUSE_DOWN`, `MOUSE_UP` |
+| Drag | `DRAG`, `DRAG_DROP` |
+| Scroll | `SCROLL` |
+| Typing | `TYPE`, `PASTE`, `PRESS_KEY`, `HOTKEY`, `KEY_DOWN`, `KEY_UP` |
+| Edit | `SELECT_ALL`, `COPY`, `CUT`, `UNDO`, `REDO`, `DELETE` |
+| Apps | `WIN_SEARCH`, `SEARCH`, `SAVE_FILE` |
+| Browser | `NAVIGATE`, `NEW_TAB`, `CLOSE_TAB`, `SWITCH_TAB` |
+| Meta | `WAIT`, `KNOWLEDGE_SEARCH`, `COMPLETE` |
+
+Each tick executes exactly one of these, then re-observes.
 
 ---
 
 ## Prerequisites
 
-### 1. Install Ollama
+1. **Ollama** — https://ollama.com  
+   ```bash
+   ollama pull qwen2.5vl:7b-q4_K_M
+   ollama serve
+   ```
 
-Download from [https://ollama.com](https://ollama.com) and install for your OS.
+2. **Python 3.10+** with a virtualenv
 
-Pull a vision-capable model. `minicpm-v` is recommended for 8GB VRAM:
+3. **GPU** — 8GB+ VRAM recommended for the 7B vision model. For weaker machines, use `LOW_END_MODE=true` or `python main.py --low-end`.
 
-```bash
-ollama pull minicpm-v
-```
+---
 
-Alternative models (choose based on your VRAM):
+## Low-end / weak hardware
 
-| Model         | VRAM Required | Notes                          |
-|---------------|---------------|--------------------------------|
-| `minicpm-v`   | ~5GB          | Best balance of speed/accuracy |
-| `llava`       | ~6GB          | Solid general-purpose VLM      |
-| `moondream`   | ~2GB          | Lightweight, lower accuracy    |
-| `llava:13b`   | ~10GB         | Higher accuracy, slower        |
-
-Start Ollama:
+Enable the built-in performance profile when RAM or GPU headroom is tight:
 
 ```bash
-ollama serve
+# .env
+LOW_END_MODE=true
+
+# or per run
+python main.py --low-end
+python main.py --cli --low-end "Open Notepad"
 ```
 
-### 2. Python 3.10+
+This automatically tunes:
 
-```bash
-python -m venv friday_env
-friday_env\Scripts\activate    # Windows
-source friday_env/bin/activate # Linux / macOS
+| Setting | Normal | Low-end |
+|---------|--------|---------|
+| Frame size | 1120px | 896px |
+| Encode | PNG | JPEG (82% quality) |
+| Resize filter | LANCZOS | Bilinear |
+| Preview FPS | 2 | 1 |
+| Aim verify | on | off |
+| Model output cap | 4096 tokens | 2048 tokens |
 
-pip install mss pillow httpx pyautogui pynput plyer python-dotenv google-generativeai pyperclip
-```
+You can still override any individual variable in `.env`. For even lighter inference, try a smaller Ollama model such as `qwen2.5vl:3b`.
 
 ---
 
@@ -133,196 +113,104 @@ git clone https://github.com/your-org/project-friday.git
 cd project-friday
 
 python -m venv friday_env
-friday_env\Scripts\activate
+friday_env\Scripts\activate        # Windows
+# source friday_env/bin/activate   # Linux / macOS
 
 pip install -r requirements.txt
-```
-
-Copy the environment template:
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your configuration:
-
-```env
-LOCAL_MODEL=minicpm-v
-CLOUD_PROVIDER=gemini
-GEMINI_API_KEY=your_gemini_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
-```
+Edit `.env` if needed. Defaults already target `qwen2.5vl:7b-q4_K_M`.
 
 ---
 
 ## Usage
 
+### GUI (default)
+
 ```bash
 python main.py
 ```
 
-Friday will prompt you for a task:
+Opens the Friday Control Center:
 
-```
-Enter your task for Friday: Open Notepad and type "Hello from Friday"
-```
+- Enter an objective and press **Start** (or `Ctrl+Enter`)
+- Watch live vision, streaming reasoning, next action, and history
+- **Pause** / **Resume** / **Stop** the agent at any time
+- Approve or reject risky actions in-panel
 
-Friday then:
-1. Captures your screen
-2. Sends it along with the task to the local model
-3. Receives a structured step plan
-4. Executes each step with live console output
-5. Pauses at any risky action for your approval
-6. Inserts mid-plan screenshots automatically when the model requests them
+The Friday window is masked out of vision captures so the model ignores it.
 
----
-
-## Project Structure
-
-```
-friday/
-├── main.py                     # Entry point
-├── config.py                   # Centralized config and environment loading
-├── engine/
-│   ├── capture.py              # Screen capture via mss
-│   ├── local_model.py          # Ollama VLM client
-│   ├── cloud_model.py          # Gemini and OpenAI adapters
-│   ├── router.py               # Local-first routing with cloud fallback
-│   ├── executor.py             # Action execution (PyAutoGUI + pynput)
-│   └── safety.py               # Risk detection and human-in-the-loop gate
-├── memory/
-│   └── approved_patterns.json  # Persisted operator-approved action patterns
-├── .env                        # Your secrets — never commit this
-├── .env.example                # Template for contributors
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Configuration Reference
-
-| Variable        | Default       | Description                                         |
-|-----------------|---------------|-----------------------------------------------------|
-| `LOCAL_MODEL`   | `minicpm-v`   | Ollama model name to use for local inference        |
-| `CLOUD_PROVIDER`| `gemini`      | Cloud fallback provider: `gemini` or `openai`       |
-| `GEMINI_API_KEY`| —             | Google Gemini API key                               |
-| `OPENAI_API_KEY`| —             | OpenAI API key (used when CLOUD_PROVIDER is openai) |
-
----
-
-## Safety System
-
-Friday enforces a two-tier safety model:
-
-**Tier 1 — Automatic Risk Tagging**
-
-The AI model marks any step it considers risky with `"risky": true`. Additionally, any step with action `DELETE`, `FORMAT`, `EXECUTE_SCRIPT`, or `BROWSER_MUTATION` is automatically escalated regardless of what the model says.
-
-**Tier 2 — Human Approval Gate**
-
-When a risky step is detected, execution halts completely. The terminal prints a full summary of the action and waits for your typed `yes` or `no` before proceeding. A rejection skips that step and continues. The loop does not resume until you respond.
-
-Approved patterns are written to `memory/approved_patterns.json` for future reference (this is a roadmap item — see Contributing).
-
----
-
-## Adding a New Cloud Provider
-
-1. Open `engine/cloud_model.py`
-2. Add a new function `_query_yourprovider(objective, base64_image) -> dict`
-3. Add a branch in `query_cloud_model()` to call it
-4. Add your provider name as a valid value for `CLOUD_PROVIDER` in `.env`
-
-The function must return a dict with at minimum `steps: list` and `message: str`.
-
----
-
-## Adding a New Action
-
-1. Open `engine/executor.py`
-2. Add an `elif action == "YOUR_ACTION":` branch inside `execute_step()`
-3. Implement the PyAutoGUI / pynput call
-4. Document it in this README under the Supported Actions table
-5. If the action is inherently risky, add it to `RISKY_ACTIONS` in `config.py`
-
----
-
-## Roadmap
-
-- [ ] GUI overlay showing live step progress
-- [ ] Persistent memory of approved action patterns
-- [ ] Voice input for task entry (Whisper integration)
-- [ ] Multi-monitor support with monitor targeting per step
-- [ ] NPU-accelerated image preprocessing for AMD Ryzen AI / Intel NPU
-- [ ] Web UI for remote task submission
-- [ ] Session replay and audit log export
-- [ ] Plugin system for custom action handlers
-
----
-
-## Contributing
-
-Contributions are welcome. Please follow these guidelines:
-
-- Keep modules single-responsibility. `executor.py` executes. `router.py` routes. Do not mix concerns.
-- Every new action must have a corresponding safety classification in `config.py`.
-- Do not commit `.env` or any file containing API keys.
-- Open an issue before starting work on a large feature so we can discuss approach.
-- Write clear commit messages describing what changed and why.
+### CLI
 
 ```bash
-git checkout -b feature/your-feature-name
-# make your changes
-git commit -m "feat: describe your change clearly"
-git push origin feature/your-feature-name
-# open a pull request
+python main.py --cli
+python main.py --cli "Open Notepad and type Hello from Friday"
 ```
 
 ---
 
-## Security Notes
+## Configuration
 
-- Friday requires mouse and keyboard control permissions. On macOS this means Accessibility permissions. On Linux you may need to add your user to the `input` group.
-- Never run Friday with elevated/root privileges unless you understand what you are doing.
-- The `.env` file containing your API keys must never be committed. It is already in `.gitignore`.
-- All cloud API calls transmit screenshots to external servers. If your screen contains sensitive data, use local-only mode by ensuring `CLOUD_PROVIDER` is not triggered (keep your local model healthy and the routing will stay local).
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODEL` | `qwen2.5vl:7b-q4_K_M` | Ollama vision model |
+| `LOW_END_MODE` | `false` | Performance profile for weak hardware |
+| `PREPROCESS_WIDTH` / `HEIGHT` | `1120` | Max model input dimensions |
+| `PREPROCESS_FORMAT` | `png` (`jpeg` in low-end) | Image encoding for VLM upload |
+| `LIVE_MODE` | `true` | Continuous screen feed |
+| `STREAM_FRAME_COUNT` | `1` | Frames per inference tick |
+| `STREAM_TICK_SECONDS` | `0.5` | Pause between cycles |
+| `POST_ACTION_SETTLE_SECONDS` | `0.8` | Wait after mutating actions |
+| `MAX_ITERATIONS` | `60` | Safety cap on observe ticks |
+| `MAX_KNOWLEDGE_SEARCHES` | `3` | Cap on knowledge-search detours |
+| `AIM_VERIFY_ENABLED` | `true` | Verify click targets before clicking |
+| `OVERLAY_ENABLED` | `true` | Live status overlay |
+| `CLOUD_PROVIDER` | `gemini` | Fallback: `gemini` or `openai` |
+
+---
+
+## Safety
+
+Risky actions (`DELETE`, and any step the model flags `risky: true`) pause for explicit operator approval — via the overlay dialog or a terminal prompt.
+
+Never run Friday as Administrator/root unless you understand the impact of full input control.
+
+---
+
+## Production behavior
+
+Each tick is a hard re-evaluation cycle:
+
+1. Capture a clean frame (Friday UI hidden/masked)
+2. Model verifies the previous action against what is visible
+3. Model decides exactly one next action (strict JSON after `---ACTION---`)
+4. Runtime validates the action (known name, required fields, completion evidence)
+5. Execute, settle, wait for a fresh frame, then loop
+
+Key guards:
+
+| Guard | Default | Purpose |
+|-------|---------|---------|
+| `REQUIRE_FRESH_FRAME` | `true` | Do not decide on a stale post-action screenshot |
+| `ALLOW_PROSE_SYNTHESIS` | `false` | Reject invented actions from malformed prose |
+| `REQUIRE_COMPLETION_EVIDENCE` | `true` | COMPLETE needs on-screen proof |
+| `HIDE_UI_FROM_CAPTURE` | `true` | Hide overlay/markers before grabs + mask GUI |
+
+---
+
+## Design Principles
+
+- **Vision first** — the screenshot is the source of truth, not scripts or selectors
+- **One action at a time** — no blind multi-step chains
+- **Re-evaluate every tick** — verify the last action before choosing the next
+- **Adaptive** — high-level objective stays fixed; the path flexes to what is on screen
+- **Recoverable** — popups, delays, and surprises trigger re-observation and re-planning
+- **Knowledge when needed** — web search is a tool for uncertainty, not the default
+- **Local-first** — screen data stays on your machine unless cloud fallback is required
 
 ---
 
 ## License
 
-MIT License. See `LICENSE` for full text.
-
----
-
-## Acknowledgments
-
-Built on top of:
-- [Ollama](https://ollama.com) — local model inference
-- [mss](https://github.com/BoboTiG/python-mss) — fast cross-platform screen capture
-- [PyAutoGUI](https://github.com/asweigart/pyautogui) — GUI automation
-- [pynput](https://github.com/moses-palmer/pynput) — low-level input control
-- [Google Generative AI SDK](https://github.com/google/generative-ai-python) — Gemini cloud fallback
-
-
-
-flowchart TD
-    A[input: task objective] --> B[run_friday loop]
-    B --> C[capture_screen - mss/PIL/base64]
-    C --> D[get_action_plan - router]
-    D --> E{local model}
-    E -->|OK + steps| F[plan.steps]
-    E -->|fallback / empty| G[cloud model - Gemini/OpenAI]
-    G --> F
-    F --> H[execute_step]
-    H --> I{risky?}
-    I -->|yes| J[input yes/no approval]
-    J -->|no| K[halt - exit]
-    J -->|yes| L[PyAutoGUI action]
-    I -->|no| L
-    L --> M{result}
-    M -->|screenshot| B
-    M -->|complete| N[exit success]
-    M -->|continue| O[sleep 0.5s - next step]
-    O --> H
+MIT License.
