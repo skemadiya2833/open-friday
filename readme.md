@@ -1,6 +1,6 @@
 # Project Friday
 
-A vision-driven autonomous desktop and browser agent. Friday watches your screen with a local vision model (**qwen2.5vl:7b-q4_K_M** by default), then repeatedly observes, thinks, and takes exactly one human-like action — clicking, typing, scrolling, navigating — until your objective is done.
+A vision-driven autonomous desktop and browser agent. Friday watches your screen with a local vision model (**qwen3.5:4b** by default), then repeatedly observes, thinks, and takes exactly one human-like action — clicking, typing, scrolling, navigating — until your objective is done.
 
 It does not run scripted action chains. Every action is based on the latest visual observation.
 
@@ -24,7 +24,7 @@ Wait for the UI to respond
 Observe again  ←─── until COMPLETE
 ```
 
-If reality differs from expectations (popups, loaders, layout changes, login walls), Friday re-plans from what it sees. When it lacks factual knowledge, it can open a search tab, extract what it needs, and return to the original task.
+If reality differs from expectations (popups, loaders, layout changes, login walls), Friday re-plans from what it sees. When it lacks factual knowledge (lyrics, quotes, long facts), it can open a browser search, copy what it needs, and return to the original task.
 
 ---
 
@@ -68,13 +68,27 @@ Each tick executes exactly one of these, then re-observes.
 
 1. **Ollama** — https://ollama.com  
    ```bash
-   ollama pull qwen2.5vl:7b-q4_K_M
+   ollama pull qwen3.5:4b
    ollama serve
    ```
 
 2. **Python 3.10+** with a virtualenv
 
-3. **GPU** — 8GB+ VRAM recommended for the 7B vision model. For weaker machines, use `LOW_END_MODE=true` or `python main.py --low-end`.
+3. **GPU** — 8 GB VRAM is enough for the default 4B model. For weaker machines, use `LOW_END_MODE=true` or `python main.py --low-end`.
+
+---
+
+## Recommended models
+
+| Model | VRAM (approx.) | Notes |
+|-------|----------------|-------|
+| `qwen3.5:4b` | ~3–4 GB | **Default.** Fast on 8 GB GPUs, strong GUI grounding (0–1000 grid coords) |
+| `qwen2.5vl:7b-q4_K_M` | ~6 GB | Also supported; uses pixel coordinates of the resized image |
+| `qwen3-vl:8b` | ~6 GB | Higher quality if you have headroom |
+
+Friday auto-detects the coordinate convention from the model name (`MODEL_COORD_SPACE=auto`). Override with `pixel` or `grid1000` if needed.
+
+Use a **single still frame** per tick (`STREAM_USE_VIDEO=false`) — it is faster and more accurate than video mode for these Ollama models.
 
 ---
 
@@ -100,9 +114,9 @@ This automatically tunes:
 | Resize filter | LANCZOS | Bilinear |
 | Preview FPS | 2 | 1 |
 | Aim verify | on | off |
-| Model output cap | 4096 tokens | 2048 tokens |
+| Model output cap | 1024 tokens | 768 tokens |
 
-You can still override any individual variable in `.env`. For even lighter inference, try a smaller Ollama model such as `qwen2.5vl:3b`.
+You can still override any individual variable in `.env`.
 
 ---
 
@@ -120,7 +134,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` if needed. Defaults already target `qwen2.5vl:7b-q4_K_M`.
+Edit `.env` if needed. Defaults target `qwen3.5:4b` with deterministic sampling for reliable action JSON.
 
 ---
 
@@ -148,18 +162,31 @@ python main.py --cli
 python main.py --cli "Open Notepad and type Hello from Friday"
 ```
 
+Example objective (content lookup + save):
+
+```bash
+python main.py --cli "Open notepad and write lyrics of song Back to December by Taylor Swift and save it on desktop with name AnyFile.txt"
+```
+
+Friday prefers keyboard routes (`WIN_SEARCH`, `SAVE_FILE` with a full path, `KNOWLEDGE_SEARCH` for unknown text) and only clicks when there is no keyboard alternative.
+
 ---
 
 ## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL` | `qwen2.5vl:7b-q4_K_M` | Ollama vision model |
+| `MODEL` | `qwen3.5:4b` | Ollama vision model |
+| `MODEL_COORD_SPACE` | `auto` | `pixel` (qwen2.5-vl) or `grid1000` (qwen3+) |
+| `MODEL_NUM_PREDICT` | `1024` | Max tokens per decision tick |
+| `MODEL_TEMPERATURE` | `0.2` | Low temperature for stable action JSON |
+| `MODEL_THINK` | `false` | Native thinking mode (slower, sometimes sharper) |
 | `LOW_END_MODE` | `false` | Performance profile for weak hardware |
 | `PREPROCESS_WIDTH` / `HEIGHT` | `1120` | Max model input dimensions |
 | `PREPROCESS_FORMAT` | `png` (`jpeg` in low-end) | Image encoding for VLM upload |
 | `LIVE_MODE` | `true` | Continuous screen feed |
 | `STREAM_FRAME_COUNT` | `1` | Frames per inference tick |
+| `STREAM_USE_VIDEO` | `false` | Leave off — single frames are faster and more reliable |
 | `STREAM_TICK_SECONDS` | `0.5` | Pause between cycles |
 | `POST_ACTION_SETTLE_SECONDS` | `0.8` | Wait after mutating actions |
 | `MAX_ITERATIONS` | `60` | Safety cap on observe ticks |
@@ -208,6 +235,41 @@ Key guards:
 - **Recoverable** — popups, delays, and surprises trigger re-observation and re-planning
 - **Knowledge when needed** — web search is a tool for uncertainty, not the default
 - **Local-first** — screen data stays on your machine unless cloud fallback is required
+
+---
+
+## Contributing
+
+Friday is an open project, but maintenance time is limited. I am **Sagar Kemadiya**, CEO at [Devoids - IT Solutions](https://devoids.in) — running a company leaves little room to push this forward alone.
+
+**Contributions are welcome and genuinely needed.** If you use Friday, fix a bug, improve a prompt, add a model, tighten grounding, or write docs — please open a PR or reach out.
+
+Areas where help would have the most impact:
+
+- **Model support** — better defaults, new Ollama VLMs, coordinate handling
+- **Grounding & aim verify** — fewer misclicks on Windows 10/11 taskbars and dialogs
+- **Task reliability** — notepad/browser/save flows, knowledge search → copy → paste
+- **Performance** — faster ticks on 8 GB GPUs, smarter frame sizing
+- **Tests** — parser, coordinate conversion, action validation
+- **Documentation** — setup guides, troubleshooting, example objectives
+
+### How to contribute
+
+1. Fork the repo and create a branch from `main`
+2. Keep changes focused — one concern per PR when possible
+3. Match existing code style and conventions in `friday/`
+4. Test locally with `python main.py --cli "…"` on Windows when your change touches the agent loop
+5. Open a pull request with a short description of *why* the change helps
+
+Questions, ideas, or “I’d like to help maintain X” — email **skemadiya@gmail.com**.
+
+---
+
+## Maintainer
+
+**Sunil Kemadiya**  
+CEO, [Devoids - IT Solutions](https://devoids.in)  
+Contact: [skemadiya@gmail.com](mailto:skemadiya@gmail.com)
 
 ---
 
