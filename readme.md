@@ -240,7 +240,7 @@ Key guards:
 
 ## Contributing
 
-Friday is an open project, but maintenance time is limited. I am **Sagar Kemadiya**, CEO at [Devoids - IT Solutions](https://devoids.in) — running a company leaves little room to push this forward alone.
+Friday is an open project, but maintenance time is limited. I am **Sunil Kemadiya**, CEO at [Devoids - IT Solutions](https://devoids.in) — running a company leaves little room to push this forward alone.
 
 **Contributions are welcome and genuinely needed.** If you use Friday, fix a bug, improve a prompt, add a model, tighten grounding, or write docs — please open a PR or reach out.
 
