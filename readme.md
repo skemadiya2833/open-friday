@@ -1,6 +1,6 @@
 # Project Friday
 
-A vision-driven autonomous desktop and browser agent. Friday watches your screen with a local vision model (**qwen3.5:4b** by default), then repeatedly observes, thinks, and takes exactly one human-like action — clicking, typing, scrolling, navigating — until your objective is done.
+A vision-driven autonomous desktop and browser agent. Friday watches your screen with a local vision model (**qwen2.5vl:7b-q4_K_M**), then repeatedly observes, thinks, and takes exactly one human-like action — clicking, typing, scrolling, navigating — until your objective is done.
 
 It does not run scripted action chains. Every action is based on the latest visual observation.
 
@@ -68,27 +68,15 @@ Each tick executes exactly one of these, then re-observes.
 
 1. **Ollama** — https://ollama.com  
    ```bash
-   ollama pull qwen3.5:4b
+   ollama pull qwen2.5vl:7b-q4_K_M
    ollama serve
    ```
 
 2. **Python 3.10+** with a virtualenv
 
-3. **GPU** — 8 GB VRAM is enough for the default 4B model. For weaker machines, use `LOW_END_MODE=true` or `python main.py --low-end`.
+3. **GPU** — ~6 GB VRAM for the 7B Q4 model; 16 GB VRAM keeps it fully on-GPU with room to spare. For weaker machines, use `LOW_END_MODE=true` or `python main.py --low-end`.
 
----
-
-## Recommended models
-
-| Model | VRAM (approx.) | Notes |
-|-------|----------------|-------|
-| `qwen3.5:4b` | ~3–4 GB | **Default.** Fast on 8 GB GPUs, strong GUI grounding (0–1000 grid coords) |
-| `qwen2.5vl:7b-q4_K_M` | ~6 GB | Also supported; uses pixel coordinates of the resized image |
-| `qwen3-vl:8b` | ~6 GB | Higher quality if you have headroom |
-
-Friday auto-detects the coordinate convention from the model name (`MODEL_COORD_SPACE=auto`). Override with `pixel` or `grid1000` if needed.
-
-Use a **single still frame** per tick (`STREAM_USE_VIDEO=false`) — it is faster and more accurate than video mode for these Ollama models.
+Friday uses a **single still frame** per tick (`STREAM_USE_VIDEO=false`) — faster and more accurate than video mode.
 
 ---
 
@@ -134,7 +122,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` if needed. Defaults target `qwen3.5:4b` with deterministic sampling for reliable action JSON.
+Edit `.env` if needed. Defaults target `qwen2.5vl:7b-q4_K_M` with deterministic sampling for reliable action JSON.
 
 ---
 
@@ -176,11 +164,10 @@ Friday prefers keyboard routes (`WIN_SEARCH`, `SAVE_FILE` with a full path, `KNO
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL` | `qwen3.5:4b` | Ollama vision model |
-| `MODEL_COORD_SPACE` | `auto` | `pixel` (qwen2.5-vl) or `grid1000` (qwen3+) |
+| `MODEL` | `qwen2.5vl:7b-q4_K_M` | Ollama vision model |
+| `MODEL_COORD_SPACE` | `pixel` | Absolute pixels of the resized image |
 | `MODEL_NUM_PREDICT` | `1024` | Max tokens per decision tick |
 | `MODEL_TEMPERATURE` | `0.2` | Low temperature for stable action JSON |
-| `MODEL_THINK` | `false` | Native thinking mode (slower, sometimes sharper) |
 | `LOW_END_MODE` | `false` | Performance profile for weak hardware |
 | `PREPROCESS_WIDTH` / `HEIGHT` | `1120` | Max model input dimensions |
 | `PREPROCESS_FORMAT` | `png` (`jpeg` in low-end) | Image encoding for VLM upload |
@@ -246,10 +233,9 @@ Friday is an open project, but maintenance time is limited. I am **Sunil Kemadiy
 
 Areas where help would have the most impact:
 
-- **Model support** — better defaults, new Ollama VLMs, coordinate handling
 - **Grounding & aim verify** — fewer misclicks on Windows 10/11 taskbars and dialogs
 - **Task reliability** — notepad/browser/save flows, knowledge search → copy → paste
-- **Performance** — faster ticks on 8 GB GPUs, smarter frame sizing
+- **Performance** — faster ticks, smarter frame sizing
 - **Tests** — parser, coordinate conversion, action validation
 - **Documentation** — setup guides, troubleshooting, example objectives
 

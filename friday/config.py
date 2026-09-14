@@ -35,25 +35,23 @@ OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
 MODEL_NAME = os.getenv(
     "MODEL",
-    os.getenv("LOCAL_MODEL", "qwen3.5:4b"),
+    os.getenv("LOCAL_MODEL", "qwen2.5vl:7b-q4_K_M"),
 )
 MODEL_KEEP_ALIVE = os.getenv("MODEL_KEEP_ALIVE", "-1")
 # Decision responses are short (~300 tokens); a low cap stops runaway rambling.
 MODEL_NUM_PREDICT = int(_env_default("MODEL_NUM_PREDICT", "1024", "768"))
-# Deterministic sampling for action JSON. Overrides model-card defaults
-# (qwen3.5 ships with temperature=1.0 / presence_penalty=1.5 — bad for JSON).
+# Deterministic sampling for reliable action JSON.
 MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0.2"))
 MODEL_TOP_P = float(os.getenv("MODEL_TOP_P", "0.9"))
 MODEL_NUM_CTX = int(os.getenv("MODEL_NUM_CTX", "8192"))
 # auto | true | false — native thinking mode for models that support it.
-# Off by default: it roughly doubles per-tick latency for little gain here.
 MODEL_THINK = os.getenv("MODEL_THINK", "false").lower()
 
 # Coordinate space the vision model grounds in:
-#   pixel    — absolute pixels of the resized image (qwen2.5-vl convention)
-#   grid1000 — normalized 0–1000 grid (qwen3-generation convention)
+#   pixel    — absolute pixels of the resized image (qwen2.5-vl)
+#   grid1000 — normalized 0–1000 grid (qwen3-generation)
 #   auto     — detect from the model name
-MODEL_COORD_SPACE = os.getenv("MODEL_COORD_SPACE", "auto").lower()
+MODEL_COORD_SPACE = os.getenv("MODEL_COORD_SPACE", "pixel").lower()
 
 _GRID_MODEL_PREFIXES = ("qwen3", "qwen3.5", "qwen3.6", "qwen3-vl", "mai-ui")
 _PIXEL_MODEL_PREFIXES = ("qwen2.5vl", "qwen2.5-vl", "qwen2vl", "llava", "minicpm")
