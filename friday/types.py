@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
@@ -45,6 +47,10 @@ class VisionPayload:
     video_b64: str | None = None
     is_video: bool = False
     frame_count: int = 0
+    # When set, image coords are relative to this native-pixel crop origin.
+    crop_origin: tuple[int, int] | None = None
+    crop_native_size: tuple[int, int] | None = None
+    focused: bool = False
 
     @property
     def frame_b64(self) -> str | None:
@@ -105,8 +111,31 @@ class ActionStep:
         for k, v in raw.items():
             if str(k).startswith("_"):
                 extras[k] = v
+
+        action = str(raw.get("action", "")).upper()
+        keys = coerce_keys(raw.get("keys"))
+        if not keys:
+            keys = coerce_keys(raw.get("hotkey") or raw.get("chord") or raw.get("combo"))
+        key = _maybe_str(raw.get("key"))
+        # Models often put chords in "key" for HOTKEY, or a list in extras.
+        if not keys and action == "HOTKEY":
+            keys = coerce_keys(key) or coerce_keys(raw.get("text"))
+            if keys and len(keys) > 1:
+                key = None
+        if action == "HOTKEY" and keys and len(keys) == 1 and not key:
+            # Single-key HOTKEY → treat as PRESS_KEY for reliability.
+            key = keys[0]
+            keys = None
+            action = "PRESS_KEY"
+        if action == "PRESS_KEY" and key and ("+" in key or "," in key):
+            chord = coerce_keys(key)
+            if chord and len(chord) > 1:
+                action = "HOTKEY"
+                keys = chord
+                key = None
+
         return cls(
-            action=str(raw.get("action", "")).upper(),
+            action=action,
             description=str(raw.get("description") or ""),
             risky=bool(raw.get("risky", False)),
             x=_maybe_int(raw.get("x")),
@@ -114,8 +143,8 @@ class ActionStep:
             x2=_maybe_int(raw.get("x2")),
             y2=_maybe_int(raw.get("y2")),
             text=_maybe_str(raw.get("text")),
-            key=_maybe_str(raw.get("key")),
-            keys=list(raw["keys"]) if isinstance(raw.get("keys"), list) else None,
+            key=key,
+            keys=keys,
             button=str(raw.get("button") or "left"),
             direction=_maybe_str(raw.get("direction")),
             amount=_maybe_int(raw.get("amount")),
@@ -179,3 +208,106 @@ def _maybe_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+_KEY_ALIASES = {
+    "control": "ctrl",
+    "ctl": "ctrl",
+    "cmd": "win",
+    "command": "win",
+    "windows": "win",
+    "option": "alt",
+    "return": "enter",
+    "ret": "enter",
+    "esc": "escape",
+    "del": "delete",
+    "bs": "backspace",
+    "spacebar": "space",
+}
+
+
+def coerce_keys(value: Any) -> list[str] | None:
+    """Normalize model hotkey payloads into a pyautogui key list.
+
+    Accepts lists/tuples, or strings like ``ctrl+shift+p`` / ``ctrl, shift, p``.
+    """
+    if value is None:
+        return None
+
+    parts: list[str] = []
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if item is None:
+                continue
+            token = str(item).strip()
+            if not token:
+                continue
+            if len(token) > 1 and any(sep in token for sep in ("+", ",")):
+                nested = coerce_keys(token)
+                if nested:
+                    parts.extend(nested)
+                    continue
+            parts.append(token)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        text = re.sub(r"^(hotkey|keys)\s*[:=]?\s*", "", text, flags=re.I).strip()
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                return coerce_keys(json.loads(text.replace("'", '"')))
+            except Exception:
+                text = text[1:-1]
+        if "+" in text:
+            parts = [p.strip() for p in text.split("+")]
+        elif "," in text:
+            parts = [p.strip() for p in text.split(",")]
+        elif " " in text and len(text.split()) >= 2:
+            tokens = text.split()
+            modifiers = {"ctrl", "control", "alt", "shift", "win", "cmd"}
+            if (
+                all(re.fullmatch(r"[A-Za-z0-9_]+", t) for t in tokens)
+                and any(t.lower() in modifiers for t in tokens)
+            ):
+                parts = tokens
+            else:
+                return None
+        elif re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+", text):
+            parts = text.split("-")
+        else:
+            parts = [text]
+    else:
+        return None
+
+    normalized: list[str] = []
+    for part in parts:
+        key = part.strip().strip("\"'").lower()
+        if not key:
+            continue
+        # Reject prose accidentally treated as a key
+        if " " in key or len(key) > 20:
+            return None
+        normalized.append(_KEY_ALIASES.get(key, key))
+    return normalized or None
+
+
+_CHORD_IN_PROSE = re.compile(
+    r"\b((?:ctrl|control|alt|shift|win|cmd|command)"
+    r"(?:\s*[+\-]\s*[A-Za-z0-9]+)+)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_chord(text: Any) -> list[str] | None:
+    """Pull a ctrl/alt/shift chord out of free-form description text."""
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        return coerce_keys(text)
+    direct = coerce_keys(text)
+    if direct and len(direct) >= 2:
+        return direct
+    match = _CHORD_IN_PROSE.search(text)
+    if match:
+        return coerce_keys(match.group(1))
+    return None

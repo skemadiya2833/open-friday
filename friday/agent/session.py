@@ -33,6 +33,64 @@ class AgentSession:
     last_observation: str = ""
     last_action_summary: str = ""
     stuck_count: int = 0
+    # (nx0, ny0, nx1, ny1) native-pixel focus box for crop-then-act.
+    focus_box: tuple[int, int, int, int] | None = None
+    # Prevent hallucinated click loops: fingerprint → consecutive count.
+    last_action_fingerprint: str = ""
+    repeat_action_count: int = 0
+
+    def action_fingerprint(self, step: ActionStep) -> str:
+        act = step.action.upper()
+        if act in {"CLICK", "DOUBLE_CLICK", "RIGHT_CLICK", "HOVER", "SCROLL"}:
+            x = step.x if step.x is not None else -1
+            y = step.y if step.y is not None else -1
+            # Quantize to absorb tiny aim jitter
+            return f"{act}:{x // 12}:{y // 12}:{step.description or ''}"
+        if act in {"TYPE", "PASTE", "WIN_SEARCH", "NAVIGATE", "RUN_SHELL"}:
+            return f"{act}:{(step.text or step.query or step.url or '')[:80]}"
+        return act
+
+    def note_action_fingerprint(self, step: ActionStep) -> int:
+        fp = self.action_fingerprint(step)
+        if fp and fp == self.last_action_fingerprint:
+            self.repeat_action_count += 1
+        else:
+            self.last_action_fingerprint = fp
+            self.repeat_action_count = 1
+        return self.repeat_action_count
+
+    def set_focus_from_image(
+        self,
+        *,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        image_size: tuple[int, int],
+        native_size: tuple[int, int],
+        crop_origin: tuple[int, int] | None = None,
+    ) -> tuple[int, int, int, int]:
+        """Convert image-space box to native focus box and store it."""
+        img_w, img_h = image_size
+        nat_w, nat_h = native_size
+        ox, oy = crop_origin or (0, 0)
+        sx = nat_w / max(1, img_w)
+        sy = nat_h / max(1, img_h)
+        nx0 = int(ox + max(0, x - w // 2) * sx)
+        ny0 = int(oy + max(0, y - h // 2) * sy)
+        nx1 = int(ox + min(img_w, x + w // 2) * sx)
+        ny1 = int(oy + min(img_h, y + h // 2) * sy)
+        # Minimum useful crop (~280px) and pad
+        pad = 40
+        nx0 = max(0, nx0 - pad)
+        ny0 = max(0, ny0 - pad)
+        nx1 = min(native_size[0], max(nx0 + 280, nx1 + pad))
+        ny1 = min(native_size[1], max(ny0 + 200, ny1 + pad))
+        self.focus_box = (nx0, ny0, nx1, ny1)
+        return self.focus_box
+
+    def clear_focus(self) -> None:
+        self.focus_box = None
 
     def record_action(self, step: ActionStep, result: StepResult) -> None:
         summary = _step_summary(step)

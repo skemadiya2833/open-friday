@@ -1,0 +1,20 @@
+id: research
+name: Research
+description: Look things up on the web, open search results, and gather facts the assistant does not know from memory.
+triggers:
+  - search
+  - look up
+  - research
+  - google
+  - find online
+  - lyrics
+  - what is
+  - who is
+tools:
+  - web_search
+  - memory_search
+priority: 70
+requires_vision: false
+enabled: true
+system_overlay: |
+  Research carefully. Prefer opening a real web search, then summarize what was opened for the user.

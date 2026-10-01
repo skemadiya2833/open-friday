@@ -1,3 +1,3 @@
-"""Friday — vision-driven autonomous desktop & browser agent."""
+"""Friday — local-first personal AI assistant + vision desktop agent."""
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+from typing import Callable
 
 import httpx
 
 from friday.config import (
+    CHAT_NUM_CTX,
+    CHAT_NUM_PREDICT,
     MODEL_KEEP_ALIVE,
     MODEL_NAME,
     MODEL_NUM_CTX,
@@ -16,6 +19,8 @@ from friday.config import (
     MODEL_TOP_P,
     OLLAMA_CHAT_URL,
     OVERLAY_ENABLED,
+    VISION_MODEL,
+    resolve_chat_model,
 )
 from friday.models.parser import ACTION_DELIMITER, parse_reasoning_response, synthesize_plan_from_partial
 from friday.ui.events import emit
@@ -56,16 +61,19 @@ def _stream_chat(
     *,
     format_json: bool = False,
     reasoning_mode: bool = False,
+    model: str | None = None,
+    num_predict: int | None = None,
+    num_ctx: int | None = None,
+    on_token: Callable[[str], None] | None = None,
 ) -> tuple[str, str]:
     payload: dict = {
-        "model": MODEL_NAME,
+        "model": model or MODEL_NAME,
         "messages": messages,
         "stream": True,
         "keep_alive": _parse_keep_alive(),
         "options": {
-            "num_predict": MODEL_NUM_PREDICT,
-            "num_ctx": MODEL_NUM_CTX,
-            # Override model-card sampling: action JSON must be near-deterministic.
+            "num_predict": int(num_predict if num_predict is not None else MODEL_NUM_PREDICT),
+            "num_ctx": int(num_ctx if num_ctx is not None else MODEL_NUM_CTX),
             "temperature": MODEL_TEMPERATURE,
             "top_p": MODEL_TOP_P,
             "presence_penalty": 0.0,
@@ -74,7 +82,7 @@ def _stream_chat(
     }
     if format_json:
         payload["format"] = "json"
-    if is_thinking_model():
+    if is_thinking_model(model or MODEL_NAME):
         payload["think"] = MODEL_THINK in ("1", "true", "yes")
 
     if OVERLAY_ENABLED:
@@ -104,28 +112,50 @@ def _stream_chat(
             reasoning_shown += len(chunk)
 
     try:
-        with httpx.stream("POST", OLLAMA_CHAT_URL, json=payload, timeout=180.0) as resp:
-            resp.raise_for_status()
-            for line in resp.iter_lines():
-                if not line:
-                    continue
-                try:
-                    chunk = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+        with httpx.Client(timeout=180.0) as client:
+            ctrl = None
+            try:
+                from friday.agent.control import get_controller
+                ctrl = get_controller()
+                if ctrl is not None:
+                    ctrl.register_http_client(client)
+            except Exception:
+                ctrl = None
+            try:
+                if ctrl is not None and ctrl.should_stop():
+                    raise RuntimeError("Cancelled by operator")
 
-                thinking_tok, content_tok = _extract_chat_tokens(chunk)
-                if thinking_tok:
-                    native_thinking += thinking_tok
-                if content_tok:
-                    accumulated += content_tok
-                    if reasoning_mode:
-                        _push_reasoning()
+                with client.stream("POST", OLLAMA_CHAT_URL, json=payload) as resp:
+                    resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        if ctrl is not None and ctrl.should_stop():
+                            raise RuntimeError("Cancelled by operator")
+                        if not line:
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
 
-                if chunk.get("done"):
-                    break
+                        thinking_tok, content_tok = _extract_chat_tokens(chunk)
+                        if thinking_tok:
+                            native_thinking += thinking_tok
+                        if content_tok:
+                            accumulated += content_tok
+                            if on_token:
+                                on_token(content_tok)
+                            if reasoning_mode:
+                                _push_reasoning()
+
+                        if chunk.get("done"):
+                            break
+            finally:
+                if ctrl is not None:
+                    ctrl.unregister_http_client(client)
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
+    except RuntimeError:
+        raise
 
     if OVERLAY_ENABLED:
         overlay.set_status("running")
@@ -141,11 +171,22 @@ def query_model_text(
     *,
     format_json: bool = False,
     reasoning_mode: bool = False,
+    num_predict: int | None = None,
+    num_ctx: int | None = None,
+    on_token: Callable[[str], None] | None = None,
 ) -> dict:
     messages = [{"role": "user", "content": prompt}]
     try:
+        from friday.models.manager import get_model_manager
+        get_model_manager().mark_used("chat")
         accumulated, _ = _stream_chat(
-            messages, format_json=format_json, reasoning_mode=reasoning_mode,
+            messages,
+            format_json=format_json,
+            reasoning_mode=reasoning_mode,
+            model=resolve_chat_model(),
+            num_predict=num_predict if num_predict is not None else CHAT_NUM_PREDICT,
+            num_ctx=num_ctx if num_ctx is not None else CHAT_NUM_CTX,
+            on_token=on_token,
         )
     except RuntimeError as exc:
         print(f"[Model Error] {exc}")
@@ -223,7 +264,12 @@ def query_aim_verification(
         overlay.set_status("verifying")
 
     try:
-        accumulated, _ = _stream_chat(messages, format_json=True, reasoning_mode=False)
+        accumulated, _ = _stream_chat(
+            messages,
+            format_json=True,
+            reasoning_mode=False,
+            model=VISION_MODEL or MODEL_NAME,
+        )
     except RuntimeError as exc:
         print(f"[Aim Verify] Model error: {exc}")
         return {"verified": False, "reason": str(exc)}
@@ -258,6 +304,40 @@ def query_aim_verification(
     return result
 
 
+def describe_screen(
+    question: str,
+    *,
+    frame_b64: str,
+    on_token: Callable[[str], None] | None = None,
+    voice_mode: bool = False,
+) -> str:
+    """Answer a question about the current screenshot in plain text (no actions)."""
+    from friday.config import CHAT_NUM_CTX, CHAT_NUM_PREDICT
+    from friday.models.manager import get_model_manager
+    from friday.persona import PERSONA_OBSERVE, PERSONA_OBSERVE_VOICE
+
+    get_model_manager().mark_used("vision")
+    if voice_mode:
+        prompt = f"{PERSONA_OBSERVE_VOICE}\n\nUser question: {question.strip()}"
+        predict = 96
+    else:
+        prompt = f"{PERSONA_OBSERVE}\n\nUser question: {question.strip()}"
+        predict = min(384, CHAT_NUM_PREDICT + 128)
+    messages = [{"role": "user", "content": prompt, "images": [frame_b64]}]
+    try:
+        accumulated, _ = _stream_chat(
+            messages,
+            reasoning_mode=False,
+            model=VISION_MODEL or MODEL_NAME,
+            num_predict=predict,
+            num_ctx=CHAT_NUM_CTX,
+            on_token=on_token,
+        )
+    except RuntimeError as exc:
+        return f"Couldn't read the screen, boss ({exc})."
+    return accumulated.strip()
+
+
 def query_model_vision(
     prompt: str,
     *,
@@ -280,7 +360,11 @@ def query_model_vision(
         emit("thinking_clear")
 
     try:
-        accumulated, _ = _stream_chat([user_msg], reasoning_mode=reasoning_mode)
+        accumulated, _ = _stream_chat(
+            [user_msg],
+            reasoning_mode=reasoning_mode,
+            model=VISION_MODEL or MODEL_NAME,
+        )
     except RuntimeError as exc:
         print(f"[Model Error] {exc}")
         return {"routing": "FALLBACK_TO_CLOUD", "reason": str(exc), "steps": []}

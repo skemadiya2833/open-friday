@@ -1,0 +1,19 @@
+id: files
+name: Files
+description: Read, write, and list files inside Friday's sandboxed workspace folder.
+triggers:
+  - file
+  - read file
+  - write file
+  - list files
+  - workspace
+  - create a document
+tools:
+  - read_file
+  - write_file
+  - list_files
+priority: 60
+requires_vision: false
+enabled: true
+system_overlay: |
+  Only touch files under the Friday workspace sandbox. Never invent paths outside it.

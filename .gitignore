@@ -1,4 +1,14 @@
+data/
+friday_env/
+__pycache__/
+*.pyc
+.venv/
+venv/
+web/node_modules/
+web/dist/
 .env
-friday_venv/
-*__pycache__/
-assets/
+*.wav
+*.mp3
+.DS_Store
+.pytest_cache/
+*.egg-info/

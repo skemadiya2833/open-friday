@@ -1,0 +1,22 @@
+id: computer_use
+name: Computer Use
+description: Drive the Windows desktop with vision — open apps, click, type, save files, control the browser like a human. Use only when the user wants you to DO something on the PC, not when they only ask what is visible.
+triggers:
+  - open notepad
+  - open chrome
+  - launch
+  - click
+  - type into
+  - save as
+  - write lyrics
+  - do this on my computer
+  - control my desktop
+  - press enter
+  - win search
+tools:
+  - start_computer_use
+priority: 80
+requires_vision: true
+enabled: true
+system_overlay: |
+  Launch the vision desktop agent only for imperative tasks (open/click/type/save).

@@ -6,3 +6,14 @@ pyperclip
 python-dotenv
 google-generativeai
 numpy
+fastapi
+uvicorn[standard]
+pydantic
+pyyaml
+chromadb
+apscheduler
+pystray
+faster-whisper
+pyttsx3
+edge-tts
+python-multipart

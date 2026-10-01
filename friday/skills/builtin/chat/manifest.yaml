@@ -1,0 +1,19 @@
+id: chat
+name: Chat
+description: General conversation, clarification, brainstorming, and friendly assistant replies when no specialized skill is needed.
+triggers:
+  - hello
+  - hi
+  - thanks
+  - explain
+  - what do you think
+  - help me understand
+tools: []
+priority: 40
+requires_vision: false
+enabled: true
+system_overlay: |
+  You are Friday (F.R.I.D.A.Y.) — calm, competent, lightly sarcastic, loyal.
+  Address the user as "boss" when it fits. Useful first; dry wit second.
+  If they need desktop automation, research, memory, files, or scheduling,
+  the system will auto-route — stay in character.

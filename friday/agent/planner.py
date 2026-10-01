@@ -19,6 +19,16 @@ from friday.types import ActionStep, Decision, VisionPayload
 
 
 def _vision_note(vision: VisionPayload) -> str:
+    if vision.focused and vision.crop_origin is not None:
+        ox, oy = vision.crop_origin
+        cw, ch = vision.crop_native_size or vision.image_size
+        return (
+            f"You are viewing a ZOOMED CROP of the desktop (FOCUS mode). "
+            f"Crop origin native=({ox},{oy}), crop size={cw}x{ch}px. "
+            f"Coordinates are relative to THIS crop image only "
+            f"(x in [0, {vision.image_size[0]-1}], y in [0, {vision.image_size[1]-1}]). "
+            "Click/type relative to what you see in the crop. Use CLEAR_FOCUS for full desktop."
+        )
     if vision.is_video:
         return (
             "You are watching a LIVE VIDEO STREAM of the desktop "
@@ -31,7 +41,7 @@ def _vision_note(vision: VisionPayload) -> str:
         )
     return (
         "You are watching a LIVE stream of the desktop / browser. "
-        "The attached image is the CURRENT frame — your ONLY source of truth."
+        "The attached image is the CURRENT FULL frame — your ONLY source of truth."
     )
 
 
@@ -106,15 +116,25 @@ HARD RULES:
 4. WIN_SEARCH opens apps — never re-launch an app that is already open/focused.
 5. TYPE text must be the FULL literal string — never placeholders like "[lyrics]" or "insert content".
 6. COMPLETE only when the objective is visibly achieved. Set "completion_evidence" to the on-screen proof.
-7. needs_knowledge=true ONLY with action KNOWLEDGE_SEARCH and a precise knowledge_query. Never override a valid click/type with a search flag.
-8. NEVER act on tools that are not part of the task: Friday's own dark control panel, a code editor / IDE (Cursor, VS Code — dark window with file tabs, line numbers, a file tree), terminals, Task Manager, Ollama, or GPU monitors. These are NOT your workspace. Never click, type, or save into them.
-9. FOCUS BEFORE TYPING: Before TYPE / PASTE / SAVE_FILE / hotkeys, confirm the INTENDED app is the frontmost window and the correct field has focus (visible caret / highlighted input). If a code editor or the wrong window is in front, click the correct app (taskbar icon or its window) or re-open it first. If you are unsure which window is focused, do NOT type — click the target app first.
-10. SELF-CORRECT MISTAKES: If your last action hit the wrong window or produced wrong/partial text (evidence on screen), fix it immediately BEFORE continuing: UNDO (Ctrl+Z), BACKSPACE, or SELECT_ALL then DELETE, and/or click the correct window. Never leave incorrect content in place and never repeat the same failing action.
-11. REAL CONTENT ONLY: If the objective needs text you do not already know verbatim (song lyrics, articles, quotes, long facts), do NOT type it from memory. Use KNOWLEDGE_SEARCH with a precise query — it opens the results in a browser for you. Then on following ticks: click a result, SELECT the real text (or SELECT_ALL), COPY it, switch back to the target app (HOTKEY ["alt","tab"] or click its taskbar icon), and PASTE. Typing a title or a guess instead of the real content is a failure.
-12. NO-PROGRESS GUARD: If the screen looks unchanged after your last action, do NOT repeat it — change target, WAIT for it to settle, or use a keyboard route.
-13. Prefer WAIT over blind retries when loaders/spinners are visible.
-14. KEYBOARD FIRST: Prefer reliable keyboard routes over pixel clicks whenever both work: WIN_SEARCH to open apps, NAVIGATE (Ctrl+L) for URLs, SAVE_FILE with a full path, HOTKEY ["alt","tab"] to switch windows, Ctrl+A/Ctrl+C to grab page text. Clicks are for targets with no keyboard route.
-15. Use ONLY these actions:
+7. OBSERVE-ONLY OBJECTIVES: If the user only asked what is on screen / to describe the desktop / "can you see…", do NOT click or type. On the FIRST tick output COMPLETE with completion_evidence summarizing what you see, and put that summary in "observation" and "message".
+8. needs_knowledge=true ONLY with action KNOWLEDGE_SEARCH and a precise knowledge_query. Never override a valid click/type with a search flag.
+9. NEVER act on tools that are not part of the task: Friday's own dark control panel, Task Manager, Ollama, or GPU monitors — unless the user explicitly asked. Cursor and VS Code are the SAME IDE (electron editor with tabs/sidebar). If the objective mentions Cursor chat / Composer / Agent / "fix in Cursor", THAT editor IS the target — do not avoid it or hunt for a separate Cursor app.
+10. FOCUS BEFORE TYPING: Before TYPE / PASTE / SAVE_FILE / hotkeys, confirm the INTENDED app is the frontmost window and the correct field has focus (visible caret / highlighted input). If a code editor or the wrong window is in front, click the correct app (taskbar icon or its window) or re-open it first. If you are unsure which window is focused, do NOT type — click the target app first.
+11. SELF-CORRECT MISTAKES: If your last action hit the wrong window or produced wrong/partial text (evidence on screen), fix it immediately BEFORE continuing: UNDO (Ctrl+Z), BACKSPACE, or SELECT_ALL then DELETE, and/or click the correct window. Never leave incorrect content in place and never repeat the same failing action.
+12. REAL CONTENT ONLY: If the objective needs text you do not already know verbatim (song lyrics, articles, quotes, long facts), do NOT type it from memory. Use KNOWLEDGE_SEARCH with a precise query — it opens the results in a browser for you. Then on following ticks: click a result, SELECT the real text (or SELECT_ALL), COPY it, switch back to the target app (HOTKEY with keys ["alt","tab"] or click its taskbar icon), and PASTE. Typing a title or a guess instead of the real content is a failure.
+13. NO-PROGRESS GUARD: If the screen looks unchanged after your last action, do NOT repeat it — change target, WAIT for it to settle, or use a keyboard route.
+14. Prefer WAIT over blind retries when loaders/spinners are visible.
+15. KEYBOARD FIRST: Prefer reliable keyboard routes over pixel clicks whenever both work: WIN_SEARCH to open apps, NAVIGATE for URLs, SAVE_FILE with a full path, HOTKEY {{"keys":["alt","tab"]}} to switch windows, SELECT_ALL/COPY to grab page text. Clicks are for targets with no keyboard route.
+16. PRECISION / CROP: If the target is small or you are unsure of exact pixels (chat input, icon, button), first use FOCUS with x,y near the target center (amount≈220). The next tick receives a zoomed crop — then CLICK/TYPE accurately. Use CLEAR_FOCUS to return to full desktop.
+17. DO NOT click unrelated UI (Commit, Source Control, random IDE chrome) unless the objective explicitly asks for it.
+18. RUN_SHELL: For Windows commands / terminal work, prefer RUN_SHELL with the full command in "text" instead of trying to click through a terminal UI. It requires approval and the UI shows what ran.
+19. CURSOR / IDE CHAT: When the objective is to type into Cursor/VS Code AI chat:
+    - Open chat with HOTKEY {{"keys":["ctrl","l"]}} (fallback {{"keys":["ctrl","i"]}}).
+    - Command Palette: HOTKEY {{"keys":["ctrl","shift","p"]}} then TYPE a command name.
+    - Do NOT click the taskbar looking for a separate "Cursor" window if the editor is already visible.
+    - After the chat input is focused (caret visible), TYPE the full message, then PRESS_KEY enter if needed.
+20. HOTKEY FORMAT: Always pass keys as a JSON array of lowercase names, e.g. {{"action":"HOTKEY","keys":["ctrl","shift","p"],"description":"Command Palette"}}. Never omit "keys".
+21. Use ONLY these actions:
 
 {vocabulary_for_prompt()}
 """.strip()
@@ -200,8 +220,27 @@ def _validate_step(step: ActionStep, plan: dict) -> ActionStep | None:
         return None
 
     if action == "HOTKEY" and not step.keys:
-        print("[Planner] Rejected HOTKEY: empty keys.")
-        return None
+        # Last-chance recovery from key/text/description (e.g. "Ctrl+Shift+P").
+        from friday.types import coerce_keys, extract_chord
+
+        recovered = (
+            coerce_keys(step.key)
+            or coerce_keys(step.text)
+            or coerce_keys(step.extras.get("hotkey") if step.extras else None)
+            or coerce_keys(step.extras.get("chord") if step.extras else None)
+            or extract_chord(step.description)
+        )
+        if recovered and len(recovered) > 1:
+            step.keys = recovered
+            step.key = None
+        elif recovered and len(recovered) == 1:
+            step.action = "PRESS_KEY"
+            step.key = recovered[0]
+            step.keys = None
+            action = "PRESS_KEY"
+        else:
+            print("[Planner] Rejected HOTKEY: empty keys.")
+            return None
 
     if action == "PRESS_KEY" and not (step.key or "").strip():
         print("[Planner] Rejected PRESS_KEY: empty key.")
@@ -228,8 +267,12 @@ def _to_decision(plan: dict, vision: VisionPayload, session: AgentSession) -> De
 
     step: ActionStep | None = None
     if steps:
+        map_native = vision.crop_native_size or vision.native_size
         prepared = prepare_action_for_execution(
-            steps[0], vision.image_size, vision.native_size,
+            steps[0],
+            vision.image_size,
+            map_native,
+            crop_origin=vision.crop_origin,
         )
         step = _validate_step(prepared, plan)
 

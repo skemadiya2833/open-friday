@@ -39,6 +39,11 @@ class EventBus:
             if listener in listeners:
                 listeners.remove(listener)
 
+    def unsubscribe_all(self, listener: Listener) -> None:
+        with self._lock:
+            if listener in self._any:
+                self._any.remove(listener)
+
     def emit(self, event_type: str, **payload: Any) -> None:
         event = AgentEvent(type=event_type, payload=payload)
         with self._lock:

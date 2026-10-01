@@ -435,6 +435,62 @@ def _dispatch(step: ActionStep, session=None) -> StepResult:
             session.add_knowledge(note)
         return StepResult.REOBSERVE
 
+    if action == "FOCUS":
+        if session is None or x is None or y is None:
+            print("  -> FOCUS missing session/coords, skipped.")
+            return StepResult.SKIPPED
+        half = int(step.amount if step.amount is not None else 220)
+        half = max(120, min(480, half))
+        nat_w, nat_h = pyautogui.size()
+        nx0 = max(0, int(x) - half)
+        ny0 = max(0, int(y) - half)
+        nx1 = min(nat_w, int(x) + half)
+        ny1 = min(nat_h, int(y) + half)
+        session.focus_box = (nx0, ny0, nx1, ny1)
+        print(f"  -> FOCUS crop set to native ({nx0},{ny0})-({nx1},{ny1})")
+        from friday.ui.events import emit
+        emit("focus", box=list(session.focus_box))
+        return StepResult.REOBSERVE
+
+    if action == "CLEAR_FOCUS":
+        if session is not None:
+            session.clear_focus()
+            print("  -> Cleared FOCUS — full desktop next")
+        return StepResult.REOBSERVE
+
+    if action == "RUN_SHELL":
+        cmd = (step.text or step.query or "").strip()
+        if not cmd:
+            print("  -> RUN_SHELL missing command, skipped.")
+            return StepResult.SKIPPED
+        from friday.config import SHELL_TOOLS_ENABLED
+        from friday.ui.events import emit
+        if not SHELL_TOOLS_ENABLED:
+            print("  -> Shell tools disabled (SHELL_TOOLS_ENABLED=false).")
+            return StepResult.SKIPPED
+        emit("shell_start", command=cmd)
+        print(f"  -> Running shell: {cmd}")
+        import subprocess
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", cmd],
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+            out = ((proc.stdout or "") + (proc.stderr or ""))[:4000]
+            emit("shell_end", command=cmd, exit_code=proc.returncode, output=out)
+            print(f"  -> Shell exit={proc.returncode}\n{out[:500]}")
+            if session is not None:
+                session.history.append(
+                    f"✓ RUN_SHELL exit={proc.returncode} :: {cmd[:60]}"
+                )
+        except Exception as exc:
+            emit("shell_end", command=cmd, exit_code=-1, output=str(exc))
+            print(f"  -> Shell error: {exc}")
+            return StepResult.ERROR
+        return StepResult.REOBSERVE
+
     if action == "WAIT":
         duration = float(step.duration if step.duration is not None else 1.5)
         time.sleep(duration)

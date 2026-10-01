@@ -98,6 +98,26 @@ ACTIONS: tuple[ActionSpec, ...] = (
         '{"query": str}',
         always_reobserve=True,
     ),
+    ActionSpec(
+        "FOCUS",
+        "Crop-zoom on a UI region for the next observation (no click). "
+        "Use before precise CLICK/TYPE on small targets. x,y = center; amount = half-size px (default 220).",
+        '{"x": int, "y": int, "amount": int}',
+        needs_coords=True,
+        always_reobserve=True,
+    ),
+    ActionSpec(
+        "RUN_SHELL",
+        "Run a Windows shell command (PowerShell/cmd). Requires approval. Put the command in text.",
+        '{"text": str}',
+        always_reobserve=True,
+    ),
+    ActionSpec(
+        "CLEAR_FOCUS",
+        "Return to full-desktop observation after a FOCUS crop.",
+        "{}",
+        always_reobserve=True,
+    ),
     ActionSpec("WAIT", "Pause for page/UI updates", '{"duration": float}'),
     ActionSpec("DELETE", "Select all and delete (always requires approval)", "{}", always_reobserve=True),
     ActionSpec("COMPLETE", "Task finished successfully", "{}"),

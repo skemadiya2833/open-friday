@@ -1,0 +1,27 @@
+id: tasks
+name: Tasks
+description: Today's agenda ("we'll be doing X today") plus timed reminders and scheduled Friday jobs.
+triggers:
+  - today
+  - agenda
+  - plan
+  - we'll be doing
+  - remind
+  - schedule
+  - every day
+  - in 10 minutes
+  - task
+  - alarm
+tools:
+  - plan_add
+  - plan_list
+  - plan_done
+  - plan_remove
+  - schedule_task
+  - list_tasks
+  - cancel_task
+priority: 72
+requires_vision: false
+enabled: true
+system_overlay: |
+  Prefer plan_add for same-day agenda items. Use schedule_task only for timed/future automation.

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>F.R.I.D.A.Y. — HUD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="hud-bg" aria-hidden="true">
+    <div class="hud-vignette"></div>
+    <div class="hud-grid"></div>
+    <div class="hud-hex"></div>
+    <div class="hud-scan"></div>
+    <div class="hud-glow hud-glow-a"></div>
+    <div class="hud-glow hud-glow-b"></div>
+    <svg class="hud-rings" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="78" />
+      <circle cx="100" cy="100" r="92" class="ring-spin" />
+      <path d="M100 18 A82 82 0 0 1 182 100" />
+    </svg>
+  </div>
+
+  <div class="frame-corner tl"></div>
+  <div class="frame-corner tr"></div>
+  <div class="frame-corner bl"></div>
+  <div class="frame-corner br"></div>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="sigil">◈</span>
+      <span class="sys-id">FRIDAY // LOCAL HUD</span>
+      <span class="sys-blink">● LIVE</span>
+    </div>
+    <div class="topbar-center">
+      <span id="clockReadout">00:00:00</span>
+      <span class="sep">|</span>
+      <span id="dateReadout">—</span>
+    </div>
+    <div class="topbar-right">
+      <span class="telemetry" id="uplinkStatus">UPLINK · SECURE</span>
+      <span class="pill" id="modelPill">local</span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="rail panel-frame">
+      <div class="brand">
+        <div class="orb" id="orb" data-state="idle" aria-hidden="true">
+          <span class="orb-ring outer"></span>
+          <span class="orb-ring mid"></span>
+          <span class="orb-core"></span>
+          <span class="orb-cross"></span>
+        </div>
+        <div class="brand-copy">
+          <div class="brand-name">FRIDAY</div>
+          <div class="brand-tag">F.R.I.D.A.Y. PROTOCOL</div>
+          <div class="brand-sub" id="statusLabel">idle</div>
+        </div>
+      </div>
+
+      <div class="rail-label">SYSTEM MODULES</div>
+      <nav class="nav">
+        <button class="nav-btn active" data-view="chat"><span class="nav-code">01</span><span class="nav-text">Comms</span></button>
+        <button class="nav-btn" data-view="memory"><span class="nav-code">02</span><span class="nav-text">Memory</span></button>
+        <button class="nav-btn" data-view="skills"><span class="nav-code">03</span><span class="nav-text">Skills</span></button>
+        <button class="nav-btn" data-view="tasks"><span class="nav-code">04</span><span class="nav-text">Tasks</span></button>
+        <button class="nav-btn" data-view="settings"><span class="nav-code">05</span><span class="nav-text">Systems</span></button>
+      </nav>
+
+      <div class="rail-foot">
+        <div class="stat-row"><span>CORE</span><strong id="coreState">STANDBY</strong></div>
+        <div class="stat-row"><span>VOICE</span><strong id="voiceState">READY</strong></div>
+        <div class="stat-row"><span>LINK</span><strong>127.0.0.1</strong></div>
+      </div>
+    </aside>
+
+    <main class="stage panel-frame">
+      <!-- CHAT -->
+      <section class="view active" id="view-chat">
+        <header class="top">
+          <div>
+            <p class="eyebrow">CHANNEL · PRIMARY</p>
+            <h1>Comms Link</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost danger hidden" id="btnStopAgent" type="button" title="Halt desktop agent">■ Stop Agent</button>
+            <label class="speak-toggle" title="Speak assistant replies aloud">
+              <input type="checkbox" id="speakToggle" />
+              <span>Audio Out</span>
+            </label>
+            <button class="ghost" id="btnNewChat">New Link</button>
+            <select id="skillOverride">
+              <option value="">Auto skill</option>
+            </select>
+          </div>
+        </header>
+        <div class="skill-chip-wrap">
+          <div class="skill-chip hidden" id="skillChip"></div>
+          <div class="activity" id="activityFeed" aria-live="polite"></div>
+        </div>
+        <div class="messages" id="messages"></div>
+        <form class="composer" id="composer">
+          <button type="button" class="mic" id="btnMic" title="Voice mode — listen, pause, answer">
+            <span class="mic-wave"></span>
+            <span class="mic-dot">●</span>
+          </button>
+          <div class="composer-main">
+            <div class="listening-line hidden" id="listeningLine" aria-live="polite"></div>
+            <textarea id="input" rows="1" placeholder="Address Friday… or engage voice mode"></textarea>
+          </div>
+          <button type="submit" class="send">Transmit</button>
+        </form>
+      </section>
+
+      <!-- MEMORY -->
+      <section class="view" id="view-memory">
+        <header class="top">
+          <div>
+            <p class="eyebrow">ARCHIVE · VECTOR STORE</p>
+            <h1>Memory Core</h1>
+          </div>
+          <div class="top-actions">
+            <span class="muted" id="memStats"></span>
+          </div>
+        </header>
+        <div class="toolbar">
+          <input id="memSearch" placeholder="Query memory lattice…" />
+          <button class="ghost" id="btnMemSearch">Scan</button>
+        </div>
+        <form class="card-form" id="memAddForm">
+          <textarea id="memText" rows="3" placeholder="Commit a note to long-term memory…"></textarea>
+          <button type="submit">Store</button>
+        </form>
+        <div class="cards" id="memList"></div>
+      </section>
+
+      <!-- SKILLS -->
+      <section class="view" id="view-skills">
+        <header class="top">
+          <div>
+            <p class="eyebrow">CAPABILITY MATRIX</p>
+            <h1>Skill Modules</h1>
+          </div>
+        </header>
+        <p class="lede">Auto-routing engaged. Toggle modules or override from Comms.</p>
+        <div class="cards" id="skillList"></div>
+      </section>
+
+      <!-- TASKS -->
+      <section class="view" id="view-tasks">
+        <header class="top">
+          <div>
+            <p class="eyebrow">MISSION BOARD</p>
+            <h1>Today &amp; Queue</h1>
+          </div>
+        </header>
+
+        <div class="plan-panel">
+          <div class="plan-head">
+            <h2>Today’s Plan</h2>
+            <span class="muted" id="planDate"></span>
+          </div>
+          <form class="card-form plan-form" id="planForm">
+            <input id="planText" placeholder="We'll be doing… (e.g. ship Friday HUD polish)" />
+            <button type="submit">Add</button>
+          </form>
+          <div class="plan-list" id="planList"></div>
+        </div>
+
+        <p class="lede">Timed automation — Friday runs these later with a skill.</p>
+        <form class="card-form grid-form" id="taskForm">
+          <input id="taskTitle" placeholder="Title" />
+          <input id="taskPrompt" placeholder="Prompt / message" />
+          <input id="taskDelay" type="number" min="0" placeholder="Delay seconds (optional)" />
+          <select id="taskSkill"></select>
+          <button type="submit">Queue</button>
+        </form>
+        <div class="cards" id="taskList"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="view-settings">
+        <header class="top">
+          <div>
+            <p class="eyebrow">DIAGNOSTICS</p>
+            <h1>Systems</h1>
+          </div>
+        </header>
+        <div class="settings-grid" id="settingsGrid"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

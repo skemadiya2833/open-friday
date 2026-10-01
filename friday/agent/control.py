@@ -17,18 +17,38 @@ class AgentController:
     _approval_event: threading.Event = field(default_factory=threading.Event)
     _approval_result: bool = False
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    _http_clients: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         # Start unpaused.
         self._pause_gate.set()
 
+    def register_http_client(self, client) -> None:
+        with self._lock:
+            self._http_clients.append(client)
+
+    def unregister_http_client(self, client) -> None:
+        with self._lock:
+            try:
+                self._http_clients.remove(client)
+            except ValueError:
+                pass
+
     def request_cancel(self) -> None:
         with self._lock:
             self.cancel_requested = True
+            clients = list(self._http_clients)
         self.resume()  # unblock if paused
         # Unblock any pending approval as rejection
         self.resolve_approval(False)
+        # Abort in-flight Ollama streams immediately.
+        for client in clients:
+            try:
+                client.close()
+            except Exception:
+                pass
         emit("control", action="cancel")
+        print("[Friday] Cancel requested — aborting in-flight model calls.")
 
     def pause(self) -> None:
         self._pause_gate.clear()
@@ -80,3 +100,12 @@ def set_controller(controller: AgentController | None) -> None:
     global _active
     with _active_lock:
         _active = controller
+
+
+def cancel_active_agent() -> bool:
+    """Cancel the currently running agent, if any. Returns True if one was active."""
+    ctrl = get_controller()
+    if ctrl is None:
+        return False
+    ctrl.request_cancel()
+    return True

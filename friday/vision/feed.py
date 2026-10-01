@@ -319,7 +319,14 @@ class LiveScreenFeed:
         marked = draw_aim_marker_on_image(clean, native_x, native_y, state=state, label=label)
         return _preprocess_frame(marked, native, store_pil=False)
 
-    def snapshot_for_model(self) -> VisionPayload | None:
+    def snapshot_for_model(
+        self,
+        focus_box: tuple[int, int, int, int] | None = None,
+    ) -> VisionPayload | None:
+        """Return a vision payload; optional native-pixel focus_box crops for precision."""
+        if focus_box is not None:
+            return self._snapshot_focused(focus_box)
+
         with self._lock:
             packets = list(self._buffer)
 
@@ -356,3 +363,43 @@ class LiveScreenFeed:
             is_video=False,
             frame_count=len(frame_b64_list),
         )
+
+    def _snapshot_focused(self, focus_box: tuple[int, int, int, int]) -> VisionPayload | None:
+        """Crop the latest clean frame to focus_box (native px) and upscale for the VLM."""
+        import mss
+
+        nx0, ny0, nx1, ny1 = focus_box
+        try:
+            with mss.mss() as sct:
+                monitor = sct.monitors[PRIMARY_MONITOR_INDEX]
+                clean, native = self._capture_clean(sct, monitor)
+            nx0 = max(0, min(nx0, native[0] - 1))
+            ny0 = max(0, min(ny0, native[1] - 1))
+            nx1 = max(nx0 + 8, min(nx1, native[0]))
+            ny1 = max(ny0 + 8, min(ny1, native[1]))
+            crop = clean.crop((nx0, ny0, nx1, ny1))
+            crop_native = (nx1 - nx0, ny1 - ny0)
+            from friday.config import PREPROCESS_TARGET_SIZE
+            target = (
+                max(PREPROCESS_TARGET_SIZE[0], 960),
+                max(PREPROCESS_TARGET_SIZE[1], 540),
+            )
+            from friday.vision.preprocessor import get_preprocessor
+            b64, image_size = get_preprocessor().prepare_base64(crop, target_size=target)
+            print(
+                f"[Live] FOCUS crop {crop_native[0]}x{crop_native[1]} @ ({nx0},{ny0}) "
+                f"→ model {image_size[0]}x{image_size[1]}"
+            )
+            return VisionPayload(
+                native_size=native,
+                image_size=image_size,
+                frame_b64_list=[b64],
+                is_video=False,
+                frame_count=1,
+                crop_origin=(nx0, ny0),
+                crop_native_size=crop_native,
+                focused=True,
+            )
+        except Exception as exc:
+            print(f"[Live] FOCUS crop failed ({exc}) — falling back to full frame.")
+            return self.snapshot_for_model(None)

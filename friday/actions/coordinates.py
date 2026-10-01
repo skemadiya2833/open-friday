@@ -216,6 +216,8 @@ def prepare_action_for_execution(
     step: dict | ActionStep,
     image_size: tuple[int, int],
     native_size: tuple[int, int],
+    *,
+    crop_origin: tuple[int, int] | None = None,
 ) -> ActionStep:
     raw = step.to_dict() if isinstance(step, ActionStep) else dict(step)
     # Preserve internal keys from ActionStep.extras
@@ -230,12 +232,18 @@ def prepare_action_for_execution(
         nx, ny = image_to_native(
             int(normalized["x"]), int(normalized["y"]), image_size, native_size,
         )
+        if crop_origin is not None:
+            nx += int(crop_origin[0])
+            ny += int(crop_origin[1])
         normalized["x"], normalized["y"] = nx, ny
 
     if normalized.get("x2") is not None and normalized.get("y2") is not None:
         nx2, ny2 = image_to_native(
             int(normalized["x2"]), int(normalized["y2"]), image_size, native_size,
         )
+        if crop_origin is not None:
+            nx2 += int(crop_origin[0])
+            ny2 += int(crop_origin[1])
         normalized["x2"], normalized["y2"] = nx2, ny2
 
     return ActionStep.from_dict(normalized)

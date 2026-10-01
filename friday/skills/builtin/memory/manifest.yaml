@@ -1,0 +1,19 @@
+id: memory
+name: Memory
+description: Store, search, and manage long-term personal notes in the local vector database.
+triggers:
+  - remember
+  - recall
+  - forget
+  - memory
+  - note that
+  - what did i say
+tools:
+  - memory_search
+  - memory_add
+  - memory_delete
+priority: 65
+requires_vision: false
+enabled: true
+system_overlay: |
+  Help the user manage local vector memory. Confirm what you stored or found.

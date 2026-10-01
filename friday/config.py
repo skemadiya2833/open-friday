@@ -112,7 +112,7 @@ REQUIRE_COMPLETION_EVIDENCE = _env_bool("REQUIRE_COMPLETION_EVIDENCE", "true")
 # Safety
 # ---------------------------------------------------------------------------
 
-RISKY_ACTIONS = frozenset({"DELETE", "FORMAT", "EXECUTE_SCRIPT", "BROWSER_MUTATION"})
+RISKY_ACTIONS = frozenset({"DELETE", "FORMAT", "EXECUTE_SCRIPT", "BROWSER_MUTATION", "RUN_SHELL"})
 
 # ---------------------------------------------------------------------------
 # Display / UI
@@ -152,10 +152,58 @@ PREPROCESS_RESAMPLE = _env_default("PREPROCESS_RESAMPLE", "lanczos", "bilinear")
 # auto | true | false — skip keeping PIL frames in the ring buffer unless needed.
 STORE_FRAME_PIL = _env_default("STORE_FRAME_PIL", "auto", "false").lower()
 
+# ---------------------------------------------------------------------------
+# Assistant / multi-model (16GB-aware)
+# ---------------------------------------------------------------------------
+
+VISION_MODEL = os.getenv("VISION_MODEL", MODEL_NAME)
+CHAT_MODEL = os.getenv("CHAT_MODEL", "")  # empty → reuse VISION_MODEL
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+# Chat replies stay short — big caps make VL feel sluggish.
+CHAT_NUM_PREDICT = int(os.getenv("CHAT_NUM_PREDICT", "256"))
+CHAT_NUM_CTX = int(os.getenv("CHAT_NUM_CTX", "4096"))
+# Keyword skill routing is fast; set true to also score via embeddings.
+SKILL_EMBED_ROUTE = _env_bool("SKILL_EMBED_ROUTE", "false")
+# Skip RAG lookup on normal chat (memory skill / remember phrases still use it).
+CHAT_RAG_ENABLED = _env_bool("CHAT_RAG_ENABLED", "false")
+# Indexing every assistant turn into Chroma adds an embed call — off by default.
+INDEX_CHAT_TURNS = _env_bool("INDEX_CHAT_TURNS", "false")
+DATA_DIR = os.getenv(
+    "FRIDAY_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"),
+)
+WORKSPACE_DIR = os.getenv(
+    "FRIDAY_WORKSPACE",
+    os.path.join(DATA_DIR, "workspace"),
+)
+CHROMA_DIR = os.path.join(DATA_DIR, "chroma")
+CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
+TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
+SERVER_HOST = os.getenv("FRIDAY_HOST", "127.0.0.1")
+SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
+SKILLS_DIR = os.getenv(
+    "FRIDAY_SKILLS_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "builtin"),
+)
+MAX_TOOL_STEPS = int(os.getenv("MAX_TOOL_STEPS", "8"))
+VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "base")
+VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "en-IE-EmilyNeural")
+VOICE_ENABLED = _env_bool("VOICE_ENABLED", "true")
+SHELL_TOOLS_ENABLED = _env_bool("SHELL_TOOLS_ENABLED", "false")
+
 # Back-compat aliases
 LOCAL_MODEL_NAME = MODEL_NAME
 OLLAMA_API_URL = OLLAMA_GENERATE_URL
 NPU_PREPROCESSING = False  # Pillow resize only; see friday.vision.preprocessor
+
+
+def resolve_chat_model() -> str:
+    return (CHAT_MODEL or VISION_MODEL or MODEL_NAME).strip()
+
+
+def ensure_data_dirs() -> None:
+    for path in (DATA_DIR, WORKSPACE_DIR, CHROMA_DIR, CONVERSATIONS_DIR):
+        os.makedirs(path, exist_ok=True)
 
 
 def should_store_frame_pil() -> bool:

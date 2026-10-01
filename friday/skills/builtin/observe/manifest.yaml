@@ -1,0 +1,23 @@
+id: observe
+name: Observe Screen
+description: Look at the current desktop screenshot and describe what is visible. Use for questions like what do you see, what's on my screen, can you see my desktop — do NOT click or control the PC.
+triggers:
+  - what do you see
+  - what's on my screen
+  - whats on my screen
+  - what's going on
+  - whats going on
+  - can you see
+  - describe my screen
+  - describe the desktop
+  - look at my screen
+  - look at my desktop
+  - what's on the desktop
+  - what is on my screen
+  - show me what's open
+tools: []
+priority: 90
+requires_vision: true
+enabled: true
+system_overlay: |
+  Answer only from the attached screenshot. Do not invent apps that are not visible.

@@ -210,13 +210,28 @@ def parse_action_directive(action_part: str) -> dict[str, Any] | None:
 
     args: dict[str, Any] = {}
     tail = text[match.end():]
-    for obj in _iter_json_objects(tail):
-        args = obj
-        break
+    # HOTKEY ["ctrl","shift","p"]  — array form without an object wrapper
+    arr_match = re.match(r"\s*(\[[^\]]*\])", tail)
+    if arr_match and action in {"HOTKEY", "PRESS_KEY"}:
+        try:
+            parsed = json.loads(arr_match.group(1))
+            if isinstance(parsed, list) and parsed:
+                args = {"keys": parsed} if action == "HOTKEY" else {"key": str(parsed[0])}
+        except json.JSONDecodeError:
+            pass
+    if not args:
+        for obj in _iter_json_objects(tail):
+            args = obj
+            break
     if not args:
         coord = re.search(r"\(?\s*(-?\d{1,5})\s*[,x]\s*(-?\d{1,5})\s*\)?", tail)
         if coord:
             args = {"x": int(coord.group(1)), "y": int(coord.group(2))}
+    # Bare chord after HOTKEY: HOTKEY ctrl+shift+p
+    if not args and action == "HOTKEY":
+        chord = re.match(r"\s*([A-Za-z0-9_]+(?:\s*[+\-,]\s*[A-Za-z0-9_]+)+)", tail)
+        if chord:
+            args = {"keys": chord.group(1)}
 
     step: dict[str, Any] = {"action": action, "risky": False}
     step.update(args)
@@ -224,11 +239,15 @@ def parse_action_directive(action_part: str) -> dict[str, Any] | None:
     # Reject fabricated actions missing their required payload.
     try:
         from friday.actions.catalog import COORD_ACTIONS
+        from friday.types import coerce_keys
     except Exception:
         COORD_ACTIONS = frozenset({"CLICK", "DOUBLE_CLICK", "RIGHT_CLICK", "HOVER", "SCROLL"})
+        coerce_keys = lambda v: list(v) if isinstance(v, list) else None  # type: ignore
     if action in COORD_ACTIONS and (step.get("x") is None or step.get("y") is None):
         return None
     if action in ("TYPE", "PASTE") and not str(step.get("text") or "").strip():
+        return None
+    if action == "HOTKEY" and not coerce_keys(step.get("keys") or step.get("key") or step.get("text")):
         return None
 
     return {"message": "", "steps": [step]}

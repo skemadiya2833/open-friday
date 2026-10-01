@@ -1,0 +1,27 @@
+:root {
+  color-scheme: dark;
+  --bg: #0c0d10;
+  --panel: #14161c;
+  --text: #f2efe8;
+  --muted: #9a958c;
+  --accent: #e85d30;
+  --font: "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); background: var(--bg); color: var(--text); }
+.app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.rail { border-right: 1px solid #ffffff14; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.rail button { background: transparent; border: 0; color: var(--muted); text-align: left; padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+.rail button.active, .rail button:hover { color: var(--text); background: #ffffff0a; }
+.brand { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
+.orb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px #e85d3088; }
+main { padding: 24px; }
+.messages { display: flex; flex-direction: column; gap: 10px; min-height: 50vh; margin-bottom: 16px; }
+.bubble { max-width: 70%; padding: 12px 14px; border-radius: 14px; background: var(--panel); white-space: pre-wrap; }
+.bubble.user { align-self: flex-end; background: #222633; }
+.muted { color: var(--muted); font-size: 0.85rem; }
+.chip { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #e85d3022; border: 1px solid #e85d3055; margin-bottom: 10px; }
+form { display: flex; gap: 8px; }
+input { flex: 1; background: var(--panel); border: 1px solid #ffffff14; color: var(--text); border-radius: 12px; padding: 12px; }
+button[type="submit"] { background: var(--accent); border: 0; color: white; border-radius: 12px; padding: 12px 16px; cursor: pointer; }
+.card { background: var(--panel); border: 1px solid #ffffff14; border-radius: 14px; padding: 14px; margin-bottom: 10px; }

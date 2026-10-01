@@ -81,9 +81,10 @@ def _check_control(ctrl: AgentController) -> AgentStatus | None:
     return None
 
 
-def _observe(feed: LiveScreenFeed) -> VisionPayload | None:
+def _observe(feed: LiveScreenFeed, session: AgentSession | None = None) -> VisionPayload | None:
     """Return a vision payload from the live buffer or a one-shot capture."""
-    vision = feed.snapshot_for_model()
+    focus = session.focus_box if session is not None else None
+    vision = feed.snapshot_for_model(focus_box=focus)
     if vision is not None:
         return vision
     if LIVE_MODE:
@@ -132,7 +133,7 @@ def _loop(
 
         print(f"\n[Friday] --- Observe tick {session.iteration + 1} ---")
 
-        vision = _observe(feed)
+        vision = _observe(feed, session)
         if vision is None:
             observe_failures += 1
             print("[Friday] No frames available yet, waiting...")
@@ -148,8 +149,9 @@ def _loop(
         emit("tick", iteration=session.iteration)
 
         kind = "video" if vision.is_video else f"{vision.frame_count} frame(s)"
+        focus_note = " [FOCUSED]" if vision.focused else ""
         print(
-            f"[Friday] Observation: {kind} "
+            f"[Friday] Observation: {kind}{focus_note} "
             f"({vision.native_size[0]}x{vision.native_size[1]} → "
             f"model {vision.image_size[0]}x{vision.image_size[1]})"
         )
@@ -159,6 +161,8 @@ def _loop(
             kind=kind,
             native_size=vision.native_size,
             image_size=vision.image_size,
+            focused=vision.focused,
+            crop_origin=vision.crop_origin,
         )
 
         # Pause capture for the entire decide+act cycle so UI chrome / markers
@@ -213,6 +217,24 @@ def _loop(
 
             consecutive_empty = 0
             step = decision.step
+            repeats = session.note_action_fingerprint(step)
+            if repeats >= 3 and step.action.upper() not in {"WAIT", "FOCUS", "CLEAR_FOCUS"}:
+                print(
+                    f"[Friday] Blocking repeat loop — same action {repeats}x "
+                    f"({session.last_action_fingerprint}). Forcing WAIT."
+                )
+                from friday.types import ActionStep as AS
+                step = AS(
+                    action="WAIT",
+                    duration=1.2,
+                    description="Anti-loop wait after repeated identical action",
+                )
+                session.stuck_count += 1
+                if session.stuck_count >= MAX_STUCK_ACTIONS:
+                    print("[Friday] Stuck after repeated actions — stopping.")
+                    emit("status", status="error")
+                    return AgentStatus.FAILED
+
             print(f"[Friday] Next action: {step.action}")
             emit("action_start", step=step.to_dict(), iteration=session.iteration)
 
