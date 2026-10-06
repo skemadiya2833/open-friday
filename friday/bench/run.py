@@ -38,6 +38,10 @@ def _parse(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--countdown", type=int, default=12)
+    ap.add_argument("--split", choices=["all", "dev", "heldout"], default="all", help="frozen task split")
+    ap.add_argument("--memory", choices=["off", "on"], default="off", help="experience memory hints (Stage L)")
+    ap.add_argument("--budget-minutes", type=float, default=0, help="stop starting new runs after this many minutes")
+    ap.add_argument("--attended", action="store_true", help="allow approval waits (default: unattended, fail closed)")
     ap.add_argument("--list", action="store_true")
     return ap.parse_args(argv)
 
@@ -51,6 +55,8 @@ def _apply_env(a) -> None:
         "GEMINI_API_KEY": "", "OPENAI_API_KEY": "", "CLOUD_PROVIDER": "none",
         "MODEL_COORD_SPACE": a.coord_space or ("pixel" if a.model.startswith("qwen2.5") else "auto"),
         "FRIDAY_ESTOP": "true",
+        "FRIDAY_APPROVAL_MODE": "attended" if a.attended else "unattended",
+        "FRIDAY_MEMORY": "on" if a.memory == "on" else "off",
     })
 
 
@@ -136,6 +142,9 @@ def main(argv=None) -> int:
     if a.tasks:
         want = set(a.tasks.split(","))
         tasks = [t for t in tasks if t.id in want]
+    if a.split != "all":
+        from friday.bench.splits import split_of
+        tasks = [t for t in tasks if split_of(t.id) == a.split]
     if a.groups:
         gs = set(a.groups.split(","))
         tasks = [t for t in tasks if t.group in gs]
@@ -183,6 +192,7 @@ def main(argv=None) -> int:
     wu.show_desktop()                               # minimize everything (restored at the end)
     mgr = get_run_manager()
     aborted = False
+    t_begin = time.time()
     skipped_groups: dict[str, str] = {}
     try:
         total = len(tasks) * a.reps
@@ -194,6 +204,11 @@ def main(argv=None) -> int:
             for rep in range(1, a.reps + 1):
                 n += 1
                 if (task.id, rep) in done:
+                    continue
+                if a.budget_minutes and (time.time() - t_begin) / 60.0 > a.budget_minutes:
+                    rec_nr = {"task": task.id, "group": task.group, "rep": rep, "outcome": "NOT_RUN",
+                              "success": None, "failure_reason": "live-test budget exhausted"}
+                    results.append(rec_nr)
                     continue
                 banner.set(f"FRIDAY BENCHMARK {n}/{total}: {task.id} (rep {rep}). HANDS OFF. Stop: Ctrl+Alt+F12")
                 rec = {"task": task.id, "group": task.group, "rep": rep}
@@ -240,6 +255,7 @@ def main(argv=None) -> int:
                 steps = sum(1 for e in events if e["type"] == "action_end")
                 if es.trigger_count > triggers_before:
                     status, aborted = "estop", True
+                    rec["aborted"] = True
                 if success:
                     failure = ""
                 elif status == "timeout":
@@ -248,6 +264,10 @@ def main(argv=None) -> int:
                     failure = f"agent {status}: {err or 'see actions'}; {why}"
                 else:
                     failure = f"agent {status} but check failed: {why}"
+                fail_ev = next((e["payload"] for e in reversed(events) if e["type"] == "agent_failure"), None)
+                stalls = [e["payload"].get("kind") for e in events if e["type"] == "agent_stall"]
+                rec.update(split=__import__("friday.bench.splits", fromlist=["x"]).split_of(task.id),
+                           memory=a.memory, structured_failure=fail_ev, stalls=stalls)
                 rec.update(outcome="PASS" if success else "FAIL", success=bool(success), status=status, steps=steps,
                            actions=actions[:40], wall_s=round(wall, 1), peak_vram_mb=peak,
                            failure_reason=failure, check=why)

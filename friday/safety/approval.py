@@ -48,6 +48,18 @@ class PendingApproval:
 Listener = Callable[[str, dict[str, Any]], None]
 
 
+def _default_attention(item: dict[str, Any]) -> None:
+    """Audible nudge. Voice is optional: install a hook with ``set_attention_hook`` (UNVERIFIED on this machine)."""
+    import os
+    if os.getenv("FRIDAY_APPROVAL_BEEP", "true").lower() in ("0", "false", "no"):
+        return
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBeep(0x30)           # MB_ICONEXCLAMATION
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class ApprovalService:
     def __init__(self, default_timeout: float = 120.0) -> None:
         self.default_timeout = default_timeout
@@ -58,6 +70,25 @@ class ApprovalService:
         # With zero responders, requests are denied immediately instead of hanging.
         self._responders = 0
         self._last_touch = 0.0
+        # attended: a human can answer, so notify and wait. unattended (benchmarks, scheduled tasks): nobody is
+        # watching, so anything that needs approval fails closed at once and the agent must pick a safe alternative.
+        self._mode = "attended"
+        self._attention: Callable[[dict[str, Any]], None] | None = _default_attention
+
+    def set_mode(self, mode: str) -> None:
+        if mode not in ("attended", "unattended"):
+            raise ValueError("mode must be attended or unattended")
+        with self._lock:
+            self._mode = mode
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    def set_attention_hook(self, fn: Callable[[dict[str, Any]], None] | None) -> None:
+        """Called (best effort) when an attended approval is waiting: toast, voice, ... Replace to customise."""
+        with self._lock:
+            self._attention = fn
 
     # -- responders / listeners -------------------------------------------
     def add_listener(self, fn: Listener) -> None:
@@ -105,6 +136,9 @@ class ApprovalService:
         require_responder: bool = True,
     ) -> tuple[bool, str]:
         """Block until resolved. Returns ``(approved, approver)``."""
+        if self._mode == "unattended":
+            self._notify("approval_denied_unattended", {"tool": tool, "reason": reason, "run_id": run_id})
+            return False, "denied:unattended"
         if require_responder and not self.has_responder():
             return False, "denied:no-responder"
 
@@ -122,6 +156,12 @@ class ApprovalService:
         with self._lock:
             self._pending[item.id] = item
         self._notify("approval_request", item.to_dict())
+        hook = self._attention
+        if hook is not None:
+            try:
+                hook(item.to_dict())
+            except Exception:  # noqa: BLE001 - a broken notifier must not break the request
+                pass
 
         got = item._event.wait(item.timeout)
         with self._lock:
@@ -167,6 +207,9 @@ def get_approval_service() -> ApprovalService:
             from friday.config import APPROVAL_TIMEOUT_SECONDS
 
             _service = ApprovalService(APPROVAL_TIMEOUT_SECONDS)
+            import os
+            if os.getenv("FRIDAY_APPROVAL_MODE", "attended").lower() == "unattended":
+                _service.set_mode("unattended")
         return _service
 
 

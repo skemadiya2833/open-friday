@@ -58,3 +58,10 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 - H1 PARTIAL: hybrid 78/78 runs done (21 passed); legacy rerun stopped at 47/78 on owner request. Raw: docs/research/bench_H_*.json. Compare with scripts/bench_compare.py. UNVERIFIED: full legacy baseline, H3 VRAM, Stage I benchmarks, J.
 - Owner-reported stalls fixed WITHOUT live testing (unit tests only): safe-dismiss buttons (Don't send/No/Cancel/Close) are allowed; 'done' before any action is rejected; denied/unanswered approvals tell the model not to retry and to pick a safe choice; prompt rule for crash/error pop-ups. UNVERIFIED live (OBS crash dialog).
 
+
+## Stage K (stall detection, safe recovery) - DONE
+- K1 PASS (unit + partial live): friday/agent/stall.py (no-progress detector, call timeouts for every tool/model call, hung-window detector via title/status + Win32 IsHungAppWindow, recovery ladder reobserve > Escape > alternative > vision > structured fail). Integrated in hybrid loop; failures carry `agent_failure` {kind, detail, recovery_tried, elapsed_s, steps}.
+- K2 PASS (unit): ApprovalService attended/unattended; unattended denies at once ("denied:unattended"); attended beeps (voice hook pluggable, UNVERIFIED) and waits. Benchmarks run unattended by default (`--attended` to opt out).
+- K3 PASS (unit incl. adversarial): friday/agent/dialogs.py. Windows-MCP does NOT expose dialog body labels (verified live), so the title + button set are evidence too.
+- K4 PARTIAL live: WinForms synthetic dialogs (friday/bench/synth_dialog.ps1, scripts/synth_live.py; Tk is invisible to UI Automation). crash: PASS live ("Don't send" chosen, 5.8 s). save: PASS live (nothing discarded; no button pressed). hung: UNVERIFIED live - the simulator was never reported as hung (Windows only flags hang on pending input); covered by unit tests.
+- Live time used so far: ~12 min of the 90 min budget.

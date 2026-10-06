@@ -44,11 +44,6 @@ def _port() -> int:
         return 8787
 
 
-# Buttons that only decline or close a dialog (crash/error-report prompts, "save changes?" -> never send anything).
-SAFE_DISMISS = re.compile(
-    r"^(no|no,? thanks|not now|maybe later|later|cancel|close|dismiss|ignore|skip|don.?t send|do not send|never send|"
-    r"don.?t report|do not report|don.?t save|no,? don.?t send|exit without sending)$", re.I)
-
 IRREVERSIBLE_LABEL = (
     r"\b(delete|remove|erase|uninstall|format|empty recycle|permanently|send|pay|purchase|buy now|"
     r"place order|sign out|log out|shut ?down|restart|reset|wipe|clear (all|history|data)|install)\b"
@@ -121,7 +116,7 @@ def check_window(cfg: GuardConfig, title: str) -> Verdict:
 
 def check_action(cfg: GuardConfig, kind: str, *, title: str, element: Element | None = None,
                  keys: str = "", text: str = "", press_enter: bool = False,
-                 context: list[str] | None = None) -> Verdict:
+                 context: list[str] | None = None, dialog: "object | None" = None) -> Verdict:
     """kind: click | type | shortcut | scroll | app | wait ..."""
     if kind in ("wait", "snapshot", "scroll"):
         return check_window(cfg, title) if kind == "scroll" else Verdict("allow")
@@ -144,10 +139,19 @@ def check_action(cfg: GuardConfig, kind: str, *, title: str, element: Element | 
             return Verdict("deny", f"shortcut '{k}' is forbidden")
         if k in IRREVERSIBLE_KEYS:
             return Verdict("confirm", f"shortcut '{k}' can be irreversible")
+        if dialog is not None and dialog.category == "save_prompt" and k not in ("escape", "esc", "ctrl+s", "alt+s", "s"):
+            return Verdict("confirm", f"key '{k}' on a save prompt could discard unsaved work")
         return Verdict("allow")
     label = element.name if element else ""
-    if label and SAFE_DISMISS.search(label.strip()):
-        return Verdict("allow")          # "Don't send", "No", "Cancel", "Close" ... can only decline or close
+    if dialog is not None:
+        from friday.agent import dialogs as D
+
+        if kind == "click" and element is None and dialog.category == "save_prompt":
+            return Verdict("confirm", "pixel click on a save prompt could discard unsaved work")
+        if label and D.discards_work(dialog, label):
+            return Verdict("confirm", f"'{label[:40]}' could discard unsaved work")
+        if label and dialog.auto_dismiss and dialog.safe_button and label.strip().lower() == dialog.safe_button.lower():
+            return Verdict("allow", f"declines a benign {dialog.category} dialog")
     if label and re.search(cfg.irreversible_label, label, re.I):
         return Verdict("confirm", f"'{label[:50]}' looks irreversible")
     if kind == "click" and label and re.search(cfg.risky_submit_label, label, re.I) \
