@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import warnings
 from pathlib import Path
 
@@ -24,10 +25,29 @@ def _get_model():
     if _model is None:
         from faster_whisper import WhisperModel
 
-        # Prefer CPU when the vision model may own the GPU.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            _model = WhisperModel(VOICE_STT_MODEL, device="cpu", compute_type="int8")
+        # Provisional default: large-v3-turbo, float16 on CUDA (verified to load and run on the
+        # RTX 5060 Ti; accuracy on the owner's real speech is UNVERIFIED, see docs/research/stt_bench.json).
+        # Falls back to CPU int8 if CUDA or the model cannot be loaded. Override with
+        # VOICE_STT_DEVICE=cpu|cuda|auto and VOICE_STT_COMPUTE=float16|int8|int8_float16.
+        device = os.getenv("VOICE_STT_DEVICE", "auto").lower()
+        compute = os.getenv("VOICE_STT_COMPUTE", "float16")
+        attempts = []
+        if device in ("auto", "cuda"):
+            attempts.append(("cuda", compute))
+        attempts.append(("cpu", "int8"))
+        last: Exception | None = None
+        for dev, ct in attempts:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    _model = WhisperModel(VOICE_STT_MODEL, device=dev, compute_type=ct)
+                print(f"[STT] {VOICE_STT_MODEL} on {dev} ({ct})")
+                break
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                print(f"[STT] {VOICE_STT_MODEL} on {dev}/{ct} failed: {exc}")
+        if _model is None:
+            raise RuntimeError(f"could not load STT model: {last}")
     return _model
 
 
@@ -101,6 +121,20 @@ def _decode_audio(path: str | Path) -> np.ndarray:
             "Could not decode microphone audio. Install ffmpeg and ensure it is on PATH, "
             f"or upgrade PyAV. Detail: {exc}"
         ) from exc
+
+
+_infer_lock = threading.Lock()
+
+
+def transcribe_array(audio: np.ndarray) -> str:
+    """16 kHz mono float32 in [-1, 1]. Serialised: streaming partials and finals share one model."""
+    if audio.size == 0:
+        return ""
+    model = _get_model()
+    with _infer_lock:
+        segments, _info = model.transcribe(audio.astype(np.float32, copy=False), language="en", beam_size=1,
+                                           vad_filter=False, condition_on_previous_text=False)
+        return " ".join(s.text.strip() for s in segments).strip()
 
 
 def transcribe_file(path: str | Path) -> str:
