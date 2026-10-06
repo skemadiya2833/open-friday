@@ -1,0 +1,164 @@
+[
+ {
+  "variant": "default",
+  "t": 2,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 9,
+  "increment_found": false,
+  "chars": 2296
+ },
+ {
+  "variant": "default",
+  "t": 2,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "default",
+  "t": 5,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "default",
+  "t": 5,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "default",
+  "t": 9,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "default",
+  "t": 9,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "force_renderer_accessibility",
+  "t": 2,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "force_renderer_accessibility",
+  "t": 2,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "force_renderer_accessibility",
+  "t": 5,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "force_renderer_accessibility",
+  "t": 5,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "force_renderer_accessibility",
+  "t": 9,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "force_renderer_accessibility",
+  "t": 9,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "enable_features_uia",
+  "t": 2,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 9,
+  "increment_found": false,
+  "chars": 2296
+ },
+ {
+  "variant": "enable_features_uia",
+  "t": 2,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "enable_features_uia",
+  "t": 5,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "enable_features_uia",
+  "t": 5,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ },
+ {
+  "variant": "enable_features_uia",
+  "t": 9,
+  "use_dom": false,
+  "focused": "Counter test - Google Chrome",
+  "elements": 11,
+  "increment_found": true,
+  "chars": 2574
+ },
+ {
+  "variant": "enable_features_uia",
+  "t": 9,
+  "use_dom": true,
+  "focused": "Counter test - Google Chrome",
+  "elements": 2,
+  "increment_found": true,
+  "chars": 1073
+ }
+]

@@ -436,3 +436,35 @@ def test_pixel_clicks_refused_when_a_control_center_window_is_visible():
     run_hybrid("x", controller=AgentController(), config=HybridConfig(max_steps=4, max_repeats=99, **FAST),
                decider=decide, desktop=desk)
     assert not [c for c in desk.calls if c[0] in ("Click",)]
+
+
+# ----------------------------------------------------------------------------- G2: names with line breaks, text nodes
+def test_elements_with_line_breaks_in_their_names_are_kept():
+    from pathlib import Path
+
+    text = (Path(__file__).parent / "fixtures" / "snapshot_live_format.txt").read_text(encoding="utf-8")
+    s = U.parse_snapshot(text)
+    names = {e.name for e in s.elements}
+    tray = next(e for e in s.elements if e.name.startswith("Tray Indicator"))
+    assert "To switch input methods." in tray.name and (tray.x, tray.y) == (1756, 1056)
+    clock = next(e for e in s.elements if e.name.startswith("Clock"))
+    assert "06-10-2026" in clock.name and (clock.x, clock.y) == (1877, 1056)
+    assert "Start" in names and "Some App" in names          # neighbours are not swallowed
+
+
+def test_text_nodes_are_visible_text_and_rendered_for_the_model():
+    t = ('Focused Window:\n  Name  Depth  Status  Width  Height  Handle\n-----\n  Page - Chrome  1  Normal  9  9  4\n\n'
+         'UI Tree:\ndesktop\n\u2514\u2500\u2500 window "Page - Chrome"\n'
+         '    \u251c\u2500\u2500 (118,281) button "Increment"  [action: click]\n'
+         '    \u251c\u2500\u2500 text "Count:"\n    \u2514\u2500\u2500 text "3"\n')
+    s = U.parse_snapshot(t)
+    assert [x for _, x in s.texts] == ["Count:", "3"]
+    assert "Count:" in s.visible_text() and "page_text: Count: | 3" in U.render_for_model(s)
+
+
+def test_fingerprint_changes_when_only_page_text_changes():
+    mk = lambda n: U.parse_snapshot(
+        'Focused Window:\n  Name  Depth  Status  Width  Height  Handle\n-----\n  P - Chrome  1  Normal  9  9  4\n\n'
+        'UI Tree:\ndesktop\n\u2514\u2500\u2500 window "P - Chrome"\n'
+        '    \u251c\u2500\u2500 (1,2) button "Inc"  [action: click]\n    \u2514\u2500\u2500 text "' + n + '"\n')
+    assert mk("1").fingerprint() != mk("2").fingerprint()

@@ -14,3 +14,5 @@ web/dist/
 *.egg-info/
 .ruff_cache/
 __pycache__/
+
+docs/research/diag_chrome/*.txt

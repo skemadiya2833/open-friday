@@ -33,6 +33,8 @@ _ELEM = re.compile(
     r'^(?P<prefix>[│ ├└─\s]*)\((?P<x>-?\d+),(?P<y>-?\d+)\)\s+(?P<type>[^"]+?)\s+"(?P<name>.*)"\s+'
     r"\[action:\s*(?P<action>[\w-]+)\](?P<meta>.*)$"
 )
+_NODE_START = re.compile(r'^[│ ├└─\s]*(\(-?\d+,-?\d+\)\s+)?[A-Za-z][\w ]*\s+"')
+_TEXT = re.compile(r'^[│ ├└─\s]*text\s+"(?P<name>.*)"\s*$')
 _WIN = re.compile(r'^(?P<prefix>[│ ├└─\s]*)window "(?P<name>.*)"\s*$')
 _META = re.compile(r"\[([^\]]*)\]")
 _DISPLAY = re.compile(r"(\d+):(\S+)\s+\((-?\d+),(-?\d+),(-?\d+),(-?\d+)\)(\s+primary)?")
@@ -89,6 +91,7 @@ class Snapshot:
     displays: list[dict] = field(default_factory=list)
     screenshot_scale: float = 1.0
     truncated: bool = False
+    texts: list[tuple[str, str]] = field(default_factory=list)     # (window, text) of non-interactive text nodes
     has_image: bool = False
     image_b64: str | None = None
 
@@ -105,11 +108,12 @@ class Snapshot:
         """Stable hash of what the user can see; used for post-action verification."""
         parts = [self.focused_title()]
         parts += [f"{e.window}|{e.ctype}|{e.name}|{e.value}|{e.meta}" for e in self.elements[:300]]
+        parts += [f"text|{w}|{t}" for w, t in self.texts[:300]]
         return hashlib.sha1("\n".join(parts).encode("utf-8", "replace")).hexdigest()[:16]
 
     def visible_text(self) -> str:
         """Everything text-like on screen, for evidence checks."""
-        bits = [self.focused_title(), *[w.name for w in self.windows]]
+        bits = [self.focused_title(), *[w.name for w in self.windows], *[t for _, t in self.texts]]
         for e in self.elements:
             bits.append(e.name)
             if e.value:
@@ -149,6 +153,31 @@ def normalize(text: str) -> str:
     return text
 
 
+def join_multiline_nodes(tree: str, max_extra: int = 8) -> list[str]:
+    """Windows-MCP prints element names verbatim, so a name with a line break spans several lines.
+    A node line is complete when it ends with `]` (interactive: ... [action: x]) or `"` (text node);
+    a node line that is not complete takes the following lines until it is."""
+    out: list[str] = []
+    pending: str | None = None
+    extra = 0
+    for ln in tree.splitlines():
+        if pending is not None:
+            pending += " " + ln.strip()
+            extra += 1
+            if ln.rstrip().endswith(("]", "\"")) or extra >= max_extra:
+                out.append(pending)
+                pending = None
+            continue
+        s = ln.rstrip()
+        if _NODE_START.match(s) and not s.endswith(("]", "\"")):
+            pending, extra = s, 0
+            continue
+        out.append(ln)
+    if pending is not None:
+        out.append(pending)
+    return out
+
+
 def parse_snapshot(text: str, *, max_elements: int = 400) -> Snapshot:
     text = normalize(text)
     s = Snapshot(raw=text)
@@ -171,13 +200,16 @@ def parse_snapshot(text: str, *, max_elements: int = 400) -> Snapshot:
     tree = text[mt.end():] if mt else ""
     s.truncated = "[truncated:" in tree
     window = ""
-    for ln in tree.splitlines():
+    for ln in join_multiline_nodes(tree):
         w = _WIN.match(ln)
         if w:
             window = w["name"]
             continue
         e = _ELEM.match(ln)
         if not e:
+            tm = _TEXT.match(ln)
+            if tm and len(s.texts) < 300 and tm["name"].strip():
+                s.texts.append((window, tm["name"].strip()))
             continue
         meta = [m.strip() for m in _META.findall(e["meta"])]
         s.elements.append(Element(
@@ -204,6 +236,9 @@ def render_for_model(s: Snapshot, *, max_elements: int = 120) -> str:
     ordered = [e for e in s.elements if e.window == ft] + [e for e in s.elements if e.window != ft]
     for e in ordered[:max_elements]:
         lines.append(e.line())
+    shown = [t for w, t in s.texts if not ft or w == ft][:40]
+    if shown:
+        lines.append("page_text: " + " | ".join(t[:80] for t in shown))
     if len(s.elements) > max_elements:
         lines.append(f"... {len(s.elements) - max_elements} more elements not shown")
     if s.truncated:

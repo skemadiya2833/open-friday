@@ -48,3 +48,8 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 
 ### Final
 - C3 hybrid 6/26 vs baseline 5/78; model subset tie (4/6 each); no default changed. D2 measurements skipped by owner request. FINAL_REPORT.md written. Tags stage-C/D/E.
+
+## Stage G (diagnose) - DONE
+- G1 PASS (root causes verified; generic browser-tree settle; fingerprint+page_text). Live counter run: sees page, clicks work, does not stop at N (model limit).
+- G2 PASS (multi-line names kept; 3 tests). Repeat guard now 6 (launch 2) because legit repeated clicks were blocked.
+

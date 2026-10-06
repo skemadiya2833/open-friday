@@ -22,6 +22,8 @@ def main() -> int:
     ap.add_argument("--model", default="qwen2.5vl:7b-q4_K_M")
     ap.add_argument("--max-steps", type=int, default=6)
     ap.add_argument("--ctx", type=int, default=32768)
+    ap.add_argument("--page", default="", help="open this local benchmark page (counter, form, canvas_click, ...) in a scratch Chrome first")
+    ap.add_argument("--settle", type=float, default=3.0)
     a = ap.parse_args()
 
     from friday.agent.control import AgentController
@@ -30,6 +32,18 @@ def main() -> int:
     from friday.safety.estop import ensure_started
     from friday.ui.events import current_run_id, get_bus
 
+    chrome = site = None
+    if a.page:
+        import subprocess
+        import tempfile
+
+        from friday.bench.site import Site
+        site = Site()
+        chrome = subprocess.Popen([r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                                   f"--user-data-dir={tempfile.mkdtemp(prefix='friday_dbg_')}", "--no-first-run",
+                                   "--no-default-browser-check", "--disable-sync", "--new-window", site.url(a.page, "dbg")],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(a.settle)
     ensure_started()
     m = get_mcp_manager()
     m.start("windows")
@@ -46,6 +60,9 @@ def main() -> int:
         print("RESULT", res)
     finally:
         m.stop("windows")
+        if chrome is not None:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(chrome.pid)], capture_output=True)
+            site.close()
     return 0
 
 

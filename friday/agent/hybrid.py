@@ -68,6 +68,9 @@ How to work:
   use a button id for typing. If the app has no text area (Calculator), omit "id": the text goes to the focused
   window (digits and operators work as keys there, e.g. "12+30=").
 - "id" is always a plain number from the element list.
+- After every action read the screen again (the element list and "page_text"). The moment the objective is met,
+  stop: reply {"action":"done","evidence":"<exact text visible on screen>"} instead of repeating the action.
+  Count how many times you have already done a repeated action from your previous actions list.
 - Always answer with a JSON object that has an "action" field."""
 
 VISION_ACTIONS = ' | click_xy | type_xy'
@@ -91,7 +94,9 @@ class HybridConfig:
     max_no_effect: int = 4                     # consecutive actions with no visible change -> give up
     escalate_after: int = 2                    # no-effect streak that switches to vision
     max_parse_failures: int = 3
-    max_repeats: int = 3                       # identical consecutive actions before giving up
+    browser_wait_tries: int = 4                # re-snapshots while a browser shows no page document yet
+    browser_wait_seconds: float = 1.5
+    max_repeats: int = 6                       # identical consecutive actions before giving up
     settle_seconds: float = 0.5
     num_ctx: int | None = None
     num_predict: int = 400
@@ -325,6 +330,27 @@ def execute(desk: Desktop, plan: Plan, *, imap: _ImageMap | None, force_ask: boo
     raise DesktopError(f"cannot execute {a}")
 
 
+def _settle_browser_tree(desk: "Desktop", snap: U.Snapshot, dom: bool, cfg: HybridConfig) -> U.Snapshot:
+    """Chromium builds its accessibility tree lazily: the first UI-Automation query only wakes it up, and the page
+    content appears a second or two later (measured: docs/research/diag_chrome/, 9 elements without the page at 2 s,
+    page present at 5 s). If a browser window is in front and shows no page document yet, look again a few times
+    instead of letting the model act on the taskbar."""
+    if not BROWSER_TITLE.search(snap.focused_title()) or cfg.browser_wait_tries <= 0:
+        return snap
+    ft = snap.focused_title()
+    for _ in range(cfg.browser_wait_tries):
+        if any(e.window == ft and e.ctype == "document" for e in snap.elements):
+            break
+        time.sleep(cfg.browser_wait_seconds)
+        try:
+            snap = desk.snapshot(vision=False, dom=dom)[0]
+        except DesktopError:
+            break
+        if snap.focused_title() != ft:
+            break
+    return snap
+
+
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip().lower()
 
@@ -421,6 +447,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
         try:
             if snap is None:
                 snap, _ = desk.snapshot(vision=False, dom=dom)
+            snap = _settle_browser_tree(desk, snap, dom, cfg)
             sparse = len([e for e in snap.elements if e.action]) < cfg.sparse_threshold
             use_vision = cfg.use_vision and (force_vision or sparse)
             if use_vision and not snap.has_image:
@@ -537,11 +564,12 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             if s_ != sig:
                 break
             same += 1
-        if same >= cfg.max_repeats:
+        limit = 2 if plan.action == "launch" else cfg.max_repeats
+        if same >= limit:
             emit("agent_note", note=f"stuck: repeated the same action {same} times")
             emit("status", status="error")
             return AgentStatus.FAILED
-        if same == cfg.max_repeats - 1:
+        if same == limit - 1 and same > 1:
             notes.append("You are repeating the same action. Do something different, or reply done/fail.")
 
         # ---- act
