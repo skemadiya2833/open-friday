@@ -116,6 +116,7 @@ class ToolRegistry:
                          risk="unknown", caller=caller, run_id=run_id)
             return ToolResult.error(f"Unknown tool: {name}")
 
+        args = _normalize_args(spec.input_schema, args)
         errors = sorted(validator.iter_errors(args), key=lambda e: list(e.path))
         if errors:
             msg = "; ".join(
@@ -230,6 +231,25 @@ def tools_prompt_block(allowed: list[str]) -> str:
         )
         lines.append(f"- {t.name}({sig}): {t.description}")
     return "\n".join(lines)
+
+
+_WRAPPERS = ("args", "arguments", "parameters", "params", "input")
+
+
+def _normalize_args(schema: dict, args: dict) -> dict:
+    """Local models often wrap arguments ({"args": {...}}) or pass junk to no-argument tools.
+    Unwrap a lone wrapper key, and for tools that take no arguments drop everything. Never invents values."""
+    props = schema.get("properties", {}) or {}
+    if len(args) == 1:
+        (k, v), = args.items()
+        if k in _WRAPPERS and k not in props:
+            if isinstance(v, dict):
+                args = dict(v)
+            elif v in (None, "", [], ()):
+                args = {}
+    if not props and schema.get("additionalProperties") is False:
+        return {}
+    return args
 
 
 def tool_schema_json(name: str) -> str:
