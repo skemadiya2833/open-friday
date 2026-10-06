@@ -97,7 +97,9 @@ class ToolRegistry:
         *,
         caller: str = "agent",
         run_id: str | None = None,
+        force_ask: bool = False,
     ) -> ToolResult:
+        """``force_ask`` bypasses run grants (used for irreversible actions)."""
         from friday.safety.approval import get_approval_service
         from friday.safety.audit import get_audit_log
         from friday.safety.policy import get_policy
@@ -133,6 +135,12 @@ class ToolRegistry:
             audit.record(tool=name, args=args, outcome="denied", approver="policy:deny",
                          risk=spec.risk.value, caller=caller, run_id=run_id, detail=decision.reason)
             return ToolResult.error(f"Denied by policy: {decision.reason}", denied=True)
+
+        if decision.action == "ask" and spec.risk.value == "confirm" and run_id and not force_ask:
+            from friday.safety.grant import find as _find_grant
+            g = _find_grant(run_id, name)
+            if g is not None:
+                decision.action, approver = "allow", g.approver
 
         if decision.action == "ask":
             approved, who = get_approval_service().request(
@@ -196,8 +204,8 @@ def list_tools(allowed: list[str] | None = None) -> list[ToolSpec]:
 
 
 def call_tool_result(name: str, args: dict[str, Any] | None, *, caller: str = "agent",
-                     run_id: str | None = None) -> ToolResult:
-    return get_registry().call(name, args, caller=caller, run_id=run_id)
+                     run_id: str | None = None, force_ask: bool = False) -> ToolResult:
+    return get_registry().call(name, args, caller=caller, run_id=run_id, force_ask=force_ask)
 
 
 def call_tool(name: str, args: dict[str, Any] | None, *, caller: str = "agent",

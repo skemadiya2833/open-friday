@@ -217,6 +217,14 @@ class RunManager:
 
 
 def _default_runner(objective: str, ctrl: AgentController):
+    import os
+
+    # AGENT_BACKEND=legacy (default) keeps the original screenshot loop. "hybrid" uses the
+    # accessibility-tree-first agent and needs the Windows-MCP server enabled in config/mcp_servers.yaml.
+    if os.getenv("AGENT_BACKEND", "legacy").strip().lower() == "hybrid":
+        from friday.agent.hybrid import run_hybrid
+
+        return run_hybrid(objective, controller=ctrl)
     from friday.agent.loop import run_agent
 
     return run_agent(objective, controller=ctrl, use_overlay=True)

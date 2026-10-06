@@ -98,6 +98,12 @@ def emergency_stop(reason: str = "manual", *, stop_mcp: bool = True) -> TriggerR
 
         return _manager.kill_all() if (stop_mcp and _manager is not None) else 0
 
+    def _grants() -> int:
+        from friday.safety.grant import revoke_all
+
+        return revoke_all()
+
+    step("grants", _grants)   # first: nothing may act on a grant after this point
     rep.controllers_cancelled = step("controllers", _ctrls)
     rep.runs_cancelled = step("runs", _runs)
     rep.approvals_denied = step("approvals", _approvals)

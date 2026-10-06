@@ -92,14 +92,36 @@ def _ollama_ready(model: str) -> tuple[bool, str]:
     return (model in names, "ok" if model in names else f"model {model!r} not pulled; have {sorted(names)}")
 
 
-def _make_backend(name: str):
+BENCH_TRUSTED_TITLES = [r"^(Counter test|Name form|Submitted|Preferences|Long page|Page one|Page two|"
+                        r"Canvas click|Canvas drag|Target game)\b"]
+
+
+def _start_desktop_server() -> None:
+    """Start Windows-MCP for a benchmark run. The explicit --backend hybrid flag is the owner's opt-in."""
+    from friday.mcp_client.manager import get_mcp_manager
+
+    mgr = get_mcp_manager()
+    mgr.load()
+    mgr.start("windows")
+    if not mgr.wait_ready("windows", timeout=240):
+        raise RuntimeError("Windows-MCP did not become ready: " + str(mgr.status()))
+
+
+def _make_backend(name: str, a=None):
     if name == "legacy":
         from friday.agent.loop import run_agent
 
         return lambda objective, ctrl: run_agent(objective, controller=ctrl, use_overlay=False)
-    from friday.agent.hybrid import run_hybrid   # added in Stage C
+    from friday.agent.guard import GuardConfig
+    from friday.agent.hybrid import HybridConfig, run_hybrid
 
-    return lambda objective, ctrl: run_hybrid(objective, controller=ctrl)
+    # Benchmark-only, explicit owner choices (recorded in docs/DECISIONS_NEEDED.md D-008):
+    #  * the read-only Settings tasks need the default "Settings" denial lifted;
+    #  * the local test pages are marked trusted so their Submit/Confirm buttons do not need a human.
+    guard = GuardConfig(deny_exceptions=[r"^Settings$"], trusted_titles=BENCH_TRUSTED_TITLES)
+    cfg = HybridConfig(model=a.model, num_ctx=a.ctx, max_steps=a.max_iter, guard=guard,
+                       grant_issuer="benchmark-cli", coord_space=(a.coord_space or None) if a.coord_space in ("pixel", "norm1000") else None)
+    return lambda objective, ctrl: run_hybrid(objective, controller=ctrl, config=cfg)
 
 
 def main(argv=None) -> int:
@@ -154,7 +176,9 @@ def main(argv=None) -> int:
         time.sleep(1)
 
     site = Site()
-    backend = _make_backend(a.backend)
+    if a.backend == "hybrid":
+        _start_desktop_server()
+    backend = _make_backend(a.backend, a)
     root = Path(tempfile.mkdtemp(prefix="friday_bench_"))
     wu.show_desktop()                               # minimize everything (restored at the end)
     mgr = get_run_manager()
