@@ -1,0 +1,153 @@
+{
+ "meta": {
+  "backend": "hybrid",
+  "model": "qwen3-vl:8b-instruct",
+  "num_ctx": 32768,
+  "max_iterations": 15,
+  "timeout_s": 120,
+  "reps": 1,
+  "coord_space": "auto",
+  "started": "2026-10-06T15:11:06",
+  "gpu_baseline_mb": 9108,
+  "finished": "2026-10-06T15:15:48",
+  "aborted_by_estop": false
+ },
+ "runs": [
+  {
+   "task": "notepad_open",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad.",
+   "outcome": "PASS",
+   "success": true,
+   "status": "completed",
+   "steps": 1,
+   "actions": [
+    "LAUNCH"
+   ],
+   "wall_s": 29.0,
+   "peak_vram_mb": 12021,
+   "failure_reason": "",
+   "check": "notepad window present"
+  },
+  {
+   "task": "notepad_type_save",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad, type exactly: hello friday  then save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_17acihbe\\notepad_type_save_1\\n2.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "completed",
+   "steps": 9,
+   "actions": [
+    "LAUNCH",
+    "TYPE",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "TYPE_XY",
+    "TYPE",
+    "TYPE"
+   ],
+   "wall_s": 64.2,
+   "peak_vram_mb": 12275,
+   "failure_reason": "agent completed but check failed: file missing: n2.txt",
+   "check": "file missing: n2.txt"
+  },
+  {
+   "task": "calc_open",
+   "group": "calculator",
+   "rep": 1,
+   "objective": "Open the Calculator app.",
+   "outcome": "PASS",
+   "success": true,
+   "status": "completed",
+   "steps": 1,
+   "actions": [
+    "LAUNCH"
+   ],
+   "wall_s": 9.0,
+   "peak_vram_mb": 12272,
+   "failure_reason": "",
+   "check": "ok"
+  },
+  {
+   "task": "calc_add",
+   "group": "calculator",
+   "rep": 1,
+   "objective": "Open Calculator and compute 12 + 30. Leave the result on screen.",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "failed",
+   "steps": 11,
+   "actions": [
+    "LAUNCH",
+    "CLICK",
+    "TYPE",
+    "CLICK",
+    "CLICK",
+    "TYPE",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "TYPE",
+    "TYPE"
+   ],
+   "wall_s": 59.7,
+   "peak_vram_mb": 12340,
+   "failure_reason": "agent failed: see actions; display was 'Display is 12,112', wanted ...42",
+   "check": "display was 'Display is 12,112', wanted ...42"
+  },
+  {
+   "task": "explorer_open_folder",
+   "group": "explorer",
+   "rep": 1,
+   "objective": "Open File Explorer and show the folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_17acihbe\\explorer_open_folder_1",
+   "outcome": "PASS",
+   "success": true,
+   "status": "failed",
+   "steps": 3,
+   "actions": [
+    "CLICK",
+    "TYPE",
+    "TYPE"
+   ],
+   "wall_s": 19.0,
+   "peak_vram_mb": 12362,
+   "failure_reason": "",
+   "check": "ok"
+  },
+  {
+   "task": "settings_about",
+   "group": "settings",
+   "rep": 1,
+   "objective": "Open Windows Settings and go to System, then About, to read the device specifications. Do not change anything.",
+   "outcome": "PASS",
+   "success": true,
+   "status": "max_iterations",
+   "steps": 15,
+   "actions": [
+    "LAUNCH",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "SCROLL",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK"
+   ],
+   "wall_s": 74.1,
+   "peak_vram_mb": 12379,
+   "failure_reason": "",
+   "check": "ok"
+  }
+ ]
+}
