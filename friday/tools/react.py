@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from friday.config import MAX_TOOL_STEPS
 from friday.models.manager import get_model_manager
-from friday.tools.registry import call_tool, tools_prompt_block
+from friday.tools.registry import call_tool_result, tools_prompt_block
 
 _TOOL_RE = re.compile(
     r"```(?:json)?\s*(\{.*?\})\s*```|(\{[^{}]*\"tool\"\s*:\s*\"[^\"]+\"[^{}]*\})",
@@ -99,7 +99,9 @@ Step {step + 1}/{steps}. Decide.
             if not args:
                 args = {k: v for k, v in call.items() if k != "tool"}
             emit("tool_call", {"tool": name, "args": args})
-            out = call_tool(name, args)
+            # Model output (possibly shaped by untrusted screen/web text) goes through
+            # policy + approval + audit; it is never executed directly.
+            out = call_tool_result(name, args, caller="react").text()
             emit("tool_result", {"tool": name, "result": out[:1000]})
             tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
             observations += f"\nObservation from {name}:\n{out}\n"

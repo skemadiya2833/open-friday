@@ -40,7 +40,9 @@ def execute_action(
         from friday.ui import overlay
         overlay.update(step_index, action, "running", step=data)
 
-    if is_risky(step):
+    # RUN_SHELL is approved by the tool layer (policy + approval service + audit),
+    # so it is excluded here to avoid prompting the owner twice.
+    if action != "RUN_SHELL" and is_risky(step):
         if OVERLAY_ENABLED:
             from friday.ui import overlay
             overlay.update(step_index, action, "waiting for approval", step=data)
@@ -463,33 +465,22 @@ def _dispatch(step: ActionStep, session=None) -> StepResult:
         if not cmd:
             print("  -> RUN_SHELL missing command, skipped.")
             return StepResult.SKIPPED
-        from friday.config import SHELL_TOOLS_ENABLED
+        from friday.tools.registry import call_tool_result
         from friday.ui.events import emit
-        if not SHELL_TOOLS_ENABLED:
-            print("  -> Shell tools disabled (SHELL_TOOLS_ENABLED=false).")
-            return StepResult.SKIPPED
+
+        # One code path for shell: policy -> approval -> audit -> hardened runner.
         emit("shell_start", command=cmd)
-        print(f"  -> Running shell: {cmd}")
-        import subprocess
-        try:
-            proc = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", cmd],
-                capture_output=True,
-                text=True,
-                timeout=45,
-            )
-            out = ((proc.stdout or "") + (proc.stderr or ""))[:4000]
-            emit("shell_end", command=cmd, exit_code=proc.returncode, output=out)
-            print(f"  -> Shell exit={proc.returncode}\n{out[:500]}")
-            if session is not None:
-                session.history.append(
-                    f"✓ RUN_SHELL exit={proc.returncode} :: {cmd[:60]}"
-                )
-        except Exception as exc:
-            emit("shell_end", command=cmd, exit_code=-1, output=str(exc))
-            print(f"  -> Shell error: {exc}")
-            return StepResult.ERROR
-        return StepResult.REOBSERVE
+        print(f"  -> Running shell via tool layer: {cmd}")
+        result = call_tool_result("run_shell", {"command": cmd}, caller="agent-loop")
+        out = result.text()
+        code = result.metadata.get("exit_code", -1 if result.is_error else 0)
+        emit("shell_end", command=cmd, exit_code=code, output=out)
+        print(f"  -> Shell result (error={result.is_error})\n{out[:500]}")
+        if result.metadata.get("denied"):
+            return StepResult.SKIPPED
+        if session is not None:
+            session.history.append(f"{'x' if result.is_error else 'ok'} RUN_SHELL exit={code} :: {cmd[:60]}")
+        return StepResult.ERROR if result.is_error and code == -1 else StepResult.REOBSERVE
 
     if action == "WAIT":
         duration = float(step.duration if step.duration is not None else 1.5)

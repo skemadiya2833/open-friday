@@ -570,3 +570,12 @@ select:focus, input:focus, textarea:focus {
   .topbar { grid-template-columns: 1fr; gap: 6px; }
   .topbar-center, .topbar-right { justify-content: flex-start; }
 }
+
+/* Tools & MCP */
+.card-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
+.approval-overlay { position: fixed; inset: 0; background: rgba(2, 4, 8, 0.82); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.approval-overlay[hidden] { display: none; }
+.approval-box { background: var(--panel); border: 1px solid var(--line-hot); border-radius: var(--radius); padding: 22px; width: min(640px, 92vw); }
+.approval-box pre { max-height: 40vh; overflow: auto; background: rgba(0,0,0,0.4); padding: 10px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+.approval-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }

@@ -68,7 +68,8 @@
         <button class="nav-btn" data-view="memory"><span class="nav-code">02</span><span class="nav-text">Memory</span></button>
         <button class="nav-btn" data-view="skills"><span class="nav-code">03</span><span class="nav-text">Skills</span></button>
         <button class="nav-btn" data-view="tasks"><span class="nav-code">04</span><span class="nav-text">Tasks</span></button>
-        <button class="nav-btn" data-view="settings"><span class="nav-code">05</span><span class="nav-text">Systems</span></button>
+        <button class="nav-btn" data-view="tools"><span class="nav-code">05</span><span class="nav-text">Tools</span></button>
+        <button class="nav-btn" data-view="settings"><span class="nav-code">06</span><span class="nav-text">Systems</span></button>
       </nav>
 
       <div class="rail-foot">
@@ -182,6 +183,27 @@
         <div class="cards" id="taskList"></div>
       </section>
 
+      <!-- TOOLS & MCP -->
+      <section class="view" id="view-tools">
+        <header class="top">
+          <div>
+            <p class="eyebrow">CONTROL CENTER</p>
+            <h1>Tools &amp; MCP</h1>
+          </div>
+          <div class="top-actions">
+            <button type="button" id="mcpReload">Reload config</button>
+            <button type="button" id="mcpKill" class="danger">KILL SWITCH</button>
+          </div>
+        </header>
+        <p class="lede" id="toolsPolicyLine"></p>
+        <div class="plan-head"><h2>MCP servers</h2></div>
+        <div class="cards" id="mcpServers"></div>
+        <div class="plan-head"><h2>Registered tools</h2><span class="muted" id="toolsCount"></span></div>
+        <div class="cards" id="toolList"></div>
+        <div class="plan-head"><h2>Audit log</h2><span class="muted" id="auditChain"></span></div>
+        <div class="cards" id="auditList"></div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="view" id="view-settings">
         <header class="top">
@@ -195,6 +217,20 @@
     </main>
   </div>
 
+  <div id="approvalOverlay" class="approval-overlay" hidden>
+    <div class="approval-box" role="alertdialog" aria-labelledby="approvalTitle">
+      <p class="eyebrow">APPROVAL REQUIRED</p>
+      <h2 id="approvalTitle"></h2>
+      <p class="muted" id="approvalMeta"></p>
+      <pre id="approvalArgs"></pre>
+      <div class="approval-actions">
+        <button type="button" id="approvalDeny" class="danger">Deny</button>
+        <button type="button" id="approvalAllow">Allow once</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
+  <script src="/tools.js"></script>
 </body>
 </html>

@@ -177,10 +177,21 @@ WORKSPACE_DIR = os.getenv(
     os.path.join(DATA_DIR, "workspace"),
 )
 CHROMA_DIR = os.path.join(DATA_DIR, "chroma")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_DIR = os.getenv("FRIDAY_CONFIG_DIR", os.path.join(_REPO_ROOT, "config"))
+POLICY_PATH = os.getenv("FRIDAY_POLICY_FILE", os.path.join(CONFIG_DIR, "policy.yaml"))
+MCP_CONFIG_PATH = os.getenv("FRIDAY_MCP_CONFIG", os.path.join(CONFIG_DIR, "mcp_servers.yaml"))
+AUDIT_LOG_PATH = os.getenv("FRIDAY_AUDIT_LOG", os.path.join(DATA_DIR, "audit", "tool_calls.jsonl"))
+# Seconds a confirm-tier call waits for the owner before it is denied (fail closed).
+APPROVAL_TIMEOUT_SECONDS = float(os.getenv("FRIDAY_APPROVAL_TIMEOUT", "120"))
 CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
 SERVER_HOST = os.getenv("FRIDAY_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
+# Required (and enforced at startup) when FRIDAY_HOST is not a loopback address.
+API_TOKEN = os.getenv("FRIDAY_API_TOKEN", "").strip()
+# Extra Host header names accepted by the request guard (e.g. a LAN name behind a TLS proxy).
+EXTRA_ALLOWED_HOSTS = [h for h in os.getenv("FRIDAY_ALLOWED_HOSTS", "").split(",") if h.strip()]
 SKILLS_DIR = os.getenv(
     "FRIDAY_SKILLS_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "builtin"),

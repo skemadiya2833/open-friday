@@ -1,255 +1,223 @@
-"""Tool registry for ReAct-lite agentic skills."""
+"""Tool registry v2.
+
+* thread-safe, runtime register / unregister (needed by the MCP client manager)
+* JSON-Schema validated arguments, structured `ToolResult`
+* every call goes through policy -> approval -> audit
+* legacy helpers (`get_tool`, `list_tools`, `call_tool`, `tools_prompt_block`) keep working
+"""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import threading
+import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from friday.config import SHELL_TOOLS_ENABLED, WORKSPACE_DIR, ensure_data_dirs
+from jsonschema import Draft202012Validator
 
+from friday.config import WORKSPACE_DIR, ensure_data_dirs
+from friday.tools.paths import resolve_within
+from friday.tools.types import ToolResult, ToolRisk, ToolSpec
 
-@dataclass
-class ToolSpec:
-    name: str
-    description: str
-    parameters: dict[str, Any]
-    handler: Callable[[dict[str, Any]], str]
-    risky: bool = False
+__all__ = [
+    "ToolRegistry", "ToolSpec", "ToolRisk", "ToolResult", "get_registry",
+    "get_tool", "list_tools", "call_tool", "call_tool_result", "tools_prompt_block",
+]
 
 
 def _safe_workspace_path(rel: str) -> Path:
+    """Resolve ``rel`` inside the workspace or raise ``ValueError`` (PathEscapeError)."""
     ensure_data_dirs()
-    root = Path(WORKSPACE_DIR).resolve()
-    target = (root / rel).resolve()
-    if not str(target).startswith(str(root)):
-        raise ValueError("Path escapes workspace sandbox")
-    return target
+    return resolve_within(WORKSPACE_DIR, rel)
 
 
-def _web_search(args: dict[str, Any]) -> str:
-    from friday.knowledge.search import perform_knowledge_search
+def _shell_enabled() -> bool:
+    import friday.config as cfg
 
-    query = str(args.get("query") or "").strip()
-    if not query:
-        return "Missing query"
-    note = perform_knowledge_search(query)
-    return note.summary
+    return bool(cfg.SHELL_TOOLS_ENABLED)
 
 
-def _memory_search(args: dict[str, Any]) -> str:
-    from friday.memory import get_memory
-
-    hits = get_memory().search(str(args.get("query") or ""), limit=int(args.get("limit") or 5))
-    if not hits:
-        return "No memories found."
-    return "\n".join(f"- ({h.score:.2f}) [{h.id[:8]}] {h.text[:200]}" for h in hits)
+def _summarize(result: ToolResult) -> str:
+    text = result.text().replace("\n", " ")
+    return text[:300] + ("..." if len(text) > 300 else "")
 
 
-def _memory_add(args: dict[str, Any]) -> str:
-    from friday.memory import get_memory
+class ToolRegistry:
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._tools: dict[str, ToolSpec] = {}
+        self._validators: dict[str, Draft202012Validator] = {}
+        self.version = 0   # bumped on every change so UIs can poll cheaply
 
-    text = str(args.get("text") or "").strip()
-    if not text:
-        return "Missing text"
-    cid = get_memory().add(text, metadata={"source": "tool"})
-    return f"Stored memory id={cid}"
+    # -- registration ------------------------------------------------------
+    def register(self, spec: ToolSpec, *, replace: bool = False) -> None:
+        Draft202012Validator.check_schema(spec.input_schema)
+        with self._lock:
+            if spec.name in self._tools and not replace:
+                raise ValueError(f"tool already registered: {spec.name}")
+            self._tools[spec.name] = spec
+            self._validators[spec.name] = Draft202012Validator(spec.input_schema)
+            self.version += 1
 
+    def unregister(self, name: str) -> bool:
+        with self._lock:
+            existed = self._tools.pop(name, None) is not None
+            self._validators.pop(name, None)
+            if existed:
+                self.version += 1
+            return existed
 
-def _memory_delete(args: dict[str, Any]) -> str:
-    from friday.memory import get_memory
+    def unregister_source(self, source: str) -> int:
+        with self._lock:
+            names = [n for n, t in self._tools.items() if t.source == source]
+            for n in names:
+                self._tools.pop(n, None)
+                self._validators.pop(n, None)
+            if names:
+                self.version += 1
+            return len(names)
 
-    doc_id = str(args.get("id") or "").strip()
-    ok = get_memory().delete(doc_id)
-    return "Deleted." if ok else "Not found."
+    # -- lookup ------------------------------------------------------------
+    def get(self, name: str) -> ToolSpec | None:
+        with self._lock:
+            return self._tools.get(name)
 
+    def list(self, allowed: list[str] | None = None) -> list[ToolSpec]:
+        with self._lock:
+            if allowed is None:
+                return list(self._tools.values())
+            return [self._tools[n] for n in allowed if n in self._tools]
 
-def _read_file(args: dict[str, Any]) -> str:
-    path = _safe_workspace_path(str(args.get("path") or ""))
-    if not path.exists():
-        return f"File not found: {path.name}"
-    return path.read_text(encoding="utf-8")[:8000]
+    # -- execution ---------------------------------------------------------
+    def call(
+        self,
+        name: str,
+        args: dict[str, Any] | None,
+        *,
+        caller: str = "agent",
+        run_id: str | None = None,
+    ) -> ToolResult:
+        from friday.safety.approval import get_approval_service
+        from friday.safety.audit import get_audit_log
+        from friday.safety.policy import get_policy
 
+        args = dict(args or {})
+        audit = get_audit_log()
+        with self._lock:
+            spec = self._tools.get(name)
+            validator = self._validators.get(name)
 
-def _write_file(args: dict[str, Any]) -> str:
-    path = _safe_workspace_path(str(args.get("path") or ""))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content = str(args.get("content") or "")
-    path.write_text(content, encoding="utf-8")
-    return f"Wrote {len(content)} chars to {path.name}"
+        if spec is None or validator is None:
+            audit.record(tool=name, args=args, outcome="unknown_tool", approver="n/a",
+                         risk="unknown", caller=caller, run_id=run_id)
+            return ToolResult.error(f"Unknown tool: {name}")
 
+        errors = sorted(validator.iter_errors(args), key=lambda e: list(e.path))
+        if errors:
+            msg = "; ".join(
+                f"{'.'.join(str(p) for p in e.path) or '(args)'}: {e.message}" for e in errors[:5]
+            )
+            audit.record(tool=name, args=args, outcome="invalid", approver="n/a",
+                         risk=spec.risk.value, caller=caller, run_id=run_id, detail=msg)
+            return ToolResult.error(f"Invalid arguments for {name}: {msg}")
 
-def _list_files(args: dict[str, Any]) -> str:
-    ensure_data_dirs()
-    root = Path(WORKSPACE_DIR)
-    rel = str(args.get("path") or ".")
-    folder = _safe_workspace_path(rel)
-    if not folder.exists():
-        return "Folder empty / missing"
-    entries = []
-    for p in sorted(folder.iterdir())[:100]:
-        entries.append(("dir " if p.is_dir() else "file") + f" {p.name}")
-    return "\n".join(entries) or "(empty)"
+        policy = get_policy()
+        decision = policy.decide(name, spec.risk, shell_enabled=_shell_enabled())
+        approver = f"policy:{decision.action}"
 
+        if decision.action == "ask" and name == "run_shell" and policy.shell.is_allowlisted(str(args.get("command", ""))):
+            decision.action, approver = "allow", "policy:allowlist"
 
-def _schedule_task(args: dict[str, Any]) -> str:
-    from friday.tasks.scheduler import get_scheduler
+        if decision.action == "deny":
+            audit.record(tool=name, args=args, outcome="denied", approver="policy:deny",
+                         risk=spec.risk.value, caller=caller, run_id=run_id, detail=decision.reason)
+            return ToolResult.error(f"Denied by policy: {decision.reason}", denied=True)
 
-    job = get_scheduler().add_job(
-        prompt=str(args.get("prompt") or args.get("message") or ""),
-        skill_id=str(args.get("skill_id") or "chat"),
-        delay_seconds=args.get("delay_seconds"),
-        run_at=args.get("run_at"),
-        cron=args.get("cron"),
-        title=str(args.get("title") or "Friday task"),
-    )
-    return f"Scheduled task id={job['id']} title={job['title']}"
+        if decision.action == "ask":
+            approved, who = get_approval_service().request(
+                tool=name, risk=spec.risk.value, args=args, reason=decision.reason,
+                caller=caller, run_id=run_id,
+            )
+            approver = who
+            if not approved:
+                audit.record(tool=name, args=args, outcome="denied", approver=who,
+                             risk=spec.risk.value, caller=caller, run_id=run_id, detail="owner approval not granted")
+                return ToolResult.error(f"Not approved ({who}). The owner did not allow {name}.", denied=True)
 
-
-def _list_tasks(args: dict[str, Any]) -> str:
-    from friday.tasks.scheduler import get_scheduler
-
-    jobs = get_scheduler().list_jobs()
-    if not jobs:
-        return "No scheduled tasks."
-    return "\n".join(
-        f"- {j['id'][:8]} [{j['status']}] {j['title']} skill={j['skill_id']}" for j in jobs
-    )
-
-
-def _cancel_task(args: dict[str, Any]) -> str:
-    from friday.tasks.scheduler import get_scheduler
-
-    ok = get_scheduler().cancel(str(args.get("id") or ""))
-    return "Cancelled." if ok else "Task not found."
-
-
-def _start_computer_use(args: dict[str, Any]) -> str:
-    return (
-        "Use the computer_use skill for desktop automation. "
-        f"Objective would be: {args.get('objective') or args.get('prompt')}"
-    )
-
-
-def _plan_list(_args: dict[str, Any]) -> str:
-    from friday.tasks.plan import format_for_prompt, get_plan
-
-    data = get_plan()
-    return f"Today ({data.get('date')}):\n{format_for_prompt()}"
-
-
-def _plan_add(args: dict[str, Any]) -> str:
-    from friday.tasks.plan import add_item
-
-    text = str(args.get("text") or args.get("item") or "").strip()
-    if not text:
-        return "Missing agenda text"
-    note = str(args.get("note") or "")
-    item = add_item(text, note=note)
-    return f"Added to today's plan: {item['text']}"
-
-
-def _plan_done(args: dict[str, Any]) -> str:
-    from friday.tasks.plan import get_plan, set_done
-
-    item_id = str(args.get("id") or "").strip()
-    text = str(args.get("text") or "").strip().lower()
-    data = get_plan()
-    if not item_id and text:
-        for it in data.get("items") or []:
-            if text in str(it.get("text") or "").lower():
-                item_id = it["id"]
-                break
-    if not item_id:
-        return "Could not find that agenda item"
-    item = set_done(item_id, True)
-    return f"Marked done: {item['text']}" if item else "Not found"
+        t0 = time.perf_counter()
+        try:
+            raw = spec.handler(args)
+            result = raw if isinstance(raw, ToolResult) else ToolResult.text_result(str(raw))
+            outcome = "error" if result.is_error else "ok"
+        except Exception as exc:  # noqa: BLE001 - tools must not crash the caller
+            result = ToolResult.error(f"Tool error ({name}): {exc}")
+            outcome = "error"
+        dur = (time.perf_counter() - t0) * 1000.0
+        audit.record(tool=name, args=args, outcome=outcome, approver=approver, risk=spec.risk.value,
+                     duration_ms=dur, result_summary=_summarize(result), caller=caller, run_id=run_id)
+        return result
 
 
-def _plan_remove(args: dict[str, Any]) -> str:
-    from friday.tasks.plan import remove_item
-
-    ok = remove_item(str(args.get("id") or ""))
-    return "Removed." if ok else "Not found"
+_registry: ToolRegistry | None = None
+_registry_lock = threading.Lock()
 
 
-def _run_shell(args: dict[str, Any]) -> str:
-    if not SHELL_TOOLS_ENABLED:
-        return "Shell tools disabled. Set SHELL_TOOLS_ENABLED=true to allow."
-    import subprocess
+def get_registry() -> ToolRegistry:
+    global _registry
+    with _registry_lock:
+        if _registry is None:
+            from friday.tools.builtin import builtin_specs
 
-    cmd = str(args.get("command") or "")
-    if not cmd:
-        return "Missing command"
-    try:
-        proc = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=30,
-        )
-        out = (proc.stdout or "")[:4000]
-        err = (proc.stderr or "")[:1000]
-        return f"exit={proc.returncode}\n{out}\n{err}".strip()
-    except Exception as exc:
-        return f"Shell error: {exc}"
+            reg = ToolRegistry()
+            for spec in builtin_specs():
+                reg.register(spec)
+            _registry = reg
+        return _registry
 
 
-_TOOLS: dict[str, ToolSpec] = {}
+def reset_registry() -> None:
+    """Test hook."""
+    global _registry
+    with _registry_lock:
+        _registry = None
 
 
-def _register_defaults() -> None:
-    specs = [
-        ToolSpec("web_search", "Open a browser Google search for a query", {"query": "str"}, _web_search),
-        ToolSpec("memory_search", "Search vector memory", {"query": "str", "limit": "int?"}, _memory_search),
-        ToolSpec("memory_add", "Store a note in vector memory", {"text": "str"}, _memory_add),
-        ToolSpec("memory_delete", "Delete a memory by id", {"id": "str"}, _memory_delete, risky=True),
-        ToolSpec("read_file", "Read a workspace file", {"path": "str"}, _read_file),
-        ToolSpec("write_file", "Write a workspace file", {"path": "str", "content": "str"}, _write_file),
-        ToolSpec("list_files", "List workspace files", {"path": "str?"}, _list_files),
-        ToolSpec(
-            "schedule_task",
-            "Schedule a future Friday job",
-            {"prompt": "str", "skill_id": "str?", "delay_seconds": "int?", "run_at": "str?", "cron": "str?", "title": "str?"},
-            _schedule_task,
-        ),
-        ToolSpec("list_tasks", "List scheduled tasks", {}, _list_tasks),
-        ToolSpec("cancel_task", "Cancel a scheduled task", {"id": "str"}, _cancel_task),
-        ToolSpec("plan_list", "List today's agenda / plan items", {}, _plan_list),
-        ToolSpec("plan_add", "Add an item to today's plan", {"text": "str", "note": "str?"}, _plan_add),
-        ToolSpec("plan_done", "Mark a today's plan item done", {"id": "str?", "text": "str?"}, _plan_done),
-        ToolSpec("plan_remove", "Remove a today's plan item", {"id": "str"}, _plan_remove),
-        ToolSpec("start_computer_use", "Hint to launch computer use", {"objective": "str"}, _start_computer_use),
-        ToolSpec("run_shell", "Run a shell command (gated)", {"command": "str"}, _run_shell, risky=True),
-    ]
-    for s in specs:
-        _TOOLS[s.name] = s
-
+# ---------------------------------------------------------------------------
+# Legacy (v1) function API
+# ---------------------------------------------------------------------------
 
 def get_tool(name: str) -> ToolSpec | None:
-    if not _TOOLS:
-        _register_defaults()
-    return _TOOLS.get(name)
+    return get_registry().get(name)
 
 
 def list_tools(allowed: list[str] | None = None) -> list[ToolSpec]:
-    if not _TOOLS:
-        _register_defaults()
-    if allowed is None:
-        return list(_TOOLS.values())
-    return [_TOOLS[n] for n in allowed if n in _TOOLS]
+    return get_registry().list(allowed)
 
 
-def call_tool(name: str, args: dict[str, Any]) -> str:
-    tool = get_tool(name)
-    if tool is None:
-        return f"Unknown tool: {name}"
-    try:
-        return tool.handler(args or {})
-    except Exception as exc:
-        return f"Tool error ({name}): {exc}"
+def call_tool_result(name: str, args: dict[str, Any] | None, *, caller: str = "agent",
+                     run_id: str | None = None) -> ToolResult:
+    return get_registry().call(name, args, caller=caller, run_id=run_id)
+
+
+def call_tool(name: str, args: dict[str, Any] | None, *, caller: str = "agent",
+              run_id: str | None = None) -> str:
+    """v1-compatible: returns text only. Prefer :func:`call_tool_result`."""
+    return call_tool_result(name, args, caller=caller, run_id=run_id).text()
 
 
 def tools_prompt_block(allowed: list[str]) -> str:
     lines = []
     for t in list_tools(allowed):
-        lines.append(f"- {t.name}: {t.description} params={json.dumps(t.parameters)}")
+        props = t.input_schema.get("properties", {})
+        required = set(t.input_schema.get("required", []))
+        sig = ", ".join(
+            f"{k}{'' if k in required else '?'}:{v.get('type', 'any')}" for k, v in props.items()
+        )
+        lines.append(f"- {t.name}({sig}): {t.description}")
     return "\n".join(lines)
+
+
+def tool_schema_json(name: str) -> str:
+    spec = get_tool(name)
+    return json.dumps(spec.input_schema) if spec else "{}"

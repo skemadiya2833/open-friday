@@ -1,0 +1,96 @@
+{
+  "sample_seconds": 10.177369614512472,
+  "reference": "Open the calendar and add a meeting with Sunil tomorrow at three thirty in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white.",
+  "results": [
+    {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "load_s": 1.48,
+      "decode_s": 0.501,
+      "rtf": 0.049,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "base",
+      "device": "cuda",
+      "compute_type": "float16",
+      "load_s": 0.58,
+      "decode_s": 0.124,
+      "rtf": 0.012,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "base",
+      "device": "cuda",
+      "compute_type": "int8_float16",
+      "load_s": 0.9,
+      "decode_s": 0.127,
+      "rtf": 0.012,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "small",
+      "device": "cpu",
+      "compute_type": "int8",
+      "load_s": 48.88,
+      "decode_s": 1.51,
+      "rtf": 0.148,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "small",
+      "device": "cuda",
+      "compute_type": "float16",
+      "load_s": 1.19,
+      "decode_s": 0.201,
+      "rtf": 0.02,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "small",
+      "device": "cuda",
+      "compute_type": "int8_float16",
+      "load_s": 1.11,
+      "decode_s": 0.233,
+      "rtf": 0.023,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "large-v3-turbo",
+      "device": "cpu",
+      "compute_type": "int8",
+      "load_s": 145.1,
+      "decode_s": 5.512,
+      "rtf": 0.542,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "large-v3-turbo",
+      "device": "cuda",
+      "compute_type": "float16",
+      "load_s": 2.15,
+      "decode_s": 0.238,
+      "rtf": 0.023,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    },
+    {
+      "model": "large-v3-turbo",
+      "device": "cuda",
+      "compute_type": "int8_float16",
+      "load_s": 3.01,
+      "decode_s": 0.225,
+      "rtf": 0.022,
+      "wer": 0.062,
+      "text": "Open the calendar and add a meeting with Sunil tomorrow at 3.30 in the afternoon. Then remind me to charge the headset and turn the living room lights to warm white."
+    }
+  ]
+}

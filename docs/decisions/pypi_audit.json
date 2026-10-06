@@ -1,0 +1,959 @@
+[
+  {
+    "name": "mss",
+    "version": "10.2.0",
+    "released": "2026-04-23T10:44:57.305145Z",
+    "license": "MIT License",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/BoboTiG/python-mss",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "mss-10.2.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pillow",
+    "version": "12.3.0",
+    "released": "2026-07-01T11:56:38.965595Z",
+    "license": "MIT-CMU",
+    "requires_python": ">=3.10",
+    "home": "https://python-pillow.github.io",
+    "wheel_count": 86,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "pillow-12.3.0-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "httpx",
+    "version": "0.28.1",
+    "released": "2024-12-06T15:37:23.222462Z",
+    "license": "BSD-3-Clause",
+    "requires_python": ">=3.8",
+    "home": "https://github.com/encode/httpx",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "httpx-0.28.1-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pyautogui",
+    "version": "0.9.54",
+    "released": "2023-05-24T20:11:32.972010Z",
+    "license": "BSD",
+    "requires_python": "",
+    "home": "https://github.com/asweigart/pyautogui",
+    "wheel_count": 0,
+    "has_sdist": true,
+    "cp314_win_wheel": false,
+    "cp314_native_wheel": false,
+    "wheel_examples": [],
+    "yanked": false
+  },
+  {
+    "name": "pyperclip",
+    "version": "1.11.0",
+    "released": "2025-09-26T14:40:37.245933Z",
+    "license": "BSD",
+    "requires_python": null,
+    "home": "https://github.com/asweigart/pyperclip",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pyperclip-1.11.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "python-dotenv",
+    "version": "1.2.4",
+    "released": "2026-10-01T05:36:10.000890Z",
+    "license": "BSD-3-Clause",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/theskumar/python-dotenv",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "python_dotenv-1.2.4-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "google-generativeai",
+    "version": "0.8.6",
+    "released": "2025-12-16T17:53:58.610776Z",
+    "license": "Apache 2.0",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/google/generative-ai-python",
+    "wheel_count": 1,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "google_generativeai-0.8.6-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "numpy",
+    "version": "2.5.3",
+    "released": "2026-09-06T16:27:47.073273Z",
+    "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+    "requires_python": ">=3.12",
+    "home": null,
+    "wheel_count": 65,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "numpy-2.5.3-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "fastapi",
+    "version": "0.142.2",
+    "released": "2026-09-30T09:51:11.277181Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/fastapi/fastapi",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "fastapi-0.142.2-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "uvicorn",
+    "version": "0.54.0",
+    "released": "2026-09-25T06:52:37.601479Z",
+    "license": "BSD-3-Clause",
+    "requires_python": ">=3.10",
+    "home": "https://uvicorn.dev/",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "uvicorn-0.54.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pydantic",
+    "version": "2.13.5",
+    "released": "2026-08-28T14:04:00.916255Z",
+    "license": "MIT",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/pydantic/pydantic",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pydantic-2.13.5-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pyyaml",
+    "version": "6.0.3",
+    "released": "2025-09-29T20:27:46.049234Z",
+    "license": "MIT",
+    "requires_python": ">=3.8",
+    "home": "https://pyyaml.org/",
+    "wheel_count": 72,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "pyyaml-6.0.3-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "chromadb",
+    "version": "1.5.9",
+    "released": "2026-05-05T05:54:54.942211Z",
+    "license": "Apache Software License",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/chroma-core/chroma",
+    "wheel_count": 5,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "chromadb-1.5.9-cp39-abi3-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "apscheduler",
+    "version": "3.11.3",
+    "released": "2026-06-28T19:39:22.493945Z",
+    "license": "MIT",
+    "requires_python": ">=3.8",
+    "home": null,
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "apscheduler-3.11.3-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pystray",
+    "version": "0.19.5",
+    "released": "2023-09-17T13:44:26.872081Z",
+    "license": "LGPLv3",
+    "requires_python": "",
+    "home": "https://github.com/moses-palmer/pystray",
+    "wheel_count": 1,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pystray-0.19.5-py2.py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "faster-whisper",
+    "version": "1.2.1",
+    "released": "2025-10-31T11:35:47.794651Z",
+    "license": "MIT",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/SYSTRAN/faster-whisper",
+    "wheel_count": 1,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "faster_whisper-1.2.1-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pyttsx3",
+    "version": "2.99",
+    "released": "2025-07-08T12:24:21.314616Z",
+    "license": "MPL-2.0",
+    "requires_python": null,
+    "home": "https://github.com/nateshmbhat/pyttsx3",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pyttsx3-2.99-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "edge-tts",
+    "version": "7.2.8",
+    "released": "2026-03-22T19:57:50.962336Z",
+    "license": "GNU Lesser General Public License v3 (LGPLv3)",
+    "requires_python": ">=3.7",
+    "home": "https://github.com/rany2/edge-tts",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "edge_tts-7.2.8-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "python-multipart",
+    "version": "0.0.32",
+    "released": "2026-06-04T16:18:58.647906Z",
+    "license": "Apache-2.0",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/Kludex/python-multipart",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "python_multipart-0.0.32-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "google-genai",
+    "version": "2.28.0",
+    "released": "2026-10-02T17:58:14.454323Z",
+    "license": "Apache-2.0",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/googleapis/python-genai",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "google_genai-2.28.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "mcp",
+    "version": "2.3.0",
+    "released": "2026-10-02T22:06:56.091381Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://modelcontextprotocol.io",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "mcp-2.3.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "ctranslate2",
+    "version": "4.8.2",
+    "released": "2026-08-31T19:38:22.744239Z",
+    "license": "MIT",
+    "requires_python": ">=3.9",
+    "home": "https://opennmt.net",
+    "wheel_count": 35,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "ctranslate2-4.8.2-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "onnxruntime",
+    "version": "1.30.0",
+    "released": "2026-09-10T16:32:15.532123Z",
+    "license": "MIT License",
+    "requires_python": ">=3.11",
+    "home": "https://onnxruntime.ai",
+    "wheel_count": 24,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "onnxruntime-1.30.0-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "onnxruntime-gpu",
+    "version": "1.30.0",
+    "released": "2026-09-10T16:13:52.095543Z",
+    "license": "MIT License",
+    "requires_python": ">=3.11",
+    "home": "https://onnxruntime.ai",
+    "wheel_count": 16,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "onnxruntime_gpu-1.30.0-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "torch",
+    "version": "2.14.1",
+    "released": "2026-09-30T17:54:54.838118Z",
+    "license": "Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause ...",
+    "requires_python": ">=3.10",
+    "home": "https://pytorch.org",
+    "wheel_count": 24,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "torch-2.14.1-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "openwakeword",
+    "version": "0.6.0",
+    "released": "2024-02-11T20:56:17.854558Z",
+    "license": "Apache Software License",
+    "requires_python": ">=3.7",
+    "home": "https://github.com/dscripka/openWakeWord",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "openwakeword-0.6.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "kokoro",
+    "version": "0.9.4",
+    "released": "2025-04-05T22:01:35.294948Z",
+    "license": "Apache Software License",
+    "requires_python": "<3.13,>=3.10",
+    "home": "https://github.com/hexgrad/kokoro",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "kokoro-0.9.4-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "kokoro-onnx",
+    "version": "0.6.1",
+    "released": "2026-08-19T00:40:37.021840Z",
+    "license": "...",
+    "requires_python": "<3.14,>=3.10",
+    "home": "https://github.com/thewh1teagle/kokoro-onnx",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "kokoro_onnx-0.6.1-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "piper-tts",
+    "version": "1.8.0",
+    "released": "2026-09-04T16:47:31.908625Z",
+    "license": "GPL-3.0-or-later",
+    "requires_python": ">=3.9",
+    "home": "http://github.com/OHF-voice/piper1-gpl",
+    "wheel_count": 5,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "piper_tts-1.8.0-cp39-abi3-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "silero-vad",
+    "version": "6.2.3",
+    "released": "2026-09-23T11:37:22.208045Z",
+    "license": "MIT License",
+    "requires_python": ">=3.8",
+    "home": "https://github.com/snakers4/silero-vad",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "silero_vad-6.2.3-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "sounddevice",
+    "version": "0.5.6",
+    "released": "2026-08-17T07:55:05.048121Z",
+    "license": "MIT",
+    "requires_python": ">=3.7",
+    "home": null,
+    "wheel_count": 5,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "sounddevice-0.5.6-py3-none-any.whl",
+      "sounddevice-0.5.6-py3-none-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pywinauto",
+    "version": "0.6.9",
+    "released": "2025-01-06T11:30:01.801593Z",
+    "license": "BSD 3-clause",
+    "requires_python": null,
+    "home": "https://github.com/pywinauto/pywinauto",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pywinauto-0.6.9-py2.py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "uiautomation",
+    "version": "2.0.29",
+    "released": "2025-08-05T05:14:41.194744Z",
+    "license": "Apache 2.0",
+    "requires_python": null,
+    "home": "https://github.com/yinkaisheng/Python-UIAutomation-for-Windows",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "uiautomation-2.0.29-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "playwright",
+    "version": "1.63.0",
+    "released": "2026-09-15T16:49:36.455342Z",
+    "license": "Apache-2.0",
+    "requires_python": ">=3.10",
+    "home": null,
+    "wheel_count": 8,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "playwright-1.63.0-py3-none-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "psutil",
+    "version": "7.2.2",
+    "released": "2026-01-28T18:15:36.514806Z",
+    "license": "BSD-3-Clause",
+    "requires_python": ">=3.6",
+    "home": "https://github.com/giampaolo/psutil",
+    "wheel_count": 20,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "psutil-7.2.2-cp37-abi3-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "nvidia-ml-py",
+    "version": "13.615.71",
+    "released": "2026-09-25T15:15:28.226074Z",
+    "license": "BSD",
+    "requires_python": null,
+    "home": "https://forums.developer.nvidia.com",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "nvidia_ml_py-13.615.71-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "jsonschema",
+    "version": "4.26.0",
+    "released": "2026-01-07T13:41:07.246891Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/python-jsonschema/jsonschema",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "jsonschema-4.26.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pytest",
+    "version": "9.1.1",
+    "released": "2026-06-19T10:58:32.857420Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://docs.pytest.org/en/latest/",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pytest-9.1.1-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "ruff",
+    "version": "0.16.10",
+    "released": "2026-10-01T18:03:21.697537Z",
+    "license": "MIT",
+    "requires_python": ">=3.7",
+    "home": "https://docs.astral.sh/ruff",
+    "wheel_count": 17,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "ruff-0.16.10-py3-none-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "uv",
+    "version": "0.12.23",
+    "released": "2026-10-03T17:33:01.864213Z",
+    "license": "MIT OR Apache-2.0",
+    "requires_python": ">=3.8",
+    "home": "https://pypi.org/project/uv/",
+    "wheel_count": 18,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "uv-0.12.23-py3-none-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "windows-mcp",
+    "version": "0.8.7",
+    "released": "2026-09-30T12:05:57.680682Z",
+    "license": "MIT License",
+    "requires_python": ">=3.14",
+    "home": "https://github.com/CursorTouch",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "windows_mcp-0.8.7-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pycaw",
+    "version": "20260927",
+    "released": "2026-09-26T20:05:02.191942Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/AndreMiras/pycaw",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pycaw-20260927-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pywin32",
+    "version": "312",
+    "released": "2026-06-04T07:49:57.531986Z",
+    "license": "PSF",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/mhammond/pywin32",
+    "wheel_count": 21,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "pywin32-312-cp314-cp314-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "comtypes",
+    "version": "1.4.17",
+    "released": "2026-09-21T08:08:07.687537Z",
+    "license": "MIT",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/enthought/comtypes",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "comtypes-1.4.17-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "keyboard",
+    "version": "0.13.5",
+    "released": "2020-03-23T21:47:06.614324Z",
+    "license": "MIT",
+    "requires_python": "",
+    "home": "https://github.com/boppreh/keyboard",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "keyboard-0.13.5-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pynput",
+    "version": "1.8.2",
+    "released": "2026-05-12T19:11:39.464027Z",
+    "license": "LGPLv3",
+    "requires_python": null,
+    "home": "https://github.com/moses-palmer/pynput",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pynput-1.8.2-py2.py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "openai",
+    "version": "3.24.0",
+    "released": "2026-10-02T15:55:18.851829Z",
+    "license": "Apache-2.0",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/openai/openai-python",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "openai-3.24.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "tomli-w",
+    "version": "1.2.0",
+    "released": "2025-01-15T12:07:24.262974Z",
+    "license": "MIT License",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/hukkin/tomli-w",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "tomli_w-1.2.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "webrtcvad",
+    "version": "2.0.10",
+    "released": "2017-01-07T23:05:18.732212Z",
+    "license": "MIT",
+    "requires_python": "",
+    "home": "https://github.com/wiseman/py-webrtcvad",
+    "wheel_count": 0,
+    "has_sdist": true,
+    "cp314_win_wheel": false,
+    "cp314_native_wheel": false,
+    "wheel_examples": [],
+    "yanked": false
+  },
+  {
+    "name": "pyaudio",
+    "version": "0.2.14",
+    "released": "2024-11-20T19:12:13.616733Z",
+    "license": "MIT",
+    "requires_python": "",
+    "home": "https://people.csail.mit.edu/hubert/pyaudio/",
+    "wheel_count": 12,
+    "has_sdist": true,
+    "cp314_win_wheel": false,
+    "cp314_native_wheel": false,
+    "wheel_examples": [],
+    "yanked": false
+  },
+  {
+    "name": "soundfile",
+    "version": "0.14.0",
+    "released": "2026-06-06T08:58:47.869592Z",
+    "license": "BSD 3-Clause License",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/bastibe/python-soundfile",
+    "wheel_count": 8,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "soundfile-0.14.0-py2.py3-none-any.whl",
+      "soundfile-0.14.0-py2.py3-none-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "misaki",
+    "version": "0.9.4",
+    "released": "2025-04-05T21:57:14.186483Z",
+    "license": "Apache Software License",
+    "requires_python": "<3.13,>=3.8",
+    "home": null,
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "misaki-0.9.4-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "espeakng-loader",
+    "version": "0.2.4",
+    "released": "2025-01-17T01:23:27.463343Z",
+    "license": "...",
+    "requires_python": ">=3.6",
+    "home": null,
+    "wheel_count": 6,
+    "has_sdist": false,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "espeakng_loader-0.2.4-py3-none-win_amd64.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "bleak",
+    "version": "3.0.2",
+    "released": "2026-05-02T23:01:04.066517Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/hbldh/bleak",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "bleak-3.0.2-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "homeassistant-api",
+    "version": "6.1.0",
+    "released": "2026-09-01T20:30:29.052979Z",
+    "license": "GPL-3.0-or-later",
+    "requires_python": "<4.0,>=3.11",
+    "home": "https://github.com/HomeAssistant-API/HomeAssistantAPI",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "homeassistant_api-6.1.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pytest-asyncio",
+    "version": "1.4.0",
+    "released": "2026-05-26T09:56:04.083461Z",
+    "license": "Apache-2.0",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/pytest-dev/pytest-asyncio",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pytest_asyncio-1.4.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "mypy",
+    "version": "2.4.0",
+    "released": "2026-10-01T20:40:39.229391Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://www.mypy-lang.org/",
+    "wheel_count": 51,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": true,
+    "wheel_examples": [
+      "mypy-2.4.0-cp314-cp314-win_amd64.whl",
+      "mypy-2.4.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pip-tools",
+    "version": "7.6.1",
+    "released": "2026-08-12T00:04:08.937500Z",
+    "license": "BSD",
+    "requires_python": ">=3.9",
+    "home": null,
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pip_tools-7.6.1-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "pydantic-settings",
+    "version": "2.15.0",
+    "released": "2026-08-07T09:24:57.419335Z",
+    "license": "MIT",
+    "requires_python": ">=3.10",
+    "home": "https://github.com/pydantic/pydantic-settings",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "pydantic_settings-2.15.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  },
+  {
+    "name": "keyring",
+    "version": "25.7.0",
+    "released": "2025-11-16T16:26:09.482176Z",
+    "license": "MIT",
+    "requires_python": ">=3.9",
+    "home": "https://github.com/jaraco/keyring",
+    "wheel_count": 1,
+    "has_sdist": true,
+    "cp314_win_wheel": true,
+    "cp314_native_wheel": false,
+    "wheel_examples": [
+      "keyring-25.7.0-py3-none-any.whl"
+    ],
+    "yanked": false
+  }
+]

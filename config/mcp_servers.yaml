@@ -1,0 +1,60 @@
+# MCP servers Friday may launch as isolated subprocesses (stdio transport).
+# Tools are discovered from the running server at startup and registered as
+# "<server>__<ToolName>". Nothing here is executed unless `enabled: true`
+# (or started from the Control Center "Tools & MCP" page).
+version: 1
+
+# Environment variables forwarded to every server subprocess. Everything else
+# (API keys, tokens, ...) is NOT inherited.
+inherit_env:
+  - PATH
+  - PATHEXT
+  - SystemRoot
+  - SystemDrive
+  - ComSpec
+  - USERPROFILE
+  - HOMEDRIVE
+  - HOMEPATH
+  - LOCALAPPDATA
+  - APPDATA
+  - ProgramData
+  - ProgramFiles
+  - ProgramFiles(x86)
+  - TEMP
+  - TMP
+  - USERNAME
+  - COMPUTERNAME
+
+servers:
+  windows:
+    description: >-
+      CursorTouch/Windows-MCP (MIT). UI Automation accessibility tree + screenshots + input.
+      Pinned; runs in its own uv-managed Python 3.14 environment (it requires >=3.14).
+    enabled: false                       # desktop control is opt-in
+    command: uv                          # resolved via PATH, then next to this Python
+    args:
+      - tool
+      - run
+      - --python
+      - "3.14"
+      - --from
+      - windows-mcp==0.8.7
+      - windows-mcp
+      - serve
+      - --exclude-tools
+      - PowerShell,Registry
+    env:
+      ANONYMIZED_TELEMETRY: "false"      # upstream default is true (PostHog)
+      POSTHOG_API_KEY: ""                # belt and braces: empty key skips client init
+      WINDOWS_MCP_SCREENSHOT_SCALE: "0.5"
+      WINDOWS_MCP_WATCHDOG: "false"
+    startup_timeout_seconds: 180         # first start downloads ~90 packages
+    call_timeout_seconds: 60
+    exclude_tools: [PowerShell, Registry]   # also dropped client-side
+    # Annotations advertised by a server are NOT trusted for auto-allow unless this is true.
+    trust_annotations: false
+    risk:
+      default: confirm
+      safe: [Screenshot, Snapshot, DisplayInventory, Wait, WaitFor]
+      confirm: [Click, Type, Scroll, Move, Shortcut, MultiSelect, MultiEdit, App, Clipboard, Notification, Scrape]
+      dangerous: [FileSystem, Process, PowerShell, Registry]

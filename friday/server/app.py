@@ -2,30 +2,54 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from friday.config import SERVER_HOST, SERVER_PORT, VOICE_ENABLED, ensure_data_dirs, resolve_chat_model
+from friday.config import (
+    API_TOKEN, EXTRA_ALLOWED_HOSTS, SERVER_HOST, SERVER_PORT, VOICE_ENABLED,
+    ensure_data_dirs, resolve_chat_model,
+)
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
+from friday.server.routes_tools import router as tools_router
+from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
 ensure_data_dirs()
 
-app = FastAPI(title="Friday", version="3.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Start MCP servers marked `enabled: true` in config/mcp_servers.yaml (none by default).
+    try:
+        from friday.mcp_client import get_mcp_manager
+
+        get_mcp_manager().start_enabled()
+    except Exception as exc:  # noqa: BLE001 - never block the UI on an MCP problem
+        print(f"[MCP] startup skipped: {exc}")
+    yield
+    try:
+        from friday.mcp_client import get_mcp_manager
+
+        get_mcp_manager().shutdown()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+app = FastAPI(title="Friday", version="3.1.0", lifespan=lifespan)
+# No CORS: the UI is served same-origin. The guard rejects foreign Host/Origin headers
+# (DNS rebinding / CSRF) and enforces a bearer token for non-loopback binds.
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    RequestGuard,
+    allowed_hosts=default_allowed_hosts(EXTRA_ALLOWED_HOSTS),
+    token=API_TOKEN or None,
 )
+app.include_router(tools_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -386,9 +410,15 @@ _mount_frontend(app)
 def run_server(host: str | None = None, port: int | None = None) -> None:
     import uvicorn
 
+    bind = host or SERVER_HOST
+    if not is_loopback(bind) and not API_TOKEN:
+        raise SystemExit(
+            f"Refusing to bind to non-loopback address {bind!r} without FRIDAY_API_TOKEN. "
+            "Friday can control this desktop; set a long random token or bind to 127.0.0.1."
+        )
     uvicorn.run(
         "friday.server.app:app",
-        host=host or SERVER_HOST,
+        host=bind,
         port=port or SERVER_PORT,
         reload=False,
         log_level="info",
