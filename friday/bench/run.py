@@ -42,6 +42,8 @@ def _parse(argv=None):
     ap.add_argument("--memory", choices=["off", "record", "read", "on"], default="off",
                     help="experience memory: record=learn only, read=hints only, on=both (Stage L)")
     ap.add_argument("--budget-minutes", type=float, default=0, help="stop starting new runs after this many minutes")
+    ap.add_argument("--macros", action="store_true", help="enable the macro layer (Stage I1)")
+    ap.add_argument("--planner-executor", action="store_true", help="planner/executor split (Stage I2)")
     ap.add_argument("--attended", action="store_true", help="allow approval waits (default: unattended, fail closed)")
     ap.add_argument("--list", action="store_true")
     return ap.parse_args(argv)
@@ -127,7 +129,7 @@ def _make_backend(name: str, a=None):
     #  * the local test pages are marked trusted so their Submit/Confirm buttons do not need a human.
     guard = GuardConfig(deny_exceptions=[r"^Settings$"], trusted_titles=BENCH_TRUSTED_TITLES)
     cfg = HybridConfig(model=a.model, num_ctx=a.ctx, max_steps=a.max_iter, guard=guard,
-                       grant_issuer="benchmark-cli", coord_space=(a.coord_space or None) if a.coord_space in ("pixel", "norm1000") else None)
+                       grant_issuer="benchmark-cli", macros=a.macros, planner_executor=a.planner_executor, coord_space=(a.coord_space or None) if a.coord_space in ("pixel", "norm1000") else None)
     return lambda objective, ctrl: run_hybrid(objective, controller=ctrl, config=cfg)
 
 
@@ -171,7 +173,8 @@ def main(argv=None) -> int:
     results: list[dict] = json.loads(out.read_text(encoding="utf-8"))["runs"] if (a.resume and out.exists()) else []
     done = {(r["task"], r["rep"]) for r in results}
     meta = {"backend": a.backend, "model": a.model, "num_ctx": a.ctx, "max_iterations": a.max_iter,
-            "timeout_s": a.timeout, "reps": a.reps, "coord_space": os.environ["MODEL_COORD_SPACE"],
+            "timeout_s": a.timeout, "split": a.split, "memory": a.memory, "macros": a.macros,
+            "planner_executor": a.planner_executor, "unattended": not a.attended, "reps": a.reps, "coord_space": os.environ["MODEL_COORD_SPACE"],
             "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "gpu_baseline_mb": VramSampler.read()}
 
     def save() -> None:

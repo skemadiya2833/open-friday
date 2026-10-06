@@ -16,3 +16,7 @@ Reasoning: all Friday MCP code and tests were written and run against 2.3.0 (`Cl
 - Upgrades are deliberate: re-run `tests/test_mcp_manager.py` and `scripts/live_mcp_acceptance.py` before bumping the pin.
 - `mcp` pulls in `httpx2` and `pywin32`; the project's own `httpx` use is unchanged.
 - Alternative (recorded in DECISIONS_NEEDED D-002): pin 2.0.0 to match "stable" literally; rejected for being untested.
+
+## Addendum (Stage J2, 2026-10-06)
+Checked on PyPI: mcp 2.3.0 is the latest release, uploaded 2026-10-02, not yanked, classifier 'Development Status :: 5 - Production/Stable', no pre-release suffix (2.0.0rc1 was the only earlier pre-release). It is a normal stable release; the pin stays.
+

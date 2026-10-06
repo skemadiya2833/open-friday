@@ -33,6 +33,8 @@ from typing import Any, Callable
 
 from friday.agent import guard as G
 from friday.agent import dialogs as D
+from friday.agent import macros as M
+from friday.agent import planexec as PX
 from friday.agent import stall as S
 from friday.agent import uitree as U
 from friday.agent.control import AgentController, release_controller, set_controller
@@ -115,6 +117,8 @@ class HybridConfig:
     num_predict: int = 400
     coord_space: str | None = None             # "pixel" | "norm1000"; default from model name
     image_max_side: int = 1280
+    macros: bool = False                       # deterministic high-level actions (benchmarked before enabling)
+    planner_executor: bool = False             # one call proposes the next goal, another picks the element
     memory: str | None = None                  # off | record | on; None -> env FRIDAY_MEMORY (default off)
 
 
@@ -209,6 +213,8 @@ def _extract_json(raw: str) -> dict | None:
 def build_messages(objective: str, snap: U.Snapshot, history: list[str], notes: list[str], *,
                    vision: tuple[str, int, int] | None, cfg: HybridConfig, hints: str = "") -> list[dict]:
     system = SYSTEM_RULES % {"vision_actions": VISION_ACTIONS if vision else ""}
+    if cfg.macros:
+        system += M.PROMPT
     if vision:
         space = "(0-1000, normalized)" if _coord_space(cfg) == "norm1000" else "(pixels)"
         system += VISION_RULES % {"w": vision[1], "h": vision[2], "space": space}
@@ -247,8 +253,13 @@ def _num(v: Any, default: int | None = None) -> int | None:
         return default
 
 
-def validate(raw: dict, snap: U.Snapshot, *, vision_ok: bool) -> tuple[Plan | None, str]:
+def validate(raw: dict, snap: U.Snapshot, *, vision_ok: bool, macros: bool = False) -> tuple[Plan | None, str]:
     action = str(raw.get("action", "")).strip().lower()
+    if action in M.MACROS:
+        if not macros:
+            return None, f"unknown action '{action}'"
+        err = M.validate({**raw, "action": action})
+        return (None, err) if err else (Plan(action, {**raw, "action": action}), "")
     if action in ("done", "fail", "wait", "launch", "shortcut"):
         if action == "launch" and not str(raw.get("app", "")).strip():
             return None, "launch needs 'app'"
@@ -466,7 +477,10 @@ def run_hybrid(
                         emit("agent_note", note="experience hints attached")
         except Exception as exc:  # noqa: BLE001 - memory must never break a run
             print(f"[Friday] experience memory unavailable: {exc}")
-        status = _loop(objective, ctrl, cfg, desk, decider or _ollama_decider(cfg), hints=hints, recorder=rec)
+        decide = decider or _ollama_decider(cfg)
+        if cfg.planner_executor and decider is None:
+            decide = PX.wrap(decide, PX.ollama_planner(cfg.model, cfg.num_ctx))
+        status = _loop(objective, ctrl, cfg, desk, decide, hints=hints, recorder=rec)
         if rec is not None and store is not None:
             try:
                 tr = rec.finish(status.value, getattr(ctrl, "failure", None))
@@ -607,7 +621,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             return AgentStatus.HALTED
         raw = _extract_json(raw_text)
         emit("agent_decision", reply=(raw_text or "")[:400])
-        plan, err = (None, "reply was not a JSON object") if raw is None else validate(raw, snap, vision_ok=img is not None)
+        plan, err = (None, "reply was not a JSON object") if raw is None else validate(raw, snap, vision_ok=img is not None, macros=cfg.macros)
         if plan is None:
             parse_fail += 1
             notes.append(f"Your last reply was rejected: {err}. Reply with one valid JSON action.")
@@ -618,7 +632,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             continue
         parse_fail = 0
         history_line = f"{it}. {plan.action} " + " ".join(
-            f"{k}={str(v)[:40]!r}" for k, v in plan.raw.items() if k in ("id", "text", "keys", "app", "x", "y"))
+            f"{k}={str(v)[:40]!r}" for k, v in plan.raw.items() if k in ("id", "text", "keys", "app", "x", "y", "title", "path"))
 
         # ---- terminal actions
         if plan.action == "fail":
@@ -663,6 +677,8 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             verdict = G.check_action(cfg.guard, kind, title=title, element=plan.element, context=ctx,
                                      keys=str(plan.raw.get("keys", "")), text=str(plan.raw.get("text", "")),
                                      press_enter=_text_bool(plan.raw.get("enter")), dialog=dlg)
+        if plan.action in M.MACROS:
+            verdict = M.check(cfg.guard, plan.raw, title, context=ctx, dialog=dlg)
         step = _step_dict(plan)
         if verdict.action == "deny":
             emit("action_blocked", step=step, reason=verdict.reason)
@@ -684,7 +700,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             continue
 
         # ---- repetition guard: the same action again and again is a loop, whatever the screen does
-        sig = (plan.action, json.dumps({k: plan.raw.get(k) for k in ("id", "text", "keys", "app", "x", "y")}, sort_keys=True, default=str))
+        sig = (plan.action, json.dumps({k: plan.raw.get(k) for k in ("id", "text", "keys", "app", "x", "y", "title", "path")}, sort_keys=True, default=str))
         recent.append(sig)
         same = 0
         for s_ in reversed(recent):
@@ -704,7 +720,14 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
         emit("action_start", step=step, iteration=it)
         emit("status", status="running")
         try:
-            res = execute(desk, plan, imap=imap, force_ask=(verdict.action == "confirm"))
+            if plan.action in M.MACROS:
+                ok_m, msg_m = M.run(desk, plan.raw, force_ask=(verdict.action == "confirm"), settle=cfg.settle_seconds,
+                                    focused_title=snap.focused_title())
+                res = ToolResult.text_result(msg_m) if ok_m else ToolResult.error(msg_m)
+                if ok_m and plan.action == "read_title":
+                    notes.append(msg_m)
+            else:
+                res = execute(desk, plan, imap=imap, force_ask=(verdict.action == "confirm"))
         except DesktopError as exc:
             res = ToolResult.error(str(exc))
         if ctrl.should_stop():
