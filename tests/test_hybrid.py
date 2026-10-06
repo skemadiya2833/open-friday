@@ -180,7 +180,7 @@ def test_no_effect_is_detected_bounded_and_told_to_the_model():
     desk = FakeDesktop(lambda: snap_text("Static", [(5, 5, "button", "Dead", "")]))
     seen: list = []
     decide = scripted([{"action": "click", "id": 0}] * 10, seen)
-    st = run_hybrid("x", controller=AgentController(), config=HybridConfig(max_no_effect=3, **FAST),
+    st = run_hybrid("x", controller=AgentController(), config=HybridConfig(max_no_effect=3, max_repeats=99, **FAST),
                     decider=decide, desktop=desk)
     assert st == AgentStatus.FAILED
     assert len(desk.calls) == 3                                  # bounded recovery
@@ -222,7 +222,7 @@ def test_cancel_halts():
 def test_max_steps():
     desk = FakeDesktop(lambda: snap_text("W", [(1, 1, "button", "A", "")]))
     decide = scripted([{"action": "wait", "seconds": 1}] * 10)
-    st = run_hybrid("x", controller=AgentController(), config=HybridConfig(max_steps=3, **FAST),
+    st = run_hybrid("x", controller=AgentController(), config=HybridConfig(max_steps=3, max_repeats=99, **FAST),
                     decider=decide, desktop=desk)
     assert st == AgentStatus.MAX_ITERATIONS
 
@@ -364,3 +364,20 @@ def test_json_array_wrapper_is_unwrapped_and_plain_text_untouched():
     assert U.normalize('["a\\nb", "c"]') == "a\nb\nc"
     assert U.normalize("[not json") == "[not json"
     assert U.normalize("plain") == "plain"
+
+def test_repeating_the_same_action_fails_fast():
+    snap = U.parse_snapshot("Focused Window:\n  Name  Depth  Status  Width  Height  Handle\n-----\n  App  1  Normal  10  10  5\n\nUI Tree:\n  window \"App\"\n  (5,5) button \"Go\"  [action: click]\n")
+    calls = []
+
+    class D:
+        def call(self, tool, args, force_ask=False):
+            calls.append(tool)
+            from friday.tools.types import ToolResult
+            return ToolResult.text_result("ok")
+        def snapshot(self, **kw):
+            return snap, None
+    import friday.agent.hybrid as H
+    ctrl = AgentController(run_id="rep")
+    cfg = HybridConfig(max_steps=20, settle_seconds=0)
+    st = H._loop("x", ctrl, cfg, D(), lambda m: '{"action":"launch","app":"notepad"}')
+    assert st.value in ("failed",) and calls.count("App") <= 2

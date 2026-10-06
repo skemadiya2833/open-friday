@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -90,6 +91,7 @@ class HybridConfig:
     max_no_effect: int = 4                     # consecutive actions with no visible change -> give up
     escalate_after: int = 2                    # no-effect streak that switches to vision
     max_parse_failures: int = 3
+    max_repeats: int = 3                       # identical consecutive actions before giving up
     settle_seconds: float = 0.5
     num_ctx: int | None = None
     num_predict: int = 400
@@ -403,6 +405,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
     notes: list[str] = []
     no_effect = parse_fail = proposals = done_rejections = 0
     force_vision = False
+    recent: list[tuple] = []
     snap: U.Snapshot | None = None
     dom = False
 
@@ -518,6 +521,21 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
                 emit("status", status="complete")
                 return AgentStatus.COMPLETED
             continue
+
+        # ---- repetition guard: the same action again and again is a loop, whatever the screen does
+        sig = (plan.action, json.dumps({k: plan.raw.get(k) for k in ("id", "text", "keys", "app", "x", "y")}, sort_keys=True, default=str))
+        recent.append(sig)
+        same = 0
+        for s_ in reversed(recent):
+            if s_ != sig:
+                break
+            same += 1
+        if same >= cfg.max_repeats:
+            emit("agent_note", note=f"stuck: repeated the same action {same} times")
+            emit("status", status="error")
+            return AgentStatus.FAILED
+        if same == cfg.max_repeats - 1:
+            notes.append("You are repeating the same action. Do something different, or reply done/fail.")
 
         # ---- act
         imap = _ImageMap(snap, cfg, img[1], img[2], _coord_space(cfg)) if img else None
