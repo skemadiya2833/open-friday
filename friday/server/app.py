@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -379,10 +380,15 @@ async def voice_transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(400, "Voice disabled")
     from friday.voice.stt import transcribe_bytes
 
-    data = await file.read()
+    max_bytes = 25 * 1024 * 1024            # ~13 min of 16 kHz mono wav; stops disk/RAM exhaustion
+    data = await file.read(max_bytes + 1)
     if not data:
         raise HTTPException(400, "Empty audio upload")
+    if len(data) > max_bytes:
+        raise HTTPException(413, "Audio upload too large (limit 25 MB)")
     suffix = Path(file.filename or "speech.webm").suffix or ".webm"
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,8}", suffix):
+        suffix = ".webm"
     try:
         text = transcribe_bytes(data, suffix=suffix)
     except Exception as exc:

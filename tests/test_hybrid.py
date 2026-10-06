@@ -7,7 +7,6 @@ desktop plays Windows-MCP, using the real Snapshot text format.
 from __future__ import annotations
 
 import json
-import threading
 
 import pytest
 
@@ -322,7 +321,7 @@ class TestGrant:
 
     def test_revoke_and_expiry(self, isolated):
         reg = self._reg(_confirm_spec())
-        g = GR.issue("r1", ("windows__",), "test")
+        GR.issue("r1", ("windows__",), "test")
         GR.revoke_run("r1")
         assert reg.call("windows__Click", {"msg": "x"}, run_id="r1").is_error
         g2 = GR.issue("r2", ("windows__",), "test", ttl_seconds=0.0)

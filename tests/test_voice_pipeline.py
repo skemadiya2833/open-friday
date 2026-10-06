@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import threading
 import time
 
 import numpy as np
-import pytest
 
 from friday.voice.pipeline import VoiceConfig, VoicePipeline
-from friday.voice.speaker import NullSink, Speaker, SpeakHandle
+from friday.voice.speaker import NullSink, Speaker
 from friday.voice.vad import Endpointer, EndpointConfig
 
 WAKE_MARK = 12345

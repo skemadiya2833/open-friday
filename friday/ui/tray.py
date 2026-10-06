@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 import webbrowser
-from pathlib import Path
 
 from friday.config import SERVER_HOST, SERVER_PORT
 

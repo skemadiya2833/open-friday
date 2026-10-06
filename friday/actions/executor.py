@@ -122,7 +122,7 @@ def _is_placeholder_type_text(text: str) -> bool:
 def _with_marker(step: ActionStep, x: int, y: int) -> None:
     if not CLICK_MARKER_ENABLED:
         return
-    from friday.ui.click_marker import hide_aim_cursor, log_click_target, show_click_target
+    from friday.ui.click_marker import log_click_target, show_click_target
     data = step.to_dict()
     if data.get("_aim_verified"):
         log_click_target(data, x, y)

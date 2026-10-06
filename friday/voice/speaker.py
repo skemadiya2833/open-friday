@@ -13,7 +13,6 @@ import json
 import os
 import struct
 import subprocess
-import sys
 import threading
 import time
 from dataclasses import dataclass, field

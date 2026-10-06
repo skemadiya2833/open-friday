@@ -61,7 +61,7 @@ def main() -> int:
     # ---- VAD + endpointing
     vad = V.SileroVad(ROOT / "data" / "voice_lab" / "models" / "silero_vad.onnx")
     ep = V.Endpointer(vad)
-    seq, truth = [], []
+    seq = []
     for c in manifest[1:6]:
         seq += [silence[:12000], load(CLIPS / f"{c['id']}.wav"), silence[:16000]]
     audio = np.concatenate(seq).astype(np.float32) / 32768.0

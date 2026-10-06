@@ -12,3 +12,5 @@ web/dist/
 .DS_Store
 .pytest_cache/
 *.egg-info/
+.ruff_cache/
+__pycache__/

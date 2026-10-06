@@ -81,6 +81,25 @@ You → Control Center → SkillRouter → Skill
 
 ---
 
+## Install, update, check
+
+One supported path: pinned lock files (see Quick start). To update, change a `requirements/*.in` file, re-run `uv pip compile` (command above), review the lock diff, then `uv pip install -r requirements/core.lock.txt` (add `voice` / `dev` locks as needed). Never `pip install <package>` ad hoc; CI fails if `core.lock.txt` stops satisfying `core.in`.
+
+- Startup validates your configuration and stops with a readable message for bad values (`friday/diagnostics.py`).
+- Health page: `http://127.0.0.1:8787/health` (JSON: `/api/health/detail`): config issues, Ollama, audit-chain check, e-stop hotkey, MCP servers, disk.
+- Logs: `data/logs/friday.jsonl` (JSON lines, each tagged with the agent run id; secrets redacted). Audit log: `data/audit/`.
+- Emergency stop: **Ctrl+Alt+F12** halts agent runs and revokes approvals.
+
+## Desktop agent backends
+
+`AGENT_BACKEND=legacy` (default) is the original screenshot loop. `AGENT_BACKEND=hybrid` reads the Windows accessibility tree through Windows-MCP first and falls back to vision; it verifies each action, refuses sensitive apps by default and asks before irreversible steps. Enable the `windows` server in `config/mcp_servers.yaml` first. Benchmark: `python -m friday.bench.run --backend hybrid --help`. **Keep your hands off the mouse and keyboard while a live benchmark runs.** Results and model comparison: `docs/FINAL_REPORT.md`.
+
+## More documents
+
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) · [`docs/research/PHASE5_OPTIONS.md`](docs/research/PHASE5_OPTIONS.md) · [`docs/PROGRESS.md`](docs/PROGRESS.md) · [`docs/DECISIONS_NEEDED.md`](docs/DECISIONS_NEEDED.md)
+
+---
+
 ## Skills
 
 Skills live in `friday/skills/builtin/<id>/` with `manifest.yaml` + `handler.py`.

@@ -36,3 +36,12 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 
 ### Stage D (in progress)
 - D1 agentskills.io loader: code + 23 tests DONE (friday/skills/agentskills.py, routes_skillmd.py, builtin tools skills_list/skill_activate/skill_read/skill_propose, proposal loop behind SKILL_PROPOSALS=true). Spec fetched from agentskills.io/specification on 2026-10-06.
+
+### Stage D2/D3 (docs done; measurements pending until baseline ends)
+- D2 voice code + 10 plumbing tests DONE (`friday/voice/*`, `scripts/voice_*`). Measurements (TTS Kokoro/Piper/SAPI, STT+vision VRAM, end-to-end latency) deferred: they would perturb the running baseline. 
+- D3 `docs/VOICE_SAMPLES.md` written. `large-v3-turbo` float16 stays PROVISIONAL / UNVERIFIED on the owner's voice.
+
+### Stage E
+- E1 DONE: `docs/research/PHASE5_OPTIONS.md` (ranked, with sources). Python 3.14 binary-wheel resolve check passed for bleak 3.0.2, pycaw 20260927, psutil 7.2.2, playwright 1.63.0 (does not prove the features work here). Built only `friday/experimental/sensors.py` (read-only, stdlib+ctypes, off unless FRIDAY_SENSORS=true, 4 tests; live read verified: CPU, RAM, disks, GPU).
+- E2 mostly DONE: startup config validation (`friday/diagnostics.py`, 14 tests), JSON logs with run ids (`friday/logs.py`), `/health` page + `/api/health/detail`, atomic state writes (`friday/atomic.py`: plan, sessions, skills registry), google-generativeai -> google-genai (API verified in an isolated venv with google-genai 2.28.0; code tested with a fake client; a LIVE Gemini call is UNVERIFIED and the default model `gemini-2.5-flash` is a guess, override with GEMINI_MODEL), core.lock.txt recompiled (friday_env NOT yet updated to it), CI workflow `.github/workflows/ci.yml` (written, NEVER RUN: UNVERIFIED), THREAT_MODEL.md with web-server review (fixed unbounded voice upload), README and CONTRIBUTING updated, ruff F/E9 clean. 174 tests pass (hotkey tests excluded while benchmark runs).
+- E2 remaining: live server start check of the new lifespan validation (after baseline).

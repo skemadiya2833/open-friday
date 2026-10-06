@@ -17,7 +17,6 @@ import json
 import os
 import struct
 import sys
-import time
 from pathlib import Path
 
 import numpy as np

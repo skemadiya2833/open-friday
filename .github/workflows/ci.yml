@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Create venv from the pinned lock files
+        shell: pwsh
+        run: |
+          uv venv --python 3.14 friday_env
+          uv pip install --python friday_env\Scripts\python.exe -r requirements/core.lock.txt -r requirements/dev.lock.txt
+      - name: Lint (correctness rules only)
+        shell: pwsh
+        run: friday_env\Scripts\ruff.exe check friday tests main.py scripts --select F,E9
+      - name: Tests
+        shell: pwsh
+        # The two live-hotkey tests need an interactive desktop; they are run locally.
+        run: friday_env\Scripts\python.exe -m pytest tests -q -k "not real_hotkey and not hotkey_conflict"
+      - name: Lock file satisfies requirements/core.in (pins are kept, nothing upgraded)
+        shell: pwsh
+        run: |
+          Copy-Item requirements/core.lock.txt $env:TEMP\core.check.txt -Force
+          uv pip compile requirements/core.in --python-version 3.14 --python-platform windows -o $env:TEMP\core.check.txt -q
+          $strip = { param($p) Get-Content $p | Where-Object { $_ -notmatch '^#\s+(This file|uv pip compile)' } | ForEach-Object { $_.TrimEnd() } }
+          if (Compare-Object (& $strip requirements/core.lock.txt) (& $strip $env:TEMP\core.check.txt)) { Write-Error "core.lock.txt is out of date"; exit 1 }

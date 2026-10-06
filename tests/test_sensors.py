@@ -1,7 +1,7 @@
 import json
 
 from friday.experimental import sensors as S
-from friday.tools.registry import ToolRegistry, reset_registry
+from friday.tools.registry import reset_registry
 from friday.tools.types import ToolRisk
 
 

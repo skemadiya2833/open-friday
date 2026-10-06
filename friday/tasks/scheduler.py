@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 from friday.config import TASKS_DB, ensure_data_dirs
@@ -50,8 +48,8 @@ class TaskScheduler:
     def _start_scheduler(self) -> None:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
-            from apscheduler.triggers.cron import CronTrigger
-            from apscheduler.triggers.date import DateTrigger
+            from apscheduler.triggers.cron import CronTrigger  # noqa: F401
+            from apscheduler.triggers.date import DateTrigger  # noqa: F401
         except ImportError:
             print("[Tasks] APScheduler not installed — scheduling disabled until deps install.")
             return

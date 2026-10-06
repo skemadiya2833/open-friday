@@ -1,0 +1,9 @@
+{
+  "model": "qwen2.5vl:7b-q4_K_M",
+  "actions_before_stop": 1,
+  "halted": true,
+  "status": "halted",
+  "halt_latency_s": 1.41,
+  "hotkey_triggers": 1,
+  "events": 22
+}
