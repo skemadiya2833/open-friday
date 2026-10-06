@@ -43,10 +43,15 @@ def is_loopback(host: str) -> bool:
 
 
 class RequestGuard:
-    def __init__(self, app, *, allowed_hosts: set[str], token: str | None = None) -> None:
+    def __init__(
+        self, app, *, allowed_hosts: set[str], token: str | None = None, extra_origins: Iterable[str] = ()
+    ) -> None:
         self.app = app
         self.allowed_hosts = {h.lower() for h in allowed_hosts}
         self.token = token or None
+        # Exact origins (scheme://host:port) trusted in addition to same-origin, e.g. the
+        # Vite dev server, whose proxy rewrites Host to the backend but keeps its own Origin.
+        self.extra_origins = {o.strip().lower().rstrip("/") for o in extra_origins if o and o.strip()}
 
     @staticmethod
     def _header(scope, name: bytes) -> str:
@@ -56,6 +61,8 @@ class RequestGuard:
         return ""
 
     def _origin_ok(self, origin: str, host: str) -> bool:
+        if origin.strip().lower().rstrip("/") in self.extra_origins:
+            return True
         try:
             parts = urlsplit(origin)
         except ValueError:

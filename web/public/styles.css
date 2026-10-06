@@ -579,3 +579,8 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .approval-box { background: var(--panel); border: 1px solid var(--line-hot); border-radius: var(--radius); padding: 22px; width: min(640px, 92vw); }
 .approval-box pre { max-height: 40vh; overflow: auto; background: rgba(0,0,0,0.4); padding: 10px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
 .approval-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+
+#view-tools { overflow-y: auto; }
+#view-tools .cards { overflow: visible; }
+#view-tools .plan-head { margin-top: 18px; }
+#view-tools > * { flex-shrink: 0; }

@@ -72,7 +72,23 @@ class TestSandbox:
         try:
             os.symlink(outside, root / "sl", target_is_directory=True)
         except (OSError, NotImplementedError):
-            pytest.skip("symlink creation not permitted (needs Developer Mode/admin)")
+            # Creating a real symlink needs Developer Mode/admin on Windows. Do not skip a
+            # security test: simulate the link so the second defence layer (realpath
+            # re-check of each existing ancestor) is still exercised.
+            (root / "sl").mkdir()
+            real = os.path.realpath
+
+            def fake_realpath(p, *a, **k):
+                return str(outside) if os.path.normcase(str(p)) == os.path.normcase(str(root / "sl")) else real(p, *a, **k)
+
+            monkeypatch = pytest.MonkeyPatch()
+            monkeypatch.setattr(os.path, "realpath", fake_realpath)
+            try:
+                with pytest.raises(PathEscapeError):
+                    resolve_within(root, "sl/x.txt")
+            finally:
+                monkeypatch.undo()
+            return
         with pytest.raises(PathEscapeError):
             resolve_within(root, "sl/x.txt")
 

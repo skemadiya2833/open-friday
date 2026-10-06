@@ -1,4 +1,4 @@
-﻿"""Append-only, tamper-evident audit log of every tool call.
+"""Append-only, tamper-evident audit log of every tool call.
 
 Format: JSON Lines, one record per line. Each record carries ``prev`` (hash of the
 previous line) and ``hash`` (SHA-256 over the canonical record without ``hash``), so

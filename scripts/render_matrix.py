@@ -1,4 +1,4 @@
-﻿"""Render docs/decisions/DEPENDENCY_MATRIX.md from the audit JSON files."""
+"""Render docs/decisions/DEPENDENCY_MATRIX.md from the audit JSON files."""
 import json
 from pathlib import Path
 

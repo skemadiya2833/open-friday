@@ -61,7 +61,7 @@
         const lines = [
           `State: ${s.status}${s.error ? " (" + s.error + ")" : ""}${s.enabled ? "" : " [disabled in config]"}`,
           `Command: ${s.command || ""}`,
-          `Tools: ${(s.tools || []).length}, calls: ${s.calls || 0}`,
+          `Tools: ${s.status === "ready" ? (s.tools || []).length : 0}, calls: ${s.calls || 0}`,
         ];
         const acts = [running ? button("Stop", () => jpost(`/api/mcp/servers/${encodeURIComponent(s.name)}/stop`))
                               : button("Start", () => jpost(`/api/mcp/servers/${encodeURIComponent(s.name)}/start`))];
@@ -93,6 +93,10 @@
     baseShowView(name);
     if (name === "tools") refreshTools();
   };
+
+  setInterval(() => {
+    if ($("#view-tools").classList.contains("active")) refreshTools();
+  }, 3000);
 
   $("#mcpKill").addEventListener("click", async () => {
     const r = await jpost("/api/mcp/kill");

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.config import (
-    API_TOKEN, EXTRA_ALLOWED_HOSTS, SERVER_HOST, SERVER_PORT, VOICE_ENABLED,
+    API_TOKEN, EXTRA_ALLOWED_HOSTS, EXTRA_ALLOWED_ORIGINS, SERVER_HOST, SERVER_PORT, VOICE_ENABLED,
     ensure_data_dirs, resolve_chat_model,
 )
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
@@ -48,6 +48,7 @@ app.add_middleware(
     RequestGuard,
     allowed_hosts=default_allowed_hosts(EXTRA_ALLOWED_HOSTS),
     token=API_TOKEN or None,
+    extra_origins=EXTRA_ALLOWED_ORIGINS,
 )
 app.include_router(tools_router)
 

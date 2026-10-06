@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api")
@@ -94,9 +94,22 @@ def approvals_pending() -> dict[str, Any]:
 
 
 @router.post("/approvals/{approval_id}")
-def approvals_answer(approval_id: str, body: ApprovalAnswer) -> dict[str, Any]:
+def approvals_answer(approval_id: str, body: ApprovalAnswer, request: Request) -> dict[str, Any]:
+    """Answer a prompt. Granting requires evidence of a browser page click on this origin.
+
+    Polling `GET /api/approvals` only marks a human as present (so prompts wait instead of
+    failing closed); it can never grant anything. Granting additionally needs a same-origin
+    browser request (`Origin` + `Sec-Fetch-Site: same-origin`), so a bare script or curl
+    cannot approve. This does not stop code running as the same OS user that forges those
+    headers; see docs/THREAT_MODEL.md. Denying is always allowed.
+    """
     from friday.safety.approval import get_approval_service
 
+    if body.approved:
+        origin = request.headers.get("origin", "")
+        site = request.headers.get("sec-fetch-site", "")
+        if not origin or site != "same-origin":
+            raise HTTPException(403, "Approvals can only be granted from the Friday UI page")
     if not get_approval_service().resolve(approval_id, body.approved, who="control-center"):
         raise HTTPException(404, "No such pending approval (expired or already answered)")
     return {"ok": True}

@@ -1,0 +1,20 @@
+colorama==0.4.6
+    # via
+    #   -c requirements/core.lock.txt
+    #   pytest
+iniconfig==2.3.0
+    # via pytest
+packaging==26.3
+    # via
+    #   -c requirements/core.lock.txt
+    #   pytest
+pluggy==1.6.0
+    # via pytest
+pygments==2.21.0
+    # via
+    #   -c requirements/core.lock.txt
+    #   pytest
+pytest==9.1.1
+    # via -r requirements/dev.in
+ruff==0.16.10
+    # via -r requirements/dev.in

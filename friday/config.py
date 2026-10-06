@@ -191,6 +191,9 @@ SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
 # Required (and enforced at startup) when FRIDAY_HOST is not a loopback address.
 API_TOKEN = os.getenv("FRIDAY_API_TOKEN", "").strip()
 # Extra Host header names accepted by the request guard (e.g. a LAN name behind a TLS proxy).
+# Exact extra browser origins, comma separated. Dev only: set to the Vite dev server,
+# e.g. FRIDAY_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+EXTRA_ALLOWED_ORIGINS = [o for o in os.getenv("FRIDAY_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 EXTRA_ALLOWED_HOSTS = [h for h in os.getenv("FRIDAY_ALLOWED_HOSTS", "").split(",") if h.strip()]
 SKILLS_DIR = os.getenv(
     "FRIDAY_SKILLS_DIR",

@@ -1,0 +1,3 @@
+﻿-c core.lock.txt
+faster-whisper
+edge-tts        # optional CLOUD voice (sends text to Microsoft); off unless enabled

@@ -1,0 +1,1316 @@
+{
+  "checks": {
+    "server_ready": true,
+    "powershell_registry_excluded": true,
+    "telemetry_env_off": true,
+    "pinned_launch": true,
+    "safe_call_ok": true,
+    "confirm_call_approved_ok": true,
+    "confirm_call_denied_blocked": true,
+    "audit_chain_ok": true,
+    "audit_has_approved_and_denied": true
+  },
+  "startup_seconds": 2.1,
+  "status": {
+    "status": "ready",
+    "error": "",
+    "command": "uv tool run --python 3.14 --from windows-mcp==0.8.7 windows-mcp serve --exclude-tools PowerShell,Registry",
+    "server_info": {
+      "name": "windows-mcp",
+      "version": "4.0.11"
+    }
+  },
+  "tool_names": [
+    "App",
+    "Click",
+    "Clipboard",
+    "DisplayInventory",
+    "FileSystem",
+    "Move",
+    "MultiEdit",
+    "MultiSelect",
+    "Notification",
+    "Process",
+    "Scrape",
+    "Screenshot",
+    "Scroll",
+    "Shortcut",
+    "Snapshot",
+    "Type",
+    "Wait",
+    "WaitFor"
+  ],
+  "tools": [
+    {
+      "name": "App",
+      "registry_name": "windows__App",
+      "tier": "confirm",
+      "annotations": {
+        "title": "App",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "DisplayInventory",
+      "registry_name": "windows__DisplayInventory",
+      "tier": "safe",
+      "annotations": {
+        "title": "DisplayInventory",
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "FileSystem",
+      "registry_name": "windows__FileSystem",
+      "tier": "dangerous",
+      "annotations": {
+        "title": "FileSystem",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Snapshot",
+      "registry_name": "windows__Snapshot",
+      "tier": "safe",
+      "annotations": {
+        "title": "Snapshot",
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Screenshot",
+      "registry_name": "windows__Screenshot",
+      "tier": "safe",
+      "annotations": {
+        "title": "Screenshot",
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Click",
+      "registry_name": "windows__Click",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Click",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Type",
+      "registry_name": "windows__Type",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Type",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Scroll",
+      "registry_name": "windows__Scroll",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Scroll",
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Move",
+      "registry_name": "windows__Move",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Move",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Shortcut",
+      "registry_name": "windows__Shortcut",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Shortcut",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Wait",
+      "registry_name": "windows__Wait",
+      "tier": "safe",
+      "annotations": {
+        "title": "Wait",
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "WaitFor",
+      "registry_name": "windows__WaitFor",
+      "tier": "safe",
+      "annotations": {
+        "title": "WaitFor",
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Scrape",
+      "registry_name": "windows__Scrape",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Scrape",
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": true
+      }
+    },
+    {
+      "name": "MultiSelect",
+      "registry_name": "windows__MultiSelect",
+      "tier": "confirm",
+      "annotations": {
+        "title": "MultiSelect",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "MultiEdit",
+      "registry_name": "windows__MultiEdit",
+      "tier": "confirm",
+      "annotations": {
+        "title": "MultiEdit",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Clipboard",
+      "registry_name": "windows__Clipboard",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Clipboard",
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "idempotent_hint": true,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Process",
+      "registry_name": "windows__Process",
+      "tier": "dangerous",
+      "annotations": {
+        "title": "Process",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    },
+    {
+      "name": "Notification",
+      "registry_name": "windows__Notification",
+      "tier": "confirm",
+      "annotations": {
+        "title": "Notification",
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    }
+  ],
+  "schemas": {
+    "windows__App": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "launch",
+          "enum": [
+            "launch",
+            "launch_executable",
+            "resize",
+            "switch"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "window_loc": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "window_size": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "executable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "args": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "windows__DisplayInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "windows__FileSystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "read",
+            "write",
+            "copy",
+            "move",
+            "delete",
+            "list",
+            "search",
+            "info"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "recursive": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "append": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "overwrite": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "encoding": {
+          "default": "utf-8",
+          "type": "string"
+        },
+        "show_hidden": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        }
+      },
+      "required": [
+        "mode",
+        "path"
+      ]
+    },
+    "windows__Snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "use_vision": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "use_dom": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "use_annotation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": true
+        },
+        "use_ui_tree": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": true
+        },
+        "width_reference_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "height_reference_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "display": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "region": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "windows__Screenshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "use_annotation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "width_reference_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "height_reference_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "display": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "region": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "windows__Click": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loc": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "button": {
+          "default": "left",
+          "enum": [
+            "left",
+            "right",
+            "middle"
+          ],
+          "type": "string"
+        },
+        "clicks": {
+          "default": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "windows__Type": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "loc": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "clear": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "caret_position": {
+          "default": "idle",
+          "enum": [
+            "start",
+            "idle",
+            "end"
+          ],
+          "type": "string"
+        },
+        "press_enter": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "windows__Scroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loc": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "default": "vertical",
+          "enum": [
+            "horizontal",
+            "vertical"
+          ],
+          "type": "string"
+        },
+        "direction": {
+          "default": "down",
+          "enum": [
+            "up",
+            "down",
+            "left",
+            "right"
+          ],
+          "type": "string"
+        },
+        "wheel_times": {
+          "default": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "windows__Move": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loc": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drag": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "from_loc": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "windows__Shortcut": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shortcut": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "shortcut"
+      ]
+    },
+    "windows__Wait": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duration": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "duration"
+      ]
+    },
+    "windows__WaitFor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "window_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "timeout": {
+          "default": 10.0,
+          "type": "number"
+        },
+        "interval": {
+          "default": 0.25,
+          "type": "number"
+        },
+        "use_dom": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        }
+      },
+      "required": [
+        "condition"
+      ]
+    },
+    "windows__Scrape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "use_dom": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        },
+        "use_sampling": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": true
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "windows__MultiSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locs": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "press_ctrl": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": true
+        }
+      }
+    },
+    "windows__MultiEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locs": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {},
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {},
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "windows__Clipboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "get",
+            "set"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "windows__Process": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "list",
+            "kill"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sort_by": {
+          "default": "memory",
+          "enum": [
+            "memory",
+            "cpu",
+            "name"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 20,
+          "type": "integer"
+        },
+        "force": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": false
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "windows__Notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "description": "The title/heading of the toast notification.",
+          "type": "string"
+        },
+        "message": {
+          "description": "The body text of the toast notification displayed below the title.",
+          "type": "string"
+        },
+        "app_id": {
+          "description": "The valid Application User Model ID of the toast notification. Required to display the notification in a specific app.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "message",
+        "app_id"
+      ]
+    }
+  },
+  "tier_by_tool": {
+    "App": "confirm",
+    "DisplayInventory": "safe",
+    "FileSystem": "dangerous",
+    "Snapshot": "safe",
+    "Screenshot": "safe",
+    "Click": "confirm",
+    "Type": "confirm",
+    "Scroll": "confirm",
+    "Move": "confirm",
+    "Shortcut": "confirm",
+    "Wait": "safe",
+    "WaitFor": "safe",
+    "Scrape": "confirm",
+    "MultiSelect": "confirm",
+    "MultiEdit": "confirm",
+    "Clipboard": "confirm",
+    "Process": "dangerous",
+    "Notification": "confirm"
+  },
+  "safe_call": {
+    "is_error": false,
+    "text": "[{\"index\":0,\"device\":\"\\\\\\\\.\\\\DISPLAY1\",\"primary\":true,\"bounds\":{\"left\":0,\"top\":0,\"right\":1920,\"bottom\":1080,\"width\":1920,\"height\":1080},\"work_area\":{\"left\":0,\"top\":0,\"right\":1920,\"bottom\":1032,\"width\":1920,\"height\":1032},\"resolution\":\"1920x1080\",\"orientation\":\"landscape\",\"effective_dpi\":96,\"scale\":1.0},{\"index\":1,\"device\":\"\\\\\\\\.\\\\DISPLAY2\",\"primary\":false,\"bounds\":{\"left\":1920,\"top\":0,\"right\":3840"
+  },
+  "confirm_call_approved": {
+    "is_error": false,
+    "text": "Notification sent: \"Friday acceptance test\" - Scratch notification, safe to ignore.",
+    "pending_seen": {
+      "pending": [
+        {
+          "tool": "windows__Notification",
+          "risk": "confirm",
+          "caller": "acceptance"
+        },
+        {
+          "tool": "windows__Notification",
+          "risk": "confirm",
+          "caller": "acceptance"
+        }
+      ]
+    }
+  },
+  "confirm_call_denied": {
+    "is_error": true,
+    "text": "Not approved (denied:user:acceptance-script). The owner did not allow windows__Notification."
+  },
+  "audit": [
+    {
+      "tool": "windows__DisplayInventory",
+      "risk": "safe",
+      "caller": "acceptance",
+      "outcome": "ok",
+      "approver": "policy:allow"
+    },
+    {
+      "tool": "windows__Notification",
+      "risk": "confirm",
+      "caller": "acceptance",
+      "outcome": "ok",
+      "approver": "user:acceptance-script"
+    },
+    {
+      "tool": "windows__Notification",
+      "risk": "confirm",
+      "caller": "acceptance",
+      "outcome": "denied",
+      "approver": "denied:user:acceptance-script"
+    }
+  ]
+}
