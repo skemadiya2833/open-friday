@@ -113,7 +113,7 @@ See [`.env.example`](.env.example). Important keys:
 
 Friday needs contributors — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Maintainer: **Sagar Kemadiya**, CEO at [Devoids - IT Solutions](https://devoids.in)  
+Maintainer: **Sunil Kemadiya**, CEO at [Devoids - IT Solutions](https://devoids.in)  
 Contact: [skemadiya@gmail.com](mailto:skemadiya@gmail.com)
 
 ---

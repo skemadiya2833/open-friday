@@ -49,4 +49,4 @@ python tests/test_skills_tools.py
 
 ## Contact
 
-Maintainer: **Sagar Kemadiya** (CEO, [Devoids](https://devoids.in)) — skemadiya@gmail.com
+Maintainer: **Sunil Kemadiya** (CEO, [Devoids](https://devoids.in)) — skemadiya@gmail.com
