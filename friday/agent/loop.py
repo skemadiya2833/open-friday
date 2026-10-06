@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 
 from friday.actions.executor import execute_action
-from friday.agent.control import AgentController, set_controller
+from friday.agent.control import AgentController, release_controller, set_controller
 from friday.agent.memory import maybe_summarize_context
 from friday.agent.planner import decide_next_action
 from friday.agent.session import AgentSession
@@ -29,6 +29,15 @@ from friday.ui.events import emit
 from friday.vision.feed import LiveScreenFeed
 
 
+def _ensure_estop() -> None:
+    try:
+        from friday.safety.estop import ensure_started
+
+        ensure_started()
+    except Exception as exc:  # noqa: BLE001 - a missing hotkey must not stop the agent
+        print(f"[Friday] WARNING: emergency-stop hotkey unavailable: {exc}")
+
+
 def run_agent(
     objective: str,
     *,
@@ -38,6 +47,7 @@ def run_agent(
     """Run Friday until the objective is complete, halted, cancelled, or exhausted."""
     ctrl = controller or AgentController()
     set_controller(ctrl)
+    _ensure_estop()
     show_overlay = OVERLAY_ENABLED if use_overlay is None else use_overlay
 
     print(f"\n[Friday] Starting task: {objective}\n")
@@ -65,7 +75,7 @@ def run_agent(
         return status
     finally:
         feed.stop()
-        set_controller(None)
+        release_controller(ctrl)
         if show_overlay:
             time.sleep(0.8)
             from friday.ui import overlay

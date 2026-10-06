@@ -17,6 +17,7 @@ from friday.config import (
     ensure_data_dirs, resolve_chat_model,
 )
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
+from friday.server.routes_runs import router as runs_router
 from friday.server.routes_tools import router as tools_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
@@ -25,6 +26,12 @@ ensure_data_dirs()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    try:
+        from friday.safety.estop import ensure_started
+
+        ensure_started()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Friday] WARNING: emergency stop unavailable: {exc}")
     # Start MCP servers marked `enabled: true` in config/mcp_servers.yaml (none by default).
     try:
         from friday.mcp_client import get_mcp_manager
@@ -51,6 +58,7 @@ app.add_middleware(
     extra_origins=EXTRA_ALLOWED_ORIGINS,
 )
 app.include_router(tools_router)
+app.include_router(runs_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -318,21 +326,24 @@ def plan_delete(item_id: str) -> dict[str, Any]:
 @app.post("/api/agent/cancel")
 def agent_cancel() -> dict[str, Any]:
     """Hard-stop the active computer-use / agent loop (and abort Ollama streams)."""
-    from friday.agent.control import cancel_active_agent
+    from friday.agent.control import cancel_all_agents
+    from friday.agent.runs import get_run_manager
 
-    stopped = cancel_active_agent()
-    return {"cancelled": stopped, "message": "halt requested" if stopped else "no agent running"}
+    n = cancel_all_agents("api") + 0
+    get_run_manager().cancel_all("api")
+    return {"cancelled": n > 0, "message": "halt requested" if n else "no agent running"}
 
 
 @app.get("/api/agent/status")
 def agent_status() -> dict[str, Any]:
-    from friday.agent.control import get_controller
+    from friday.agent.control import live_controllers
 
-    ctrl = get_controller()
+    ctrls = live_controllers()
     return {
-        "running": ctrl is not None,
-        "cancel_requested": bool(ctrl and ctrl.should_stop()),
-        "paused": bool(ctrl and ctrl.is_paused),
+        "running": bool(ctrls),
+        "runs": len(ctrls),
+        "cancel_requested": any(c.should_stop() for c in ctrls),
+        "paused": any(c.is_paused for c in ctrls),
     }
 
 

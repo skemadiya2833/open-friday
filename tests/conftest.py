@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -34,3 +35,7 @@ def isolated(tmp_path, monkeypatch):
     set_policy(None)
     set_approval_service(None)
     reg.reset_registry()
+
+
+# Never arm the real global hotkey from the test suite unless a test does so explicitly.
+os.environ.setdefault("FRIDAY_ESTOP", "false")

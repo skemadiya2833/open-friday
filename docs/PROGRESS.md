@@ -21,3 +21,6 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 - A6 Vite shell: PASS. Found that proxied POST was 403 (Host rewritten, Origin kept). Added FRIDAY_ALLOWED_ORIGINS (exact, default empty). Verified through the real Vite dev server in a browser (POST 200, WS open, evil origin 403, direct cross-origin fetch blocked). React shell has no approval UI.
 - A7 ADR for MCP SDK: PASS (`ADR-0006`). Pin mcp==2.3.0; lock has anyio 4.15.1, pydantic 2.13.5.
 - Also: stripped a stray BOM from two files.
+
+### Stage B
+- B1 Emergency stop + per-run events + run manager: PASS (tests). Files: `friday/safety/estop.py` (RegisterHotKey, default Ctrl+Alt+F12, env FRIDAY_STOP_HOTKEY, FRIDAY_ESTOP=false disables), `friday/agent/runs.py`, `friday/agent/control.py` (ContextVar controller, live-controller registry, cancel_all_agents), `friday/ui/events.py` (run_id on every event), `friday/server/routes_runs.py` (/api/runs, per-run SSE, /api/runs/{id}/cancel, /api/estop), computer_use handler now uses RunManager (exclusive, per-run forwarding). 90 tests pass, including injecting the real Ctrl+Alt+F12 chord with keybd_event and observing a fake agent halt, and a hotkey-conflict test. UNVERIFIED so far: halting the REAL vision loop (run_agent + Ollama) with the hotkey; done as a pre-flight in B3.

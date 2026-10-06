@@ -1,7 +1,8 @@
-"""Process-wide event bus for GUI ↔ agent communication."""
+﻿"""Process-wide event bus for GUI ↔ agent communication."""
 
 from __future__ import annotations
 
+import contextvars
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -10,11 +11,16 @@ from typing import Any, Callable
 
 Listener = Callable[["AgentEvent"], None]
 
+# The run a thread of execution belongs to. Set by RunManager (and copied into worker
+# threads via contextvars); `emit` stamps it on every event so consumers can filter.
+current_run_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("friday_run_id", default=None)
+
 
 @dataclass(frozen=True)
 class AgentEvent:
     type: str
     payload: dict[str, Any] = field(default_factory=dict)
+    run_id: str | None = None
 
 
 class EventBus:
@@ -39,13 +45,23 @@ class EventBus:
             if listener in listeners:
                 listeners.remove(listener)
 
+    def subscribe_run(self, run_id: str, listener: Listener) -> Listener:
+        """Listen only to events stamped with ``run_id``. Returns the wrapper to unsubscribe."""
+
+        def _filtered(event: AgentEvent) -> None:
+            if event.run_id == run_id:
+                listener(event)
+
+        self.subscribe_all(_filtered)
+        return _filtered
+
     def unsubscribe_all(self, listener: Listener) -> None:
         with self._lock:
             if listener in self._any:
                 self._any.remove(listener)
 
     def emit(self, event_type: str, **payload: Any) -> None:
-        event = AgentEvent(type=event_type, payload=payload)
+        event = AgentEvent(type=event_type, payload=payload, run_id=current_run_id.get())
         with self._lock:
             targets = list(self._listeners.get(event_type, []))
             targets.extend(self._any)

@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import re
-import threading
-from typing import Any
 
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
@@ -17,31 +14,6 @@ _LOOK_ONLY = re.compile(
 
 # Overlay/Tk-only traffic — never forward into the web SSE stream.
 _SKIP_EVENTS = frozenset({"live_frame", "thinking_token", "thinking_clear"})
-_DROP_KEYS = frozenset({"image", "frame", "pil_image", "screenshot", "thumb"})
-
-
-def _jsonable(value: Any) -> Any:
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, dict):
-        out = {}
-        for k, v in value.items():
-            if str(k) in _DROP_KEYS:
-                continue
-            cleaned = _jsonable(v)
-            if cleaned is not None:
-                out[str(k)] = cleaned
-        return out
-    # PIL / numpy-ish binary blobs must never hit SSE.
-    if "Image" in type(value).__name__:
-        return None
-    try:
-        json.dumps(value)
-        return value
-    except Exception:
-        return str(value)
 
 
 class SkillHandler(Skill):
@@ -68,10 +40,8 @@ class SkillHandler(Skill):
                 metadata={"refused": True},
             )
 
-        from friday.agent.control import AgentController, set_controller
-        from friday.agent.loop import run_agent
+        from friday.agent.runs import RunBusyError, get_run_manager
         from friday.models.manager import get_model_manager
-        from friday.types import AgentStatus
 
         get_model_manager().ensure_loaded("vision")
         objective = ctx.message.strip()
@@ -79,48 +49,19 @@ class SkillHandler(Skill):
         ctx.emit("activity", {"step": "act", "message": f"Desktop agent · {objective[:80]}"})
         ctx.emit("status", {"status": "acting"})
 
-        controller = AgentController()
-        set_controller(controller)
-        status_holder: dict[str, AgentStatus] = {}
-
-        def _run() -> None:
-            try:
-                status_holder["status"] = run_agent(
-                    objective,
-                    controller=controller,
-                    use_overlay=True,
-                )
-            except Exception as exc:
-                ctx.emit("error", {"message": str(exc)})
-                status_holder["status"] = AgentStatus.FAILED
-            finally:
-                set_controller(None)
-
-        # Bridge agent UI events into the chat SSE stream (JSON-safe only).
-        from friday.ui.events import AgentEvent, get_bus
-
-        def _bridge(event: AgentEvent) -> None:
-            if event.type in _SKIP_EVENTS:
-                return
-            try:
-                payload = event.payload if isinstance(event.payload, dict) else {}
-                clean = _jsonable(payload)
-                if not isinstance(clean, dict):
-                    clean = {}
-                ctx.emit(event.type, clean)
-            except Exception:
-                pass
-
-        bus = get_bus()
-        bus.subscribe_all(_bridge)
-
-        thread = threading.Thread(target=_run, name="FridayComputerUse", daemon=True)
-        thread.start()
-        thread.join()
-        bus.unsubscribe_all(_bridge)
-
-        status = status_holder.get("status")
-        status_name = status.value if status else "unknown"
+        # The run owns its controller and event log; only ITS events are forwarded here, so a
+        # second chat session can never receive this run's events (and vice versa).
+        try:
+            run = get_run_manager().start(objective, exclusive=True)
+        except RunBusyError as exc:
+            return SkillResult(reply=f"I'm already driving the desktop. {exc}", skill_id="computer_use",
+                               metadata={"refused": True})
+        ctx.emit("run", {"run_id": run.id})
+        for ev in run.iter_events():
+            if ev["type"] in _SKIP_EVENTS:
+                continue
+            ctx.emit(ev["type"], {**ev["payload"], "run_id": run.id})
+        status_name = run.status or "unknown"
         reply = f"Computer-use finished with status: **{status_name}**.\n\nObjective: {objective}"
         ctx.emit("computer_use_end", {"status": status_name})
         return SkillResult(
