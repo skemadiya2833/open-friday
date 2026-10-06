@@ -55,3 +55,18 @@ Measured here (`docs/research/injected_input_probe.json`): SendInput, keybd_even
 
 ## D-018: Emergency-stop key kept at Ctrl+Alt+F12
 Registration probe on this PC found no collision for it or eight alternatives (`docs/research/hotkey_collision.json`); overlays of NVIDIA, AMD, Steam and SignalRGB cannot be inspected, so those are "unknown". The binding was already configurable (`FRIDAY_STOP_HOTKEY`). Every firing is now logged to `data/logs/estop_triggers.jsonl` with the foreground program and whether the last key was physical or synthetic. If accidental stops keep happening, use `FRIDAY_STOP_HOTKEY=ctrl+alt+shift+f12` (harder to hit by accident, still free here).
+
+## D-019: Benchmarks and scheduled tasks run UNATTENDED (approvals fail closed at once)
+`FRIDAY_APPROVAL_MODE=unattended` (benchmark default; `--attended` to opt out): any action that needs approval is denied immediately with `denied:unattended` and the agent is told to choose a safe alternative. Default for normal use stays `attended` (beep + wait up to `FRIDAY_APPROVAL_TIMEOUT`, 120 s). Voice/toast notification is a pluggable hook (`set_attention_hook`), UNVERIFIED. Alternative: wait for a human during benchmarks (rejected: it caused the multi-minute stalls).
+
+## D-020: Dialog handling is context-aware; the button name alone is no longer trusted
+Only crash-report, feedback, update-nag and tip dialogs in non-denylisted, non-browser apps are declined automatically, using a vetted decline list ("Don't send", "No thanks", "Remind me later", "Close"...). Save prompts and anything that could discard unsaved work (Don't Save, No, Close, pixel clicks, accelerator keys) always need the owner. Windows-MCP does not expose a dialog's body text (verified with a WinForms dialog), so the window title and the button set are used as evidence; a spoofed title can at worst make a benign dialog look like a save prompt (safe direction). Alternative: let the vision model read the dialog (not built).
+
+## D-021: Experience memory is OFF by default (`FRIDAY_MEMORY=off|record|read|on`)
+It records only structured, secret-redacted trajectories (no screenshots, no typed text) locally. Default stays off until the held-out result below justifies turning it on; see the final report for that result. Alternative: record by default (rejected: privacy before evidence).
+
+## D-022: Held-out split is fixed in `friday/bench/splits.py`
+Seven tasks (one or two per group) are frozen as held-out; tuning of macros, planner/executor, recovery and memory used only the other 19. Caveat recorded: earlier whole-benchmark diagnostics were not split.
+
+## D-023: Macro layer and planner/executor are OFF by default
+They are only switched on by data (see final report). `save_as` / `open_folder` refuse system folders, network shares, `..`, wildcards and env-var paths before any tool call.

@@ -246,3 +246,28 @@ def test_unattended_approval_fails_closed_immediately_attended_waits():
     svc.add_listener(lambda k, p: notes.append(k))
     ok, who = svc.request(tool="t", risk="confirm", args={}, timeout=0.2)
     assert not ok and who == "denied:timeout" and "approval_request" in notes
+
+
+def test_browser_in_front_gets_the_page_only_view_from_the_first_step():
+    seen = []
+
+    class D(Desk):
+        def snapshot(self, *, vision=False, dom=False):
+            seen.append((vision, dom))
+            return super().snapshot(vision=vision, dom=dom)
+    d = D(lambda: screen("Page - Google Chrome", [("button", "Go")]))
+    run_hybrid("x", controller=AgentController(), config=HybridConfig(**FAST, max_steps=1),
+               decider=scripted([{"action": "fail", "reason": "x"}]), desktop=d)
+    assert seen[0] == (False, False) and (False, True) in seen[:3]
+
+
+def test_objective_named_window_is_brought_to_front_once_and_never_if_denied():
+    from friday.agent.hybrid import window_to_focus
+
+    sn = U.parse_snapshot(screen("Cursor - Open Friday", [("button", "x")], others=["Canvas click - Google Chrome", "1Password"]))
+    cfg = G.GuardConfig()
+    assert window_to_focus("The Chrome window shows a canvas. Click the red circle.", sn, set(), cfg) == "Canvas click - Google Chrome"
+    assert window_to_focus("The Chrome window shows a canvas.", sn, {"Canvas click - Google Chrome"}, cfg) is None
+    assert window_to_focus("Click the red circle", sn, set(), cfg) is None              # no app named
+    sn2 = U.parse_snapshot(screen("Cursor", [("button", "x")], others=["F.R.I.D.A.Y. - HUD - Google Chrome"]))
+    assert window_to_focus("open the Chrome window", sn2, set(), cfg) is None            # protected UI is never chosen

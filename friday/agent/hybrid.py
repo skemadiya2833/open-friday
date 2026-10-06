@@ -384,6 +384,29 @@ def _settle_browser_tree(desk: "Desktop", snap: U.Snapshot, dom: bool, cfg: Hybr
     return snap
 
 
+_APP_WORDS = re.compile(r"\b(chrome|edge|firefox|brave|notepad|calculator|explorer|settings|word|excel|code|terminal|paint)\b", re.I)
+
+
+def window_to_focus(objective: str, snap: U.Snapshot, tried: set[str], guard: G.GuardConfig) -> str | None:
+    """The visible window the OBJECTIVE names (e.g. "the Chrome window") when it is not the focused one.
+    Generic: matches app words in the objective against window titles, never denied/protected windows, once per title."""
+    words = {w.lower() for w in _APP_WORDS.findall(objective or "")}
+    if not words:
+        return None
+    ft = snap.focused_title()
+    if ft and any(w in ft.lower() for w in words):
+        return None                                  # already in the right app
+    for w in snap.windows:
+        name = w.name or ""
+        if not name or name == ft or name in tried or w.status == "Minimized":
+            continue
+        low = name.lower()
+        if any(x in low for x in words) and G.check_window(guard, name).action == "allow" \
+                and G.check_protected(guard, name, []).action == "allow":
+            return name
+    return None
+
+
 def _fail(ctrl: AgentController, reason: dict) -> AgentStatus:
     """End the run as FAILED with a structured, machine-readable reason (also kept on the controller)."""
     try:
@@ -509,6 +532,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
                             max_wasted_seconds=cfg.max_wasted_seconds)
     recovery = S.Recovery(allow_vision=cfg.use_vision)
     dismissed: dict[str, int] = {}
+    focused_once: set[str] = set()
     recent: list[tuple] = []
     snap: U.Snapshot | None = None
     dom = False
@@ -525,6 +549,11 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
         try:
             if snap is None:
                 snap, _ = desk.snapshot(vision=False, dom=dom)
+            if not dom and BROWSER_TITLE.search(snap.focused_title()):
+                # a browser is in front: use the page-only view from the very first step (canvas/custom pages are then
+                # correctly seen as sparse and get a screenshot, instead of the model reading the taskbar)
+                dom = True
+                snap, _ = desk.snapshot(vision=False, dom=True)
             snap = _settle_browser_tree(desk, snap, dom, cfg)
             sparse = len([e for e in snap.elements if e.action]) < cfg.sparse_threshold
             use_vision = cfg.use_vision and (force_vision or sparse)
@@ -559,6 +588,20 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
                 return _fail(ctrl, S.failure_reason(S.Stall("hung_window", hung[0]), ["wait"],
                                                     elapsed=time.monotonic() - t_start, steps=it))
             notes.append("A window was not responding but has recovered.")
+
+        # ---- the objective names an app whose window is open but not in front: bring it to the front
+        wf = window_to_focus(objective, snap, focused_once, cfg.guard)
+        if wf is not None:
+            focused_once.add(wf)
+            emit("agent_note", note=f"bringing '{wf[:60]}' to the front")
+            try:
+                desk.call("App", {"mode": "switch", "name": wf})
+                history.append(f"{it}. focus title={wf[:40]!r} -> auto_focus")
+                time.sleep(cfg.settle_seconds)
+                snap = None
+                continue
+            except DesktopError:
+                pass
 
         # ---- dialogs: classify from their text and owner; only benign categories are declined automatically
         dlg = D.detect_dialog(snap, deny_apps=cfg.guard.deny_apps)
