@@ -28,3 +28,21 @@ Windows-MCP's Click(label=N) indexes an internal list that Snapshot does not pri
 
 ## D-009: Skill approval rules
 Instruction-only agent proposals also need owner approval (the brief only demanded this for code-running skills). Imported skills with scripts can be approved but scripts are never executed by the loader; llowed-tools in SKILL.md never grants anything. Trust is bound to a content hash, so editing an approved skill revokes it. Alternative: auto-enable instruction-only proposals (rejected: instructions steer an agent that can click and type).
+
+## D-010: STT default in code changed to `large-v3-turbo`; your `.env` still says `base`
+The code default (`VOICE_STT_MODEL`) is now `large-v3-turbo` (fits easily next to the vision model, see `docs/research/stt_bench.json`). Your `.env` overrides it with `base`, so nothing changes for you until you edit `.env`. Accuracy on your voice is UNVERIFIED until you run `docs/VOICE_SAMPLES.md`. Alternative: keep `base` (fastest, least accurate).
+
+## D-011: Wake word is the pretrained `hey_jarvis`; barge-in default is "wake"
+openWakeWord has no pretrained "hey friday"; a custom model needs training and is UNVERIFIED. Barge-in defaults to requiring the wake word (no echo cancellation, so listening for speech while Friday speaks through speakers would make it interrupt itself). `vad` mode is for headphones. Alternative: train a custom wake word.
+
+## D-012: Benchmark timeout is 120 s per run (legacy and hybrid alike)
+The legacy loop needs about 12 s per step with this model, so 100 s cut runs to about 8 steps. Both the baseline and the hybrid run use 120 s and 15 steps, so the comparison is like for like. An earlier 100 s partial attempt was contaminated (a package install corrupted the environment mid-run) and is kept only as evidence (`bench_baseline_attempt1_PARTIAL_legacy_timeout100.json`).
+
+## D-013: Hybrid prompt was tuned after seeing live failures on three smoke tasks
+Smoke tasks: notepad_open, calc_add, notepad_type_save (one run each, before the real benchmark). Fixes were generic (launch apps instead of failing, `id` must be a number, type into the focused window when there is no text field, feedback after a successful launch), but the model saw hints such as "digits work as keys in Calculator". This is mild tuning toward the benchmark apps; the legacy baseline had no such tuning. Alternative: freeze the prompt before any live run (rejected: the first live run showed the parser did not even match the real Windows-MCP output format).
+
+## D-014: Config now refuses to start on invalid values
+Bad port, bad booleans, unknown `CLOUD_PROVIDER`/`AGENT_BACKEND`, or a non-loopback `FRIDAY_HOST` without `FRIDAY_API_TOKEN` stop startup with a readable message. Missing cloud keys are only warnings. Alternative: warn only (rejected for the token case: silently exposing the desktop agent is worse than failing to start).
+
+## D-015: google-genai migration uses model `gemini-2.5-flash`, overridable with `GEMINI_MODEL`
+The old code asked for `gemini-1.5-pro-latest`, which no longer exists. I cannot verify a live call without your key, so the name is a best guess and the call path is UNVERIFIED (API signatures were verified against google-genai 2.28.0). Alternative: pick `gemini-2.5-pro` (slower, dearer). `friday_env` still has the OLD package installed until you run `uv pip install -r requirements/core.lock.txt`; the code now imports `google.genai`, so the cloud fallback will fail (and return "failed", never crash) until you do.
