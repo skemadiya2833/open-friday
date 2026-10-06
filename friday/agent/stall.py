@@ -87,7 +87,9 @@ class StallDetector:
     max_unchanged: int = 3            # consecutive steps whose screen fingerprint did not change
     max_repeat: int = 6               # identical consecutive actions
     max_wasted_seconds: float = 60.0  # wall-clock time without any progress (a changed fingerprint resets it)
+    max_revisits: int = 2             # returns to an already-seen (non-adjacent) screen state = going in circles
     clock: Callable[[], float] = time.monotonic
+    _visits: dict = field(default_factory=dict)
     _last_fp: str | None = None
     _unchanged: int = 0
     _last_progress: float = field(default=0.0)
@@ -102,6 +104,14 @@ class StallDetector:
         if self._last_fp is None or fingerprint != self._last_fp:
             self._unchanged = 0
             self._last_progress = now
+            if self._last_fp is not None:
+                if fingerprint in self._visits:
+                    self._visits[fingerprint] += 1      # came back to a state we already left
+                    self._cycle = fingerprint
+                else:
+                    self._visits[fingerprint] = 0
+            else:
+                self._visits[fingerprint] = 0
         else:
             self._unchanged += 1
         self._last_fp = fingerprint
@@ -109,7 +119,13 @@ class StallDetector:
             self._sigs.append(action_sig)
         return self.check()
 
+    _cycle: str | None = None
+
     def check(self) -> Stall | None:
+        cyc = self._cycle
+        self._cycle = None
+        if cyc is not None and self._visits.get(cyc, 0) >= self.max_revisits:
+            return Stall("state_cycle", f"returned to the same screen state {self._visits[cyc]} times (going in circles)")
         if self._sigs:
             n = 0
             for s in reversed(self._sigs):
@@ -127,6 +143,7 @@ class StallDetector:
 
     def reset_after_recovery(self) -> None:
         self._sigs.clear()
+        self._visits.clear()
         self.note_progress()
 
     def note_progress(self) -> None:
@@ -141,7 +158,9 @@ class Recovery:
     _i: int = 0
     tried: list[str] = field(default_factory=list)
 
-    def next(self) -> str:
+    def next(self, at_least: str | None = None) -> str:
+        if at_least in RECOVERY_ORDER:               # e.g. a state cycle: re-observing / Escape cannot help, change method
+            self._i = max(self._i, RECOVERY_ORDER.index(at_least))
         while self._i < len(RECOVERY_ORDER):
             step = RECOVERY_ORDER[self._i]
             self._i += 1

@@ -28,6 +28,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -73,6 +74,9 @@ How to work:
   use a button id for typing. If the app has no text area (Calculator), omit "id": the text goes to the focused
   window (digits and operators work as keys there, e.g. "12+30=").
 - "id" is always a plain number from the element list.
+- Typing several lines: put ALL of them in ONE type action with a newline between lines ("alpha\\nbeta"). Never click
+  back into a field you are already typing in (a click moves the cursor and breaks the text), and never clear
+  your own earlier typing to start over: the cursor is already at the end, so just keep typing.
 - Unexpected pop-ups (crash or error reports, "send feedback", update prompts, "not responding") block everything
   behind them. Dismiss them first with the safe choice: "Don't send", "No", "Cancel", "Close" or "Not now". Never
   choose Send/Yes/Report. If the pop-up has no safe button, reply fail and say what is on screen.
@@ -120,6 +124,8 @@ class HybridConfig:
     macros: bool = False                       # deterministic high-level actions (benchmarked before enabling)
     planner_executor: bool = False             # one call proposes the next goal, another picks the element
     memory: str | None = None                  # off | record | on; None -> env FRIDAY_MEMORY (default off)
+    tools_first: bool | None = None            # deterministic tools before the GUI; None -> env FRIDAY_TOOLS_FIRST (default on)
+    max_revisits: int = 2                      # returns to an earlier screen state before the loop breaker fires
 
 
 Decider = Callable[[list[dict]], str]
@@ -332,6 +338,30 @@ def _text_bool(v: Any) -> bool:
     return v is True or str(v).lower() in ("true", "1", "yes")
 
 
+def type_lines(desk: Any, text: str, first: dict, *, force_ask: bool) -> ToolResult:
+    """Composite action: type a multi-line text in one go. Only the FIRST line is aimed at the element (one click);
+    later lines are typed into the focus with Enter in between, so the cursor is never re-positioned by another click
+    (that re-click is what made agents overwrite their own text)."""
+    lines = text.split("\n")
+    res = ToolResult.text_result("")
+    for i, line in enumerate(lines):
+        last = i == len(lines) - 1
+        args = dict(first) if i == 0 else {"text": line, "clear": False}
+        args["text"] = line
+        args["press_enter"] = bool(first.get("press_enter")) if last else False
+        if i == 0:
+            args["clear"] = bool(first.get("clear"))
+        if line:
+            res = desk.call("Type", args, force_ask=force_ask)
+            if res.is_error:
+                return res
+        if not last:
+            res = desk.call("Shortcut", {"shortcut": "enter"}, force_ask=force_ask)
+            if res.is_error:
+                return res
+    return res
+
+
 def execute(desk: Desktop, plan: Plan, *, imap: _ImageMap | None, force_ask: bool) -> ToolResult:
     raw, a = plan.raw, plan.action
     if a in ("click", "click_xy"):
@@ -342,11 +372,14 @@ def execute(desk: Desktop, plan: Plan, *, imap: _ImageMap | None, force_ask: boo
         return desk.call("Click", {"loc": [x, y], "button": btn, "clicks": clicks}, force_ask=force_ask)
     if a in ("type", "type_xy"):
         x, y = (plan.x, plan.y) if a == "type" else imap.to_screen(plan.x, plan.y)  # type: ignore[union-attr]
-        targs: dict[str, Any] = {"text": str(raw.get("text", "")), "clear": _text_bool(raw.get("clear")),
+        text = str(raw.get("text", "")).replace("\r\n", "\n")
+        targs: dict[str, Any] = {"text": text, "clear": _text_bool(raw.get("clear")),
                                  "press_enter": _text_bool(raw.get("enter"))}
         if x is not None and y is not None:
             targs["loc"] = [x, y]
-        return desk.call("Type", targs, force_ask=force_ask)
+        if "\n" not in text:
+            return desk.call("Type", targs, force_ask=force_ask)
+        return type_lines(desk, text, targs, force_ask=force_ask)
     if a == "shortcut":
         return desk.call("Shortcut", {"shortcut": str(raw["keys"])}, force_ask=force_ask)
     if a == "scroll":
@@ -452,6 +485,14 @@ def _acquire_grant(run_id: str, cfg: HybridConfig, objective: str):
     return GR.issue(run_id, (f"{SERVER}__",), f"owner:{who}")
 
 
+def _tools_first(cfg: HybridConfig) -> bool:
+    if cfg.tools_first is not None:
+        return cfg.tools_first
+    from friday.agent.router import enabled_by_env
+
+    return enabled_by_env()
+
+
 def run_hybrid(
     objective: str,
     *,
@@ -484,6 +525,17 @@ def run_hybrid(
             emit("status", status="error")
             emit("session_end", status=AgentStatus.FAILED.value, objective=objective, reason="desktop control not granted")
             return AgentStatus.FAILED
+        if desktop is None and _tools_first(cfg):
+            from friday.agent import router as RT
+
+            rr = RT.route(objective, approve=RT.approval_from_service(run_id), workspace=str(Path.cwd()))
+            if rr.handled:
+                emit("agent_note", note=f"tools-first: {rr.message}")
+                emit("status", status="complete")
+                emit("session_end", status=AgentStatus.COMPLETED.value, objective=objective, reason="tools-first router")
+                return AgentStatus.COMPLETED
+            if rr.message:
+                emit("agent_note", note=rr.message)
         hints, rec, store = "", None, None
         try:
             from friday.experience import store as X
@@ -529,9 +581,12 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
     force_vision = False
     t_start = time.monotonic()
     stall = S.StallDetector(max_unchanged=cfg.max_unchanged, max_repeat=cfg.stall_repeats,
-                            max_wasted_seconds=cfg.max_wasted_seconds)
+                            max_wasted_seconds=cfg.max_wasted_seconds, max_revisits=cfg.max_revisits)
     recovery = S.Recovery(allow_vision=cfg.use_vision)
     dismissed: dict[str, int] = {}
+    typed: dict[tuple, set] = {}               # (window, element name) -> texts this run typed there
+    last_typed: tuple | None = None
+    self_blocks = cycles = 0
     focused_once: set[str] = set()
     recent: list[tuple] = []
     snap: U.Snapshot | None = None
@@ -742,6 +797,27 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
                 return AgentStatus.COMPLETED
             continue
 
+        # ---- self-undo guard: do not click back into a field we are typing in, and do not wipe + retype our own text
+        ekey = (plan.element.window, plan.element.name) if plan.element is not None else None
+        if ekey is not None and self_blocks < 4:
+            why_self = ""
+            if plan.action == "click" and ekey == last_typed:
+                why_self = ("You just typed into that field. Clicking it again moves the cursor and breaks your text. "
+                            "The cursor is already at the end: keep typing, or use the next control (Save, etc.).")
+            elif plan.action == "type" and _text_bool(plan.raw.get("clear")) and str(plan.raw.get("text", "")) in typed.get(ekey, set()):
+                why_self = ("You already typed exactly this text into that field earlier in this run. Do not wipe it and "
+                            "retype it: look at the field's current content on the screen and continue from there.")
+            if why_self:
+                self_blocks += 1
+                emit("action_blocked", step=step, reason="self-undo: " + why_self[:120])
+                notes.append(why_self)
+                history.append(history_line + " (BLOCKED: self-undo)")
+                no_effect += 1
+                if no_effect >= cfg.max_no_effect:
+                    emit("status", status="error")
+                    return AgentStatus.FAILED
+                continue
+
         # ---- repetition guard: the same action again and again is a loop, whatever the screen does
         sig = (plan.action, json.dumps({k: plan.raw.get(k) for k in ("id", "text", "keys", "app", "x", "y", "title", "path")}, sort_keys=True, default=str))
         recent.append(sig)
@@ -805,6 +881,11 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             verdict_txt += ",expect_met" if met else ",expect_missing"
         emit("action_end", step=step, result=verdict_txt, iteration=it, history=history[-20:])
         history.append(history_line + f" -> {verdict_txt}")
+        if plan.action == "type" and ekey is not None:
+            typed.setdefault(ekey, set()).add(str(plan.raw.get("text", "")))
+            last_typed = ekey
+        elif plan.action not in ("shortcut", "wait"):
+            last_typed = None
         if recorder is not None:
             recorder.step(plan, verdict_txt, snap.focused_title())
 
@@ -836,7 +917,11 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
         fp = (new.fingerprint() + "|" + new.focused_title()) if new is not None else "none"
         st = stall.record(fp, sig)
         if st is not None:
-            rung = recovery.next()
+            if st.kind == "state_cycle":
+                cycles += 1
+                if cycles >= 3:
+                    return _fail(ctrl, S.failure_reason(st, recovery.tried, elapsed=time.monotonic() - t_start, steps=it))
+            rung = recovery.next(at_least="alternative" if st.kind == "state_cycle" else None)
             emit("agent_stall", kind=st.kind, detail=st.detail, recovery=rung)
             if rung == "fail":
                 return _fail(ctrl, S.failure_reason(st, recovery.tried, elapsed=time.monotonic() - t_start, steps=it))
@@ -854,6 +939,12 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
                     time.sleep(cfg.settle_seconds)
                 snap = None
                 notes.append("Escape was pressed to clear a possible hidden pop-up or menu.")
+            elif rung == "alternative" and st.kind == "state_cycle":
+                notes.append("LOOP DETECTED: the screen has returned to an earlier state several times, so your last "
+                             "steps undo each other. Do NOT repeat that sequence. Do not click back into text you typed "
+                             "and do not clear it. Your previous steps: " + " | ".join(h[:60] for h in history[-6:]) +
+                             ". Pick a different method (put multi-line text in one type action, use keyboard "
+                             "shortcuts), or reply fail with the reason.")
             elif rung == "alternative":
                 notes.append("You seem stuck. Try a DIFFERENT approach: another element, a keyboard shortcut, or a "
                              "different app path. Do not repeat what you did.")

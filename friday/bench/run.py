@@ -42,6 +42,7 @@ def _parse(argv=None):
     ap.add_argument("--memory", choices=["off", "record", "read", "on"], default="off",
                     help="experience memory: record=learn only, read=hints only, on=both (Stage L)")
     ap.add_argument("--budget-minutes", type=float, default=0, help="stop starting new runs after this many minutes")
+    ap.add_argument("--tools-first", action="store_true", help="allow the deterministic router (off by default: benchmarks measure the GUI agent)")
     ap.add_argument("--macros", action="store_true", help="enable the macro layer (Stage I1)")
     ap.add_argument("--planner-executor", action="store_true", help="planner/executor split (Stage I2)")
     ap.add_argument("--attended", action="store_true", help="allow approval waits (default: unattended, fail closed)")
@@ -129,7 +130,7 @@ def _make_backend(name: str, a=None):
     #  * the local test pages are marked trusted so their Submit/Confirm buttons do not need a human.
     guard = GuardConfig(deny_exceptions=[r"^Settings$"], trusted_titles=BENCH_TRUSTED_TITLES)
     cfg = HybridConfig(model=a.model, num_ctx=a.ctx, max_steps=a.max_iter, guard=guard,
-                       grant_issuer="benchmark-cli", macros=a.macros, planner_executor=a.planner_executor, coord_space=(a.coord_space or None) if a.coord_space in ("pixel", "norm1000") else None)
+                       grant_issuer="benchmark-cli", macros=a.macros, tools_first=a.tools_first, planner_executor=a.planner_executor, coord_space=(a.coord_space or None) if a.coord_space in ("pixel", "norm1000") else None)
     return lambda objective, ctrl: run_hybrid(objective, controller=ctrl, config=cfg)
 
 
