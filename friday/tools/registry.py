@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -180,6 +181,11 @@ def get_registry() -> ToolRegistry:
             reg = ToolRegistry()
             for spec in builtin_specs():
                 reg.register(spec)
+            if os.getenv("FRIDAY_SENSORS", "false").lower() in ("1", "true", "yes"):
+                from friday.experimental.sensors import sensor_specs   # read-only, off by default
+
+                for spec in sensor_specs():
+                    reg.register(spec)
             _registry = reg
         return _registry
 
