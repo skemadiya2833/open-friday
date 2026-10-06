@@ -57,5 +57,7 @@ class Banner:
 
             root.after(200, pump)
             root.mainloop()
+            var = None  # drop Tk objects on THIS thread
+            root = None
         except Exception:  # noqa: BLE001 - banner is a courtesy, never fatal
             self._ready.set()

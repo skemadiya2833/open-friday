@@ -216,6 +216,34 @@ class RunManager:
             self._runs.pop(r.id, None)
 
 
+def maybe_propose_skill(objective: str, ctrl: AgentController, status) -> str | None:
+    """Skill-proposal loop. Off unless SKILL_PROPOSALS=true. Writes an instruction-only draft into the
+    proposals folder; the draft is never usable until the owner approves it in the Control Center."""
+    import os
+
+    if os.getenv("SKILL_PROPOSALS", "false").lower() not in ("1", "true", "yes"):
+        return None
+    try:
+        if getattr(status, "value", status) != "completed":
+            return None
+        steps = [s for s in getattr(ctrl, "history_summary", []) if "BLOCKED" not in s and "ERROR" not in s
+                 and "rejected" not in s and "dry-run" not in s]
+        if len(steps) < 3:
+            return None
+        from friday.skills.agentskills import SkillError, draft_from_run, get_store
+
+        d = draft_from_run(objective, steps, run_id=ctrl.run_id)
+        try:
+            get_store().propose(d["name"], d["description"], d["body"], rationale="auto-drafted from a successful run",
+                                proposed_by="agent:auto", run_id=ctrl.run_id)
+        except SkillError:
+            return None          # already exists
+        return d["name"]
+    except Exception as exc:  # noqa: BLE001 - never let proposal logic affect a run
+        print(f"[Friday] skill proposal skipped: {exc}")
+        return None
+
+
 def _default_runner(objective: str, ctrl: AgentController):
     import os
 
@@ -224,7 +252,9 @@ def _default_runner(objective: str, ctrl: AgentController):
     if os.getenv("AGENT_BACKEND", "legacy").strip().lower() == "hybrid":
         from friday.agent.hybrid import run_hybrid
 
-        return run_hybrid(objective, controller=ctrl)
+        status = run_hybrid(objective, controller=ctrl)
+        maybe_propose_skill(objective, ctrl, status)
+        return status
     from friday.agent.loop import run_agent
 
     return run_agent(objective, controller=ctrl, use_overlay=True)

@@ -24,3 +24,15 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 
 ### Stage B
 - B1 Emergency stop + per-run events + run manager: PASS (tests). Files: `friday/safety/estop.py` (RegisterHotKey, default Ctrl+Alt+F12, env FRIDAY_STOP_HOTKEY, FRIDAY_ESTOP=false disables), `friday/agent/runs.py`, `friday/agent/control.py` (ContextVar controller, live-controller registry, cancel_all_agents), `friday/ui/events.py` (run_id on every event), `friday/server/routes_runs.py` (/api/runs, per-run SSE, /api/runs/{id}/cancel, /api/estop), computer_use handler now uses RunManager (exclusive, per-run forwarding). 90 tests pass, including injecting the real Ctrl+Alt+F12 chord with keybd_event and observing a fake agent halt, and a hotkey-conflict test. UNVERIFIED so far: halting the REAL vision loop (run_agent + Ollama) with the hotkey; done as a pre-flight in B3.
+
+- B2 Benchmark harness: PASS (self-test 29/29: negative controls fail, oracle passes, cleanup leaves pre-existing windows alone; Calculator UIA read verified; local pages' JS verified in a browser). 26 tasks x 3 reps. UNVERIFIED: Notepad window cleanup/kill path.
+- B1 live: hotkey halted the REAL vision loop in 1.41 s (docs/research/live_estop_check.json): PASS.
+- B3 baseline run started 2026-10-06T11:41:45, pid 17504; output docs/research/bench_baseline_legacy_qwen25vl.json (resumable with --resume).
+
+### Stage C (in progress)
+- C1 hybrid agent: code + tests DONE, live run UNVERIFIED until baseline finishes. Files: friday/agent/{uitree,guard,hybrid}.py, friday/safety/grant.py (run grants; registry.call(force_ask=...)), AGENT_BACKEND=hybrid switch in runs.py (default stays legacy). 36 tests (parser, guard, loop, prompt injection with an obedient scripted model, grants). Windows-MCP never prints element labels, so the agent maps its own ids to printed centre coordinates (D-008).
+- C2 prompt-injection tests: PASS in tests/test_hybrid.py (window title, page text, denylisted apps, launch of denied app, fenced untrusted text). Live injection test against the real model: NOT YET RUN.
+- C3 hybrid benchmark + model comparison: NOT YET RUN (waiting for baseline).
+
+### Stage D (in progress)
+- D1 agentskills.io loader: code + 23 tests DONE (friday/skills/agentskills.py, routes_skillmd.py, builtin tools skills_list/skill_activate/skill_read/skill_propose, proposal loop behind SKILL_PROPOSALS=true). Spec fetched from agentskills.io/specification on 2026-10-06.

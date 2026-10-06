@@ -19,3 +19,12 @@ The Vite proxy rewrites `Host` but keeps `Origin`, so the strict check rejects i
 
 ## D-006: The owner's .env has SHELL_TOOLS_ENABLED=true
 I did not change it. Policy keeps `run_shell` at `ask`, so each call needs an approval in the UI. Benchmarks and tests run with `SHELL_TOOLS_ENABLED=false`. Alternative: set it to false in `.env` (your file, so left alone).
+
+## D-007: Benchmarks blank cloud API keys and set CLOUD_PROVIDER=none
+So a benchmark can never send screenshots to Gemini/OpenAI even though .env has keys. Alternative: leave cloud fallback on (rejected: it would leak screen content and also contaminate local-model numbers).
+
+## D-008: Hybrid agent derives element targets from the printed tree, not Windows-MCP labels
+Windows-MCP's Click(label=N) indexes an internal list that Snapshot does not print, so label N cannot be matched to a visible element. The agent assigns its own ids to the printed elements and clicks the element's printed centre via loc. Alternative: guess that labels equal the order of printed interactive lines (UNVERIFIED, would silently click the wrong thing). Benchmark-only owner choices for the hybrid agent: the read-only Settings tasks lift the default "Settings" denial (anchored ^Settings$), and the local test-page titles are marked trusted so their Submit/Confirm buttons do not need a human. Both are passed by riday.bench.run, not defaults.
+
+## D-009: Skill approval rules
+Instruction-only agent proposals also need owner approval (the brief only demanded this for code-running skills). Imported skills with scripts can be approved but scripts are never executed by the loader; llowed-tools in SKILL.md never grants anything. Trust is bound to a content hash, so editing an approved skill revokes it. Alternative: auto-enable instruction-only proposals (rejected: instructions steer an agent that can click and type).

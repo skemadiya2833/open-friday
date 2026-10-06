@@ -379,6 +379,7 @@ def run_hybrid(
 
 def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Desktop, decide: Decider) -> AgentStatus:
     history: list[str] = []
+    ctrl.history_summary = history          # read by the skill-proposal loop after a successful run
     notes: list[str] = []
     no_effect = parse_fail = proposals = done_rejections = 0
     force_vision = False
