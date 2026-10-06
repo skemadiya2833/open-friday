@@ -55,7 +55,19 @@ Reply with exactly ONE JSON object and nothing else. Fields:
   "expect": optional short text you expect to be visible after the action
   "evidence": (done) exact text visible on screen that proves the objective is complete
   "reason": (fail) why it cannot be done
-Prefer element ids. Do one action per reply. Use "done" only when the screen already shows the result."""
+Prefer element ids. Do one action per reply. Use "done" only when the screen already shows the result.
+
+How to work:
+- To open or switch to an application that is not in focus, use {"action":"launch","app":"<name>"} (for
+  example "notepad", "calculator", "file explorer", "settings", "chrome"). The app does not need to be visible
+  on the screen first: launching is the normal first step.
+- Use "fail" only when the objective is impossible or blocked after you have really tried. An empty or unrelated
+  screen is NOT a reason to fail: launch the right app or use a shortcut.
+- To type into an app, launch it, then use type with the id of its text area (edit/document elements). Never
+  use a button id for typing. If the app has no text area (Calculator), omit "id": the text goes to the focused
+  window (digits and operators work as keys there, e.g. "12+30=").
+- "id" is always a plain number from the element list.
+- Always answer with a JSON object that has an "action" field."""
 
 VISION_ACTIONS = ' | click_xy | type_xy'
 VISION_RULES = """
@@ -216,12 +228,18 @@ def validate(raw: dict, snap: U.Snapshot, *, vision_ok: bool) -> tuple[Plan | No
         return Plan(action, raw), ""
     if action in ("click", "type", "scroll"):
         eid = _num(raw.get("id"))
+        if eid is None and raw.get("id") not in (None, ""):
+            return None, f"'id' must be the NUMBER of an element in the list, not {str(raw.get('id'))[:40]!r}"
         if eid is None:
             if action == "type":
-                foc = next((e for e in snap.elements if e.focused), None)
+                ft = snap.focused_title()
+                foc = next((e for e in snap.elements if e.focused and (not ft or e.window == ft)), None)
+                if "text" not in raw:
+                    return None, "type needs 'text'"
                 if foc is None:
-                    return None, "type needs an element 'id' (no element is focused)"
-                return Plan(action, raw, element=foc), ""
+                    # No focused element: type into whatever the focused window has focused (Calculator, Notepad).
+                    return Plan(action, raw), ""
+                return Plan(action, raw, element=foc, x=foc.x, y=foc.y), ""
             if action == "scroll":
                 return Plan(action, raw), ""
             return None, "click needs an element 'id'"
@@ -284,9 +302,11 @@ def execute(desk: Desktop, plan: Plan, *, imap: _ImageMap | None, force_ask: boo
         return desk.call("Click", {"loc": [x, y], "button": btn, "clicks": clicks}, force_ask=force_ask)
     if a in ("type", "type_xy"):
         x, y = (plan.x, plan.y) if a == "type" else imap.to_screen(plan.x, plan.y)  # type: ignore[union-attr]
-        return desk.call("Type", {"text": str(raw.get("text", "")), "loc": [x, y],
-                                  "clear": _text_bool(raw.get("clear")),
-                                  "press_enter": _text_bool(raw.get("enter"))}, force_ask=force_ask)
+        targs: dict[str, Any] = {"text": str(raw.get("text", "")), "clear": _text_bool(raw.get("clear")),
+                                 "press_enter": _text_bool(raw.get("enter"))}
+        if x is not None and y is not None:
+            targs["loc"] = [x, y]
+        return desk.call("Type", targs, force_ask=force_ask)
     if a == "shortcut":
         return desk.call("Shortcut", {"shortcut": str(raw["keys"])}, force_ask=force_ask)
     if a == "scroll":
@@ -404,6 +424,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
                 snap, _ = desk.snapshot(vision=True, dom=dom)
         except DesktopError as exc:
             notes = [f"Screen capture failed: {exc}"]
+            emit("agent_note", note=f"screen capture failed: {exc}"[:300])
             no_effect += 1
             if no_effect >= cfg.max_no_effect:
                 emit("status", status="error")
@@ -417,6 +438,8 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
 
         img = _prep_image(snap.image_b64, cfg.image_max_side) if (use_vision and snap.image_b64) else None
         msgs = build_messages(objective, snap, history, notes, vision=img, cfg=cfg)
+        emit("agent_observation", focused=snap.focused_title()[:120], elements=len(snap.elements), vision=img is not None,
+             preview=U.render_for_model(snap, max_elements=40)[:1500])
         notes = []
 
         # ---- decide
@@ -434,6 +457,7 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             emit("status", status="halt")
             return AgentStatus.HALTED
         raw = _extract_json(raw_text)
+        emit("agent_decision", reply=(raw_text or "")[:400])
         plan, err = (None, "reply was not a JSON object") if raw is None else validate(raw, snap, vision_ok=img is not None)
         if plan is None:
             parse_fail += 1
@@ -533,6 +557,12 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
         emit("action_end", step=step, result=verdict_txt, iteration=it, history=history[-20:])
         history.append(history_line + f" -> {verdict_txt}")
 
+        if plan.action == "launch" and new is not None and new.focused_title():
+            app = _norm(str(plan.raw.get("app", "")))
+            if app and app.split()[0] in _norm(new.focused_title()):
+                notes.append(f'The launch worked: the focused window is now "{new.focused_title()}". '
+                             "Do not launch it again. If opening it was the whole objective, reply with "
+                             '"done" and put the window title as "evidence"; otherwise continue with the next step.')
         if plan.action in ("wait",) or changed or met:
             no_effect = 0
             force_vision = False
