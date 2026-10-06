@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -27,6 +27,16 @@ ensure_data_dirs()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    try:
+        from friday.diagnostics import enforce
+        from friday.logs import setup_logging
+
+        enforce()                       # clear error + refuse to start on invalid config
+        setup_logging()
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Friday] WARNING: diagnostics unavailable: {exc}")
     try:
         from friday.safety.estop import ensure_started
 
@@ -122,6 +132,20 @@ def health() -> dict[str, Any]:
         "embed_model": EMBED_MODEL,
         "voice": VOICE_ENABLED,
     }
+
+
+@app.get("/api/health/detail")
+def health_detail() -> dict[str, Any]:
+    from friday.diagnostics import health_report
+
+    return health_report()
+
+
+@app.get("/health", response_class=HTMLResponse)
+def health_page() -> str:
+    from friday.diagnostics import HEALTH_HTML
+
+    return HEALTH_HTML
 
 
 @app.post("/api/chat")

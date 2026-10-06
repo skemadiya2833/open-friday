@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import logging
 import threading
 import time
 import uuid
@@ -164,6 +165,8 @@ class RunManager:
             from friday.ui.events import emit
 
             emit("run_start", objective=objective)
+            log = logging.getLogger("friday.run")
+            log.info("run_start objective=%r", objective[:200])
             status = "failed"
             try:
                 result = runner(objective, ctrl)
@@ -172,10 +175,12 @@ class RunManager:
                     status = "halted" if status in ("failed", "unknown", "halted") else status
             except Exception as exc:  # noqa: BLE001
                 run.error = f"{type(exc).__name__}: {exc}"
+                log.exception("run crashed")
                 status = "failed"
             finally:
                 release_controller(ctrl)
                 emit("run_end", status=status)
+                log.info("run_end status=%s", status)
                 with run._cond:
                     run.status = status
                     run.ended_at = time.time()

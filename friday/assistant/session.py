@@ -64,11 +64,9 @@ class SessionStore:
 
     def save(self, session: ConversationSession) -> None:
         session.updated_at = time.time()
-        self._path(session.id).write_text(
-            json.dumps(session.to_dict(), indent=2),
-            encoding="utf-8",
-        )
+        from friday.atomic import write_text_atomic
 
+        write_text_atomic(self._path(session.id), json.dumps(session.to_dict(), indent=2))
     def load(self, session_id: str) -> ConversationSession | None:
         path = self._path(session_id)
         if not path.exists():

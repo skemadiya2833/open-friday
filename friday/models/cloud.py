@@ -89,15 +89,22 @@ def _call_cloud(prompt: str, base64_image: str | None) -> str | None:
 
 
 def _call_gemini(prompt: str, base64_image: str | None) -> str | None:
+    # google-genai (the supported SDK). API verified against google-genai 2.28.0 signatures;
+    # a live call needs a real key and is UNVERIFIED. Model is configurable: the old
+    # "gemini-1.5-pro-latest" is retired.
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-pro-latest")
-        parts: list = [prompt]
+        import base64
+        import os
+
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        contents: list = [prompt]
         if base64_image:
-            parts.append({"mime_type": _mime_type(), "data": base64_image})
-        response = model.generate_content(parts)
-        return response.text.strip()
+            contents.insert(0, types.Part.from_bytes(data=base64.b64decode(base64_image), mime_type=_mime_type()))
+        response = client.models.generate_content(model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"), contents=contents)
+        return (response.text or "").strip()
     except Exception as e:
         print(f"[Gemini Error] {e}")
         return None
