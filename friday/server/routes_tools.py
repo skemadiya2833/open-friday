@@ -110,6 +110,11 @@ def approvals_answer(approval_id: str, body: ApprovalAnswer, request: Request) -
         site = request.headers.get("sec-fetch-site", "")
         if not origin or site != "same-origin":
             raise HTTPException(403, "Approvals can only be granted from the Friday UI page")
+        from friday.safety.physical import check_physical
+
+        ok, why = check_physical()
+        if not ok:
+            raise HTTPException(403, why)
     if not get_approval_service().resolve(approval_id, body.approved, who="control-center"):
         raise HTTPException(404, "No such pending approval (expired or already answered)")
     return {"ok": True}

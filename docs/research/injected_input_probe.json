@@ -1,0 +1,67 @@
+{
+ "summary": {
+  "sendinput_key": {
+   "events": 1,
+   "injected": 1,
+   "not_injected": 0
+  },
+  "legacy_key": {
+   "events": 1,
+   "injected": 1,
+   "not_injected": 0
+  },
+  "windows_mcp_click": {
+   "events": 1,
+   "injected": 1,
+   "not_injected": 0
+  },
+  "windows_mcp_shortcut": {
+   "events": 1,
+   "injected": 1,
+   "not_injected": 0
+  }
+ },
+ "mouse_move_events": {
+  "sendinput_mouse:injected": 2,
+  "legacy_mouse:injected": 2
+ },
+ "windows_mcp": {
+  "click": "Single left clicked at (700,460).",
+  "move": "Moved the mouse pointer to (1753,595).",
+  "shortcut": "Pressed f15."
+ },
+ "events": [
+  {
+   "phase": "sendinput_key",
+   "kind": "key",
+   "vk": 126,
+   "injected": true,
+   "lower_il": false,
+   "extra": 0
+  },
+  {
+   "phase": "legacy_key",
+   "kind": "key",
+   "vk": 126,
+   "injected": true,
+   "lower_il": false,
+   "extra": 0
+  },
+  {
+   "phase": "windows_mcp_click",
+   "kind": "click",
+   "injected": true,
+   "lower_il": false,
+   "extra": 0
+  },
+  {
+   "phase": "windows_mcp_shortcut",
+   "kind": "key",
+   "vk": 126,
+   "injected": true,
+   "lower_il": false,
+   "extra": 0
+  }
+ ],
+ "python": "3.14.6"
+}

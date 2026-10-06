@@ -135,6 +135,14 @@ def health_report(*, probe_ollama: bool = True) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         rep["audit"] = {"chain_ok": None, "detail": f"{type(exc).__name__}: {exc}"}
     try:
+        from friday.safety import physical
+
+        m = physical.get_monitor()
+        rep["physical_input_gate"] = {"required": physical.required(), "hook_running": m.running,
+                                      "physical_events_seen": m.physical_count, "injected_events_seen": m.injected_count}
+    except Exception as exc:  # noqa: BLE001
+        rep["physical_input_gate"] = {"error": str(exc)}
+    try:
         from friday.safety.estop import get_estop
 
         es = get_estop()

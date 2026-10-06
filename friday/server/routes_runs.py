@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix="/api")
@@ -68,8 +68,11 @@ def estop_status() -> dict[str, Any]:
 
 
 @router.post("/estop")
-def estop_trigger() -> dict[str, Any]:
+def estop_trigger(request: Request) -> dict[str, Any]:
     """Same effect as the hotkey. Always allowed (it only stops things)."""
     from friday.safety.estop import emergency_stop
 
-    return emergency_stop("web-ui").to_dict()
+    src = {"kind": "http", "client": request.client.host if request.client else "?",
+           "origin": request.headers.get("origin", ""), "sec_fetch_site": request.headers.get("sec-fetch-site", ""),
+           "user_agent": request.headers.get("user-agent", "")[:80]}
+    return emergency_stop("web-ui", source=src).to_dict()

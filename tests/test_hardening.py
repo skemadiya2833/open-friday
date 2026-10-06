@@ -76,3 +76,41 @@ def test_health_report_never_raises(isolated):
     rep = D.health_report(probe_ollama=False)
     assert "ok" in rep and "audit" in rep and "estop" in rep
     json.dumps(rep, default=str)
+
+
+# ----------------------------------------------------------------------------- physical-input gate (F2)
+def test_physical_gate_off_by_default(monkeypatch):
+    from friday.safety import physical as P
+    monkeypatch.delenv("FRIDAY_REQUIRE_PHYSICAL_INPUT", raising=False)
+    assert P.check_physical() == (True, "")
+
+
+def test_physical_gate_logic_with_fake_monitor(monkeypatch):
+    from friday.safety import physical as P
+    m = P.PhysicalInputMonitor()
+    m.running = True
+    P.set_monitor(m)
+    monkeypatch.setenv("FRIDAY_REQUIRE_PHYSICAL_INPUT", "true")
+    try:
+        assert P.check_physical()[0] is False                 # nothing yet
+        m.record(injected=True)
+        assert P.check_physical()[0] is False                 # synthetic input never counts
+        m.record(injected=False)
+        assert P.check_physical()[0] is True
+        assert m.recent_physical(3.0, now=m.last_physical + 10) is False   # stale
+    finally:
+        P.set_monitor(None)
+
+
+def test_physical_gate_fails_closed_when_hook_unavailable(monkeypatch):
+    from friday.safety import physical as P
+    m = P.PhysicalInputMonitor()
+    monkeypatch.setattr(m, "start", lambda timeout=3.0: False)
+    m.error = "boom"
+    P.set_monitor(m)
+    monkeypatch.setenv("FRIDAY_REQUIRE_PHYSICAL_INPUT", "true")
+    try:
+        ok, why = P.check_physical()
+        assert not ok and "boom" in why
+    finally:
+        P.set_monitor(None)

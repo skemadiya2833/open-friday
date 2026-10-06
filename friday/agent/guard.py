@@ -25,6 +25,25 @@ DEFAULT_DENY_APPS = [
     r"windows powershell", r"^powershell", r"command prompt", r"^administrator:", r"windows terminal",
     r"\bsign[ -]?in\b", r"\blog[ -]?in\b", r"\bpassword\b",
 ]
+# Friday's own Control Center (HUD page title "F.R.I.D.A.Y. - HUD", approval buttons, its URL). The agent must never
+# interact with it: a click there would approve the agent's own tool calls. Matched against the focused window
+# title AND against every element name/value in the focused window (address bar, tab strip, page text), so a
+# spoofed or renamed window title does not help, and neither does opening the page in a different browser.
+PROTECTED_UI = [
+    r"f\.?\s*r\.?\s*i\.?\s*d\.?\s*a\.?\s*y\.?\s*[-\u2013\u2014]\s*hud",
+    r"friday[^\n]{0,20}(control center|hud|approvals?)",
+    r"(localhost|127\.0\.0\.1|\[::1\]):%(port)s\b",
+    r"^allow once$", r"^allow for (this )?run$", r"\bapprove (this )?(tool|call|request)\b",
+]
+def _port() -> int:
+    try:
+        from friday.config import SERVER_PORT
+
+        return int(SERVER_PORT)
+    except Exception:  # noqa: BLE001
+        return 8787
+
+
 IRREVERSIBLE_LABEL = (
     r"\b(delete|remove|erase|uninstall|format|empty recycle|permanently|send|pay|purchase|buy now|"
     r"place order|sign out|log out|shut ?down|restart|reset|wipe|clear (all|history|data)|install)\b"
@@ -58,6 +77,12 @@ class GuardConfig:
     trusted_titles: list[str] = field(default_factory=list)   # pages whose submit buttons are harmless
     irreversible_label: str = IRREVERSIBLE_LABEL
     risky_submit_label: str = RISKY_SUBMIT_LABEL
+    protected_ui: list[str] | None = None          # None -> PROTECTED_UI with the configured port
+    friday_port: int = field(default_factory=lambda: _port())
+
+    def protected(self) -> list[str]:
+        pats = self.protected_ui if self.protected_ui is not None else PROTECTED_UI
+        return [p.replace("%(port)s", str(self.friday_port)) for p in pats]
 
     def _any(self, patterns: list[str], text: str) -> bool:
         return any(re.search(p, text, re.I) for p in patterns)
@@ -67,7 +92,21 @@ def normalize_keys(keys: str) -> str:
     return "+".join(p.strip().lower() for p in re.split(r"[+\s]+", keys.strip()) if p.strip())
 
 
+def check_protected(cfg: GuardConfig, title: str, context: list[str] | None = None) -> Verdict:
+    """Deny anything that belongs to Friday's own Control Center. Fail closed on title OR content."""
+    pats = cfg.protected()
+    norm = lambda s: re.sub(r"\s+", " ", _CTRL.sub("", s or "")).strip()  # noqa: E731
+    for text in [title, *(context or [])]:
+        t = norm(text)
+        if t and any(re.search(p, t, re.I) for p in pats):
+            return Verdict("deny", f"'{t[:60]}' belongs to the Friday Control Center; the agent may never touch it")
+    return Verdict("allow")
+
+
 def check_window(cfg: GuardConfig, title: str) -> Verdict:
+    v = check_protected(cfg, title)
+    if v.action != "allow":
+        return v
     if cfg._any(cfg.deny_apps, title) and not cfg._any(cfg.deny_exceptions, title):
         return Verdict("deny", f"window '{title[:60]}' is on the denylist")
     if cfg.allow_apps and not cfg._any(cfg.allow_apps, title):
@@ -76,13 +115,20 @@ def check_window(cfg: GuardConfig, title: str) -> Verdict:
 
 
 def check_action(cfg: GuardConfig, kind: str, *, title: str, element: Element | None = None,
-                 keys: str = "", text: str = "", press_enter: bool = False) -> Verdict:
+                 keys: str = "", text: str = "", press_enter: bool = False,
+                 context: list[str] | None = None) -> Verdict:
     """kind: click | type | shortcut | scroll | app | wait ..."""
     if kind in ("wait", "snapshot", "scroll"):
         return check_window(cfg, title) if kind == "scroll" else Verdict("allow")
     if kind == "app":
         return Verdict("allow")          # target app is vetted by the caller before launch
     v = check_window(cfg, title)
+    if v.action != "allow":
+        return v
+    ctx = list(context or [])
+    if element is not None:
+        ctx += [element.name, element.value]
+    v = check_protected(cfg, title, ctx)
     if v.action != "allow":
         return v
     if element is not None and element.password:

@@ -66,8 +66,86 @@ class TriggerReport:
         return dict(self.__dict__)
 
 
-def emergency_stop(reason: str = "manual", *, stop_mcp: bool = True) -> TriggerReport:
+_pending_source: dict | None = None
+_src_lock = threading.Lock()
+
+
+def _foreground_process() -> dict:
+    """Which program has focus right now (the program the person/agent was working in when the key came)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        hwnd = user32.GetForegroundWindow()
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        buf = ctypes.create_unicode_buffer(32768)
+        n = wintypes.DWORD(len(buf))
+        h = kernel32.OpenProcess(0x1000, False, pid.value)      # PROCESS_QUERY_LIMITED_INFORMATION
+        exe = ""
+        if h:
+            if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)):
+                exe = buf.value
+            kernel32.CloseHandle(h)
+        tl = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(hwnd, tl, 256)
+        return {"pid": pid.value, "exe": os.path.basename(exe), "title": tl.value[:80]}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)}
+
+
+def describe_hotkey_source() -> dict:
+    """Best-effort answer to "who pressed it": physical keyboard or synthetic input?
+
+    The hotkey message itself carries no sender, so this uses the low-level hook's record of the most recent key-down
+    (its "injected" flag is set for SendInput/keybd_event, i.e. pyautogui and Windows-MCP). If the hook is not running
+    the answer is "unknown" rather than a guess.
+    """
+    out: dict = {"kind": "hotkey", "foreground": _foreground_process()}
+    try:
+        from friday.safety.physical import get_monitor
+
+        m = get_monitor()
+        k = m.last_key
+        if not m.running or not k:
+            out["input_source"] = "unknown (input hook not running or no key seen)"
+        else:
+            age = time.monotonic() - k["t"]
+            out["last_key_age_ms"] = int(age * 1000)
+            out["input_source"] = ("synthetic (injected by a program)" if k["injected"] else "physical keyboard") \
+                if age < 1.5 else "unknown (last key seen too long ago)"
+    except Exception as exc:  # noqa: BLE001
+        out["input_source"] = f"unknown ({exc})"
+    return out
+
+
+def log_trigger(reason: str, source: dict | None, report: "TriggerReport | None" = None) -> None:
+    """Append one JSON line per firing to <DATA_DIR>/logs/estop_triggers.jsonl (never raises)."""
+    try:
+        import json
+        from pathlib import Path
+
+        from friday.config import DATA_DIR
+
+        p = Path(DATA_DIR) / "logs"
+        p.mkdir(parents=True, exist_ok=True)
+        rec = {"ts": round(time.time(), 3), "t": time.strftime("%Y-%m-%dT%H:%M:%S"), "reason": reason,
+               "source": source or {"kind": "programmatic"}, "pid": os.getpid()}
+        if report is not None:
+            rec["result"] = {k: v for k, v in report.to_dict().items() if k != "reason"}
+        with open(p / "estop_triggers.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def emergency_stop(reason: str = "manual", *, stop_mcp: bool = True, source: dict | None = None) -> TriggerReport:
     """Halt everything. Safe to call from any thread, any number of times."""
+    global _pending_source
+    with _src_lock:
+        if source is None and reason == "hotkey":
+            source, _pending_source = _pending_source, None
     t0 = time.time()
     rep = TriggerReport(reason=reason, errors=[])
 
@@ -122,6 +200,7 @@ def emergency_stop(reason: str = "manual", *, stop_mcp: bool = True) -> TriggerR
 
     step("audit", _audit)
     rep.seconds = round(time.time() - t0, 3)
+    log_trigger(reason, source, rep)
     print(f"[Friday] EMERGENCY STOP ({reason}): {rep.to_dict()}", flush=True)
     return rep
 
@@ -186,6 +265,10 @@ class EmergencyStop:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == WM_HOTKEY and msg.wParam == _HOTKEY_ID:
                     self.trigger_count += 1
+                    src = describe_hotkey_source()           # capture NOW, before anything else happens
+                    global _pending_source
+                    with _src_lock:
+                        _pending_source = src
                     try:
                         # Run the stop on its own thread so a slow step never blocks the pump.
                         threading.Thread(target=self.on_trigger, args=("hotkey",), daemon=True).start()
@@ -208,6 +291,13 @@ def ensure_started() -> EmergencyStop:
             _global = EmergencyStop(os.getenv("FRIDAY_STOP_HOTKEY", DEFAULT_HOTKEY))
         if os.getenv("FRIDAY_ESTOP", "true").lower() in ("0", "false", "no", "off"):
             return _global
+        if os.getenv("FRIDAY_INPUT_MONITOR", "true").lower() not in ("0", "false", "no", "off"):
+            try:
+                from friday.safety.physical import get_monitor
+
+                get_monitor().start()          # only records "was the last key physical or injected"; no key text is kept
+            except Exception:  # noqa: BLE001
+                pass
         if not _global.registered:
             ok = _global.start()
             if ok:

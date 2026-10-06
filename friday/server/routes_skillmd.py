@@ -21,6 +21,11 @@ def _require_ui(request: Request) -> None:
     """Same bar as granting a tool approval: a same-origin browser request from the Friday page."""
     if not request.headers.get("origin") or request.headers.get("sec-fetch-site") != "same-origin":
         raise HTTPException(403, "This action can only be taken from the Friday UI page")
+    from friday.safety.physical import check_physical
+
+    ok, why = check_physical()
+    if not ok:
+        raise HTTPException(403, why)
 
 
 @router.get("")

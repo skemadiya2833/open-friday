@@ -229,3 +229,43 @@ def test_hotkey_conflict_is_reported_not_silent():
     finally:
         a.stop()
         b.stop()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Win32 hotkey")
+def test_trigger_log_says_the_hotkey_was_synthetic(mgr, tmp_path, monkeypatch):
+    """The key chord is injected with keybd_event, so the log must say synthetic, not physical."""
+    import json
+
+    import friday.config as cfg
+    from friday.safety.physical import PhysicalInputMonitor, set_monitor
+
+    monkeypatch.setattr(cfg, "DATA_DIR", str(tmp_path))
+    mon = PhysicalInputMonitor()
+    set_monitor(mon)
+    es = EmergencyStop("ctrl+alt+f12", on_trigger=lambda reason: emergency_stop(reason, stop_mcp=False))
+    try:
+        assert mon.start() and es.start(), es.error
+        _press(0x11, 0x12, 0x7B)
+        deadline = time.time() + 5
+        log = tmp_path / "logs" / "estop_triggers.jsonl"
+        while time.time() < deadline and not log.exists():
+            time.sleep(0.1)
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        assert rec["reason"] == "hotkey" and rec["source"]["kind"] == "hotkey"
+        assert rec["source"]["input_source"].startswith("synthetic"), rec["source"]
+        assert "foreground" in rec["source"] and "result" in rec
+    finally:
+        es.stop()
+        mon.stop()
+        set_monitor(None)
+
+
+def test_programmatic_stop_is_logged_as_programmatic(tmp_path, monkeypatch):
+    import json
+
+    import friday.config as cfg
+
+    monkeypatch.setattr(cfg, "DATA_DIR", str(tmp_path))
+    emergency_stop("api-test", stop_mcp=False)
+    rec = json.loads((tmp_path / "logs" / "estop_triggers.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["reason"] == "api-test" and rec["source"]["kind"] == "programmatic"

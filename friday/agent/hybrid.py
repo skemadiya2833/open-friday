@@ -499,7 +499,14 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
         if plan.action == "launch":
             verdict = G.check_window(cfg.guard, str(plan.raw.get("app", "")))
         else:
-            verdict = G.check_action(cfg.guard, kind, title=title, element=plan.element,
+            ft = snap.focused_title()
+            ctx = [e.name for e in snap.elements if e.window == ft] + [e.value for e in snap.elements if e.window == ft and e.value]
+            if plan.element is not None:
+                ctx.append(plan.element.window)          # the window that really owns the target element
+            if plan.action in ("click_xy", "type_xy"):
+                # a pixel lands on whatever is on top there: refuse if a Control Center window is visible at all
+                ctx += [w.name for w in snap.windows if w.status != "Minimized"]
+            verdict = G.check_action(cfg.guard, kind, title=title, element=plan.element, context=ctx,
                                      keys=str(plan.raw.get("keys", "")), text=str(plan.raw.get("text", "")),
                                      press_enter=_text_bool(plan.raw.get("enter")))
         step = _step_dict(plan)

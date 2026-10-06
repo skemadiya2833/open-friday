@@ -381,3 +381,58 @@ def test_repeating_the_same_action_fails_fast():
     cfg = HybridConfig(max_steps=20, settle_seconds=0)
     st = H._loop("x", ctrl, cfg, D(), lambda m: '{"action":"launch","app":"notepad"}')
     assert st.value in ("failed",) and calls.count("App") <= 2
+
+
+# ----------------------------------------------------------------------------- Control Center protection (F1)
+def _tree(win, rows):
+    lines = ["Focused Window:", "  Name  Depth  Status  Width  Height  Handle", "-----",
+             f"  {win}  1  Normal  100  100  7", "", "UI Tree:", f'  window "{win}"']
+    lines += [f'  ({x},{y}) {t} "{n}"  [action: click]' for x, y, t, n in rows]
+    return "\n".join(lines) + "\n"
+
+
+def _check(win, rows, idx=0, cfg=None, kind="click"):
+    s = U.parse_snapshot(_tree(win, rows))
+    ft = s.focused_title()
+    ctx = [e.name for e in s.elements if e.window == ft]
+    return G.check_action(cfg or G.GuardConfig(), kind, title=ft, element=s.elements[idx], context=ctx)
+
+
+@pytest.mark.parametrize("title", [
+    "F.R.I.D.A.Y. \u2014 HUD - Google Chrome",
+    "F.R.I.D.A.Y. - HUD - Microsoft Edge",
+    "FRIDAY - HUD",
+    "f . r . i . d . a . y .   \u2014   hud",
+    "Friday Control Center",
+])
+def test_control_center_windows_are_refused(title):
+    v = _check(title, [(5, 5, "button", "Allow once")])
+    assert v.action == "deny" and "Control Center" in v.reason
+
+
+def test_spoofed_title_does_not_help_when_the_page_content_gives_it_away():
+    # window retitled to something harmless, but the address bar and approval button are still there
+    v = _check("Notes - Google Chrome", [(5, 5, "edit", "Address and search bar http://127.0.0.1:8787/"), (9, 9, "button", "Allow once")], idx=1)
+    assert v.action == "deny"
+    v = _check("Quarterly report", [(5, 5, "button", "Approve this tool call")])
+    assert v.action == "deny"
+
+
+def test_homoglyph_and_zero_width_tricks_do_not_bypass():
+    v = _check("F.R.I.D.A.Y.\u200b \u2014 HUD", [(5, 5, "button", "ok")])
+    assert v.action == "deny"
+
+
+def test_a_page_pretending_to_be_something_else_is_a_false_positive_not_a_bypass():
+    assert _check("Totally normal page", [(5, 5, "button", "Next")]).action == "allow"
+
+
+def test_pixel_clicks_refused_when_a_control_center_window_is_visible():
+    text = ("Focused Window:\n  Name  Depth  Status  Width  Height  Handle\n-----\n  Editor  1  Normal  10  10  1\n\n"
+            "Opened Windows:\n  Name  Depth  Status  Width  Height  Handle\n-----\n"
+            "  Editor  1  Normal  10  10  1\n  F.R.I.D.A.Y. \u2014 HUD - Google Chrome  2  Normal  10  10  2\n\nUI Tree:\n  window \"Editor\"\n")
+    desk = FakeDesktop(lambda: text)
+    decide = scripted([{"action": "click_xy", "x": 10, "y": 10}] * 3 + [{"action": "fail", "reason": "x"}])
+    run_hybrid("x", controller=AgentController(), config=HybridConfig(max_steps=4, max_repeats=99, **FAST),
+               decider=decide, desktop=desk)
+    assert not [c for c in desk.calls if c[0] in ("Click",)]
