@@ -1,7 +1,7 @@
 const API = "";
 const SPEAK_KEY = "friday.speakReplies";
 const SESSION_KEY = "friday.sessionId";
-const PAUSE_MS = 1100; // silence before we process speech
+const pauseMs = () => (window.FridayVoice ? FridayVoice.pauseMs() : 1100); // silence before we process speech
 
 let sessionId = localStorage.getItem(SESSION_KEY) || null;
 let mediaRecorder = null;
@@ -20,6 +20,7 @@ const orb = $("#orb");
 const statusLabel = $("#statusLabel");
 
 function setState(state) {
+  window.FridayLive && FridayLive.state(state);
   if (orb) orb.dataset.state = state;
   if (statusLabel) statusLabel.textContent = state;
   const core = $("#coreState");
@@ -130,6 +131,7 @@ function pushActivity(message, { live = true, detail = "" } = {}) {
 }
 
 function setListeningLine(text, { interim = false } = {}) {
+  window.FridayLive && FridayLive.user(text, interim);
   const line = $("#listeningLine");
   if (!line) return;
   if (!text) {
@@ -215,6 +217,12 @@ async function sendMessage(text, { fromVoice = false } = {}) {
 
   if (useVoice) voiceBusy = true;
 
+  // live voice: sentence-pipelined speech + spoken/shown fillers while the reply is being prepared
+  const vcfg = window.FridayVoice ? FridayVoice.cfg() : { streamSpeech: false };
+  const speaker = useVoice && speakEnabled() && window.FridayLive ? FridayLive.speaker({ onFirst: pauseRecognition }) : null;
+  const filler = useVoice && window.FridayLive ? FridayLive.fillers(speaker) : null;
+  filler && filler.start();
+
   const live = document.createElement("div");
   live.className = "bubble assistant";
   live.innerHTML = `<div class="meta">working…</div><span class="body"></span>`;
@@ -257,6 +265,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         }
 
         if (ev.type === "activity") {
+          if (filler && /search|web|look|memory|recall/i.test(ev.message || "")) filler.lookup();
           pushActivity(ev.message || ev.step || "…", { detail: ev.detail || "" });
           if (ev.message) liveMeta.textContent = ev.message;
         }
@@ -279,6 +288,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
         }
         if (ev.type === "computer_use_start") {
+          filler && filler.agent();
           setState("acting");
           setAgentStopVisible(true);
           pushActivity(`Acting · ${ev.objective || "desktop task"}`);
@@ -306,6 +316,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         if (ev.type === "skill_token" && ev.text) {
           streamed += ev.text;
           liveBody.textContent = streamed;
+          if (speaker && vcfg.streamSpeech) { filler && filler.stop(); speaker.push(ev.text); }
+          else if (window.FridayLive && FridayLive.isOpen()) FridayLive.friday(streamed);
           $("#messages").scrollTop = $("#messages").scrollHeight;
         }
         if (ev.type === "warning" && ev.message) {
@@ -328,17 +340,28 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     const textOut = finalReply || streamed || "(no reply)";
     liveBody.textContent = textOut;
     if (skillId) liveMeta.textContent = `skill:${skillId}`;
-    if (speakEnabled() && textOut && textOut !== "(no reply)") {
+    filler && filler.stop();
+    if (speaker && vcfg.streamSpeech && speaker.spoken() > 0) {
+      speaker.finish();
+      await speaker.done();
+    } else if (speakEnabled() && textOut && textOut !== "(no reply)") {
       // Pause mic recognition while speaking to avoid echo loops.
       pauseRecognition();
       pushActivity("Speaking reply…");
-      await speak(textOut);
+      if (speaker) {
+        speaker.push(String(textOut).slice(0, 700) + " ");
+        speaker.finish();
+        await speaker.done();
+      } else {
+        await speak(textOut);
+      }
       pushActivity("Spoken", { live: false });
     }
   } catch (err) {
     liveBody.textContent = `Error: ${err.message}`;
     pushActivity(`Error · ${err.message}`, { live: false });
   } finally {
+    filler && filler.stop();
     setState(voiceMode ? "listening" : "idle");
     voiceBusy = false;
     finalBuffer = "";
@@ -419,7 +442,7 @@ function scheduleProcess() {
     pushActivity("Pause detected · processing…");
     setListeningLine(text, { interim: false });
     sendMessage(text, { fromVoice: true });
-  }, PAUSE_MS);
+  }, pauseMs());
 }
 
 function pauseRecognition() {
@@ -445,6 +468,8 @@ function stopVoiceMode() {
   recognition = null;
   $("#btnMic").classList.remove("hot");
   $("#composer").classList.remove("voice-on");
+  window.FridayLive && FridayLive.close();
+  stopSpeech();
   setListeningLine("");
   setState("idle");
   pushActivity("Voice mode off", { live: false });
@@ -466,6 +491,7 @@ function startVoiceMode() {
   voiceMode = true;
   $("#btnMic").classList.add("hot");
   $("#composer").classList.add("voice-on");
+  window.FridayLive && FridayLive.open();
   setState("listening");
   pushActivity("Voice on · speak, pause to send");
   setListeningLine("…", { interim: true });
@@ -791,6 +817,14 @@ $("#taskForm").addEventListener("submit", async (e) => {
   refreshTasks();
 });
 
+function bindVoiceControls() {
+  document.querySelectorAll("#settingsGrid [data-voice-style]").forEach((b) =>
+    b.addEventListener("click", () => window.FridayVoice && FridayVoice.setStyle(b.dataset.voiceStyle)));
+  document.querySelectorAll("#settingsGrid input[data-voice-speed]").forEach((i) =>
+    i.addEventListener("input", () => window.FridayVoice && FridayVoice.setSpeed(i.value)));
+  window.FridayLive && FridayLive.syncControls();
+}
+
 async function refreshSettings() {
   try {
     const h = await (await apiFetch("/api/health")).json();
@@ -806,7 +840,17 @@ async function refreshSettings() {
           <input type="checkbox" id="speakToggleSettings" />
           <span>Audio Out</span>
         </label>
+      </div>
+      <div class="setting"><label>Voice pacing</label>
+        <div class="seg">
+          <button type="button" data-voice-style="realtime">Realtime</button>
+          <button type="button" data-voice-style="relaxed">Relaxed</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">Realtime answers sooner: shorter pause, speaks sentence by sentence while the reply is written. Relaxed waits longer before sending and speaks after the reply.</p>
+        <label style="margin-top:12px">Speech speed <strong data-voice-speed-label></strong></label>
+        <input type="range" min="0.8" max="1.4" step="0.05" data-voice-speed style="width:100%" />
       </div>`;
+    bindVoiceControls();
     syncSpeakToggles();
     $("#speakToggleSettings")?.addEventListener("change", (e) => {
       setSpeakEnabled(e.target.checked);
@@ -826,22 +870,17 @@ function speakBrowser(text) {
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text.slice(0, 800));
-    u.rate = 0.92;
+    u.rate = 0.92 * (window.FridayVoice ? FridayVoice.speed() : 1);
     u.onend = () => resolve(true);
     u.onerror = () => resolve(false);
     window.speechSynthesis.speak(u);
   });
 }
 
-async function speak(text) {
+// Fetch synthesized audio for one piece of text; resolves to an object URL, or null when the server TTS is unavailable.
+async function ttsFetchUrl(text) {
   const clean = String(text || "").replace(/\*\*/g, "").trim();
-  if (!clean) return;
-
-  if (currentAudio) {
-    try { currentAudio.pause(); } catch (_) {}
-    currentAudio = null;
-  }
-
+  if (!clean) return null;
   try {
     const res = await apiFetch("/api/voice/speak", {
       method: "POST",
@@ -850,28 +889,53 @@ async function speak(text) {
     });
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
     const blob = await res.blob();
-    const type = blob.type || "";
-    if (type.startsWith("audio") || blob.size > 1000) {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      currentAudio = audio;
-      await new Promise((resolve, reject) => {
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
-          resolve();
-        };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error("audio element failed"));
-        };
-        audio.play().catch(reject);
-      });
-      return;
-    }
+    if ((blob.type || "").startsWith("audio") || blob.size > 1000) return URL.createObjectURL(blob);
   } catch (err) {
     console.warn("[Friday] server TTS failed, using browser voice:", err);
   }
+  return null;
+}
 
+function playUrl(url) {
+  return new Promise((resolve) => {
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.preservesPitch = true;
+    audio.playbackRate = window.FridayVoice ? FridayVoice.speed() : 1;
+    window.FridayLive && FridayLive.attachAudio(audio);
+    const fin = () => {
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    audio.onended = fin;
+    audio.onerror = fin;
+    audio._cancel = fin;
+    audio.play().catch(fin);
+  });
+}
+
+function stopSpeech() {
+  try {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio._cancel && currentAudio._cancel();
+    }
+  } catch (_) {}
+  currentAudio = null;
+  try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (_) {}
+}
+
+async function speak(text) {
+  const clean = String(text || "").replace(/\*\*/g, "").trim();
+  if (!clean) return;
+  stopSpeech();
+  window.FridayLive && FridayLive.state("speaking");
+  const url = await ttsFetchUrl(clean);
+  if (url) {
+    await playUrl(url);
+    return;
+  }
+  window.FridayLive && FridayLive.synthSpeaking(true);
   const ok = await speakBrowser(clean);
   if (!ok) console.warn("[Friday] browser TTS unavailable");
 }

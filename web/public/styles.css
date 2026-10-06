@@ -584,3 +584,31 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 #view-tools .cards { overflow: visible; }
 #view-tools .plan-head { margin-top: 18px; }
 #view-tools > * { flex-shrink: 0; }
+
+/* ---------------------------------------------------------------- live voice mode */
+.live { position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; background: radial-gradient(circle at 50% 42%, rgba(10, 24, 38, 0.97), rgba(3, 5, 9, 0.99) 70%); backdrop-filter: blur(6px); }
+.live.hidden { display: none; }
+.live-close { position: absolute; top: 18px; right: 22px; background: transparent; color: var(--accent-2); border: 1px solid var(--line-hot);
+  padding: 8px 16px; font-family: var(--mono); letter-spacing: 0.1em; cursor: pointer; }
+.live-close:hover { background: rgba(255, 106, 43, 0.15); }
+.live-pace { position: absolute; top: 18px; left: 22px; display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 0.75rem; color: var(--cyan); }
+.live-pace button, .seg button { background: var(--cyan-dim); color: var(--cyan); border: 1px solid var(--line); padding: 6px 12px; cursor: pointer; font-family: var(--mono); }
+.live-pace button.on, .seg button.on { background: var(--cyan); color: #04141c; }
+.live-speed { display: flex; gap: 6px; align-items: center; margin-left: 10px; }
+.live-speed input { width: 90px; }
+.seg { display: flex; gap: 6px; margin-top: 6px; }
+.live-state { font-family: "Orbitron", var(--font); letter-spacing: 0.4em; font-size: 0.85rem; color: var(--cyan); opacity: 0.9; }
+.live[data-state="thinking"] .live-state { color: var(--accent-2); animation: pulseSoft 1.2s ease-in-out infinite; }
+.live[data-state="acting"] .live-state { color: var(--accent); animation: pulseSoft 1.2s ease-in-out infinite; }
+.live[data-state="speaking"] .live-state { color: #7dffb2; }
+#liveOrb { cursor: pointer; max-width: 80vw; max-height: 52vh; }
+.live-caps { width: min(820px, 90vw); min-height: 130px; display: flex; flex-direction: column; gap: 14px; text-align: center; }
+.cap { font-size: 1.35rem; line-height: 1.35; transition: opacity 0.3s; }
+.cap-user { color: #cfeaff; opacity: 0.95; }
+.cap-user.interim { opacity: 0.6; font-style: italic; }
+.cap-user:empty::before { content: ""; }
+.cap-friday { color: #c9ffe0; font-size: 1.55rem; }
+.cap-friday.filler { color: var(--accent-2); font-style: italic; }
+.cap-friday.faded { opacity: 0.35; }
+body.live-open { overflow: hidden; }

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=2" />
+  <link rel="stylesheet" href="/styles.css?v=3" />
 </head>
 <body>
   <div class="hud-bg" aria-hidden="true">
@@ -45,6 +45,22 @@
       <span class="pill" id="modelPill">local</span>
     </div>
   </header>
+
+  <div class="live hidden" id="liveOverlay" role="dialog" aria-label="Voice mode" data-state="listening">
+    <button class="live-close" id="liveClose" type="button">&times; End voice</button>
+    <div class="live-pace" role="group" aria-label="Voice pacing">
+      <button type="button" data-voice-style="realtime">Realtime</button>
+      <button type="button" data-voice-style="relaxed">Relaxed</button>
+      <span class="live-speed">Speed <strong data-voice-speed-label></strong>
+        <input type="range" min="0.8" max="1.4" step="0.05" data-voice-speed /></span>
+    </div>
+    <div class="live-state" id="liveState">LISTENING</div>
+    <canvas id="liveOrb" title="Click to interrupt"></canvas>
+    <div class="live-caps">
+      <div class="cap cap-user" id="capUser"></div>
+      <div class="cap cap-friday faded" id="capFriday"></div>
+    </div>
+  </div>
 
   <div class="shell">
     <aside class="rail panel-frame">
@@ -230,7 +246,8 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/live.js?v=1"></script>
+  <script src="/app.js?v=3"></script>
   <script src="/tools.js?v=3"></script>
 </body>
 </html>

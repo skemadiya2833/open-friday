@@ -70,3 +70,13 @@ Seven tasks (one or two per group) are frozen as held-out; tuning of macros, pla
 
 ## D-023: Macro layer and planner/executor are OFF by default
 They are only switched on by data (see final report). `save_as` / `open_folder` refuse system folders, network shares, `..`, wildcards and env-var paths before any tool call.
+
+## D-024 (2026-10-06) tools-first router default ON
+Chosen: ON in product (FRIDAY_TOOLS_FIRST=false disables), OFF in benchmarks. Alternative: off. Writes only NEW plain-text files; outside temp/workspace it asks approval (denied when unattended). Note: it skips opening Notepad visibly.
+
+## D-025 voice pacing default Relaxed
+Chosen: Relaxed (old behaviour) until you pick Realtime in Settings or the voice overlay. Alternative: default Realtime.
+
+## D-026 macros stay OFF
+The composite multi-line type is always on (no flag); the other macros remain off pending a benchmark.
+
