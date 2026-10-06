@@ -21,6 +21,7 @@ never interpreted as instructions.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -117,11 +118,11 @@ class Snapshot:
 
 
 def _section(text: str, header: str, nxt: tuple[str, ...]) -> str:
-    m = re.search(rf"^{re.escape(header)}\s*$", text, re.M)
+    m = re.search(rf"^[ \t]*{re.escape(header)}[ \t]*$", text, re.M)
     if not m:
         return ""
     rest = text[m.end():]
-    ends = [mm.start() for n in nxt if (mm := re.search(rf"^{re.escape(n)}\s*$", rest, re.M))]
+    ends = [mm.start() for n in nxt if (mm := re.search(rf"^[ \t]*{re.escape(n)}\s*$", rest, re.M))]
     return rest[: min(ends)] if ends else rest
 
 
@@ -134,7 +135,22 @@ def _parse_windows(block: str) -> list[Win]:
     return out
 
 
+def normalize(text: str) -> str:
+    """Live Windows-MCP returns the report as a JSON array of strings inside one text block
+    (verified live 2026-10-06, docs/research/live_snapshot_sample.txt); unwrap it."""
+    t = text.lstrip()
+    if t.startswith("[") and t.rstrip().endswith("]"):
+        try:
+            data = json.loads(t)
+        except ValueError:
+            return text
+        if isinstance(data, list) and data and all(isinstance(x, str) for x in data):
+            return "\n".join(data)
+    return text
+
+
 def parse_snapshot(text: str, *, max_elements: int = 400) -> Snapshot:
+    text = normalize(text)
     s = Snapshot(raw=text)
     focused = _parse_windows(_section(text, "Focused Window:", ("Opened Windows:", "UI Tree:")))
     s.focused = focused[0] if focused else None
@@ -143,7 +159,7 @@ def parse_snapshot(text: str, *, max_elements: int = 400) -> Snapshot:
     mscale = re.search(r"Screenshot Coordinate Scale:\s*([\d.]+)", text)
     if mscale:
         s.screenshot_scale = float(mscale.group(1))
-    mdisp = re.search(r"^Visible Displays:\s*(.*)$", text, re.M)
+    mdisp = re.search(r"^[ \t]*Visible Displays:\s*(.*)$", text, re.M)
     if mdisp:
         for d in _DISPLAY.finditer(mdisp.group(1)):
             s.displays.append({
@@ -151,7 +167,7 @@ def parse_snapshot(text: str, *, max_elements: int = 400) -> Snapshot:
                 "box": [int(d[3]), int(d[4]), int(d[5]), int(d[6])], "primary": bool(d[7]),
             })
 
-    mt = re.search(r"^UI Tree:\s*$", text, re.M)
+    mt = re.search(r"^[ \t]*UI Tree:\s*$", text, re.M)
     tree = text[mt.end():] if mt else ""
     s.truncated = "[truncated:" in tree
     window = ""

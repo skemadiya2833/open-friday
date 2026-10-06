@@ -343,3 +343,24 @@ class TestGrant:
         cfg = HybridConfig(grant_issuer="t", **FAST)
         run_hybrid("x", controller=AgentController(), config=cfg, decider=scripted([]), desktop=desk)
         assert GR.find("hybrid-adhoc", "windows__Click") is None
+
+# --- live-format regression (format captured from real Windows-MCP 0.8.7 on 2026-10-06, content anonymised) ---
+def test_parses_live_windows_mcp_format():
+    from pathlib import Path
+
+    text = (Path(__file__).parent / "fixtures" / "snapshot_live_format.txt").read_text(encoding="utf-8")
+    s = U.parse_snapshot(text)
+    assert s.focused is None
+    assert [w.name for w in s.windows] == ["Docs - Browser"] and s.windows[0].status == "Minimized"
+    assert s.displays and s.displays[0]["box"] == [0, 0, 1920, 1080] and s.displays[0]["primary"]
+    names = [(e.window, e.name) for e in s.elements]
+    assert ("Program Manager", "This PC") in names and ("Taskbar", "Start") in names
+    start = next(e for e in s.elements if e.name == "Start")
+    assert (start.x, start.y) == (27, 1056) and "toggle:off" in start.meta
+    assert next(e for e in s.elements if e.name == "Some App").focused
+
+
+def test_json_array_wrapper_is_unwrapped_and_plain_text_untouched():
+    assert U.normalize('["a\\nb", "c"]') == "a\nb\nc"
+    assert U.normalize("[not json") == "[not json"
+    assert U.normalize("plain") == "plain"
