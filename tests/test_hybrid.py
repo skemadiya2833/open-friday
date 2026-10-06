@@ -468,3 +468,12 @@ def test_fingerprint_changes_when_only_page_text_changes():
         'UI Tree:\ndesktop\n\u2514\u2500\u2500 window "P - Chrome"\n'
         '    \u251c\u2500\u2500 (1,2) button "Inc"  [action: click]\n    \u2514\u2500\u2500 text "' + n + '"\n')
     assert mk("1").fingerprint() != mk("2").fingerprint()
+
+
+def test_dont_send_and_no_are_allowed_but_send_still_needs_confirmation():
+    from friday.agent import guard as G
+    cfg = G.GuardConfig()
+    mk = lambda n: U.Element(id=0, ctype="button", name=n, x=1, y=1, action="click", window="OBS Studio crashed")
+    for n in ("Don't send", "No", "Cancel", "Close", "Not now"):
+        assert G.check_action(cfg, "click", title="OBS Studio crashed", element=mk(n)).action == "allow", n
+    assert G.check_action(cfg, "click", title="OBS Studio crashed", element=mk("Send crash report")).action == "confirm"

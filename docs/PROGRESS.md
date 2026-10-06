@@ -53,3 +53,8 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 - G1 PASS (root causes verified; generic browser-tree settle; fingerprint+page_text). Live counter run: sees page, clicks work, does not stop at N (model limit).
 - G2 PASS (multi-line names kept; 3 tests). Repeat guard now 6 (launch 2) because legit repeated clicks were blocked.
 
+
+## Stage H/I/J - STOPPED BY OWNER (no more live tests)
+- H1 PARTIAL: hybrid 78/78 runs done (21 passed); legacy rerun stopped at 47/78 on owner request. Raw: docs/research/bench_H_*.json. Compare with scripts/bench_compare.py. UNVERIFIED: full legacy baseline, H3 VRAM, Stage I benchmarks, J.
+- Owner-reported stalls fixed WITHOUT live testing (unit tests only): safe-dismiss buttons (Don't send/No/Cancel/Close) are allowed; 'done' before any action is rejected; denied/unanswered approvals tell the model not to retry and to pick a safe choice; prompt rule for crash/error pop-ups. UNVERIFIED live (OBS crash dialog).
+

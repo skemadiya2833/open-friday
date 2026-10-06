@@ -68,6 +68,9 @@ How to work:
   use a button id for typing. If the app has no text area (Calculator), omit "id": the text goes to the focused
   window (digits and operators work as keys there, e.g. "12+30=").
 - "id" is always a plain number from the element list.
+- Unexpected pop-ups (crash or error reports, "send feedback", update prompts, "not responding") block everything
+  behind them. Dismiss them first with the safe choice: "Don't send", "No", "Cancel", "Close" or "Not now". Never
+  choose Send/Yes/Report. If the pop-up has no safe button, reply fail and say what is on screen.
 - After every action read the screen again (the element list and "page_text"). The moment the objective is met,
   stop: reply {"action":"done","evidence":"<exact text visible on screen>"} instead of repeating the action.
   Count how many times you have already done a repeated action from your previous actions list.
@@ -506,6 +509,14 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             emit("status", status="error")
             emit("agent_note", note=f"model gave up: {str(plan.raw.get('reason', ''))[:200]}")
             return AgentStatus.FAILED
+        if plan.action == "done" and not any(" -> " in h for h in history):
+            done_rejections += 1
+            notes.append("You have not performed any action yet, so nothing can be finished. Act first.")
+            history.append(history_line + " (rejected: no action taken yet)")
+            if done_rejections >= 3:
+                emit("status", status="error")
+                return AgentStatus.FAILED
+            continue
         if plan.action == "done":
             ev = _norm(str(plan.raw.get("evidence", "")))
             if ev and ev in _norm(snap.visible_text()):
@@ -588,6 +599,9 @@ def _loop(objective: str, ctrl: AgentController, cfg: HybridConfig, desk: Deskto
             emit("action_end", step=step, result="error", iteration=it, error=msg)
             history.append(history_line + f" (ERROR: {msg[:80]})")
             notes.append(f"The action failed: {msg}")
+            if "denied" in msg.lower() or "approval" in msg.lower():
+                notes.append("The owner did not approve that action (or nobody answered). Do NOT retry it. Pick a safe "
+                             "alternative (No / Don't send / Cancel / Close) or reply fail.")
             no_effect += 1
             if no_effect >= cfg.max_no_effect:
                 emit("status", status="error")

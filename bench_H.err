@@ -1,0 +1,388 @@
+[10/06/26 17:10:20] INFO     Starting MCP server 'windows-mcp' transport.py:242
+                             with transport 'stdio'                            
+[10/06/26 17:39:50] Error calling tool 'App'                                   
+                    +----------- Traceback (most recent call last) -----------+
+                    | C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yA |
+                    | tLr-DJmg\Lib\site-packages\fastmcp\server\server.py:146 |
+                    | 7 in call_tool                                          |
+                    |                                                         |
+                    | C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yA |
+                    | tLr-DJmg\Lib\site-packages\fastmcp\tools\base.py:440 in |
+                    | _run                                                    |
+                    |                                                         |
+                    |                ... 14 frames hidden ...                 |
+                    |                                                         |
+                    | C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yA |
+                    | tLr-DJmg\Lib\site-packages\windows_mcp\uia\controls.py: |
+                    | 1702 in _CompareFunction                                |
+                    |                                                         |
+                    |   1699                 if value not in control.Name:    |
+                    |   1700                     return False                 |
+                    |   1701             elif "RegexName" == key:             |
+                    | > 1702                 if not self.regexName.match(cont |
+                    |   1703                     return False                 |
+                    |   1704             elif "Compare" == key:               |
+                    |   1705                 compareFunc = value              |
+                    |                                                         |
+                    | C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yA |
+                    | tLr-DJmg\Lib\site-packages\windows_mcp\uia\controls.py: |
+                    | 933 in Name                                             |
+                    |                                                         |
+                    |    930         Call IUIAutomationElement::get_CurrentNa |
+                    |    931         Refer                                    |
+                    |        https://docs.microsoft.com/en-us/windows/win32/a |
+                    |        ent-iuiautomationelement-get_currentname         |
+                    |    932         """                                      |
+                    | >  933         return self.Element.CurrentName or ""  # |
+                    |    934                                                  |
+                    |    935     @property                                    |
+                    |    936     def NativeWindowHandle(self) -> int:         |
+                    +---------------------------------------------------------+
+                    COMError: (-2147220991, 'An event was unable to invoke any 
+                    of the subscribers', (None, None, None, 0, None))          
+Failed to capture virtual screen, using primary screen
+Screenshot backend 'pillow' failed; trying next backend
+Failed to capture virtual screen, using primary screen
+Snapshot failed with display=None region=None use_vision=True use_dom=False
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 229, in capture
+    screenshot = ImageGrab.grab(**grab_kwargs)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\snapshot.py", line 49, in _state_tool
+    capture_result = capture_desktop_state(
+        get_desktop(),
+    ...<8 lines>...
+        tool_name="Snapshot tool",
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\_snapshot_helpers.py", line 81, in capture_desktop_state
+    desktop_state = desktop.get_state(
+        use_vision=use_vision,
+    ...<8 lines>...
+        max_image_size=Size(width=MAX_IMAGE_WIDTH, height=MAX_IMAGE_HEIGHT),
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 233, in get_state
+    screenshot = self.get_screenshot(capture_rect=capture_rect)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 1221, in get_screenshot
+    image, used_backend = screenshot_capture.capture(capture_rect)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 375, in capture
+    return _get_backend("pillow").capture(capture_rect), "pillow"
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 239, in capture
+    screenshot = ImageGrab.grab()
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+Failed to capture virtual screen, using primary screen
+Screenshot backend 'pillow' failed; trying next backend
+Failed to capture virtual screen, using primary screen
+Snapshot failed with display=None region=None use_vision=True use_dom=False
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 229, in capture
+    screenshot = ImageGrab.grab(**grab_kwargs)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\snapshot.py", line 49, in _state_tool
+    capture_result = capture_desktop_state(
+        get_desktop(),
+    ...<8 lines>...
+        tool_name="Snapshot tool",
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\_snapshot_helpers.py", line 81, in capture_desktop_state
+    desktop_state = desktop.get_state(
+        use_vision=use_vision,
+    ...<8 lines>...
+        max_image_size=Size(width=MAX_IMAGE_WIDTH, height=MAX_IMAGE_HEIGHT),
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 233, in get_state
+    screenshot = self.get_screenshot(capture_rect=capture_rect)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 1221, in get_screenshot
+    image, used_backend = screenshot_capture.capture(capture_rect)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 375, in capture
+    return _get_backend("pillow").capture(capture_rect), "pillow"
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 239, in capture
+    screenshot = ImageGrab.grab()
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+Failed to capture virtual screen, using primary screen
+Screenshot backend 'pillow' failed; trying next backend
+Failed to capture virtual screen, using primary screen
+Snapshot failed with display=None region=None use_vision=True use_dom=False
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 229, in capture
+    screenshot = ImageGrab.grab(**grab_kwargs)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\snapshot.py", line 49, in _state_tool
+    capture_result = capture_desktop_state(
+        get_desktop(),
+    ...<8 lines>...
+        tool_name="Snapshot tool",
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\_snapshot_helpers.py", line 81, in capture_desktop_state
+    desktop_state = desktop.get_state(
+        use_vision=use_vision,
+    ...<8 lines>...
+        max_image_size=Size(width=MAX_IMAGE_WIDTH, height=MAX_IMAGE_HEIGHT),
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 233, in get_state
+    screenshot = self.get_screenshot(capture_rect=capture_rect)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 1221, in get_screenshot
+    image, used_backend = screenshot_capture.capture(capture_rect)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 375, in capture
+    return _get_backend("pillow").capture(capture_rect), "pillow"
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 239, in capture
+    screenshot = ImageGrab.grab()
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+Failed to capture virtual screen, using primary screen
+Screenshot backend 'pillow' failed; trying next backend
+Failed to capture virtual screen, using primary screen
+Snapshot failed with display=None region=None use_vision=True use_dom=False
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 229, in capture
+    screenshot = ImageGrab.grab(**grab_kwargs)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\snapshot.py", line 49, in _state_tool
+    capture_result = capture_desktop_state(
+        get_desktop(),
+    ...<8 lines>...
+        tool_name="Snapshot tool",
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\_snapshot_helpers.py", line 81, in capture_desktop_state
+    desktop_state = desktop.get_state(
+        use_vision=use_vision,
+    ...<8 lines>...
+        max_image_size=Size(width=MAX_IMAGE_WIDTH, height=MAX_IMAGE_HEIGHT),
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 233, in get_state
+    screenshot = self.get_screenshot(capture_rect=capture_rect)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 1221, in get_screenshot
+    image, used_backend = screenshot_capture.capture(capture_rect)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 375, in capture
+    return _get_backend("pillow").capture(capture_rect), "pillow"
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 239, in capture
+    screenshot = ImageGrab.grab()
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+Failed to capture virtual screen, using primary screen
+Screenshot backend 'pillow' failed; trying next backend
+Failed to capture virtual screen, using primary screen
+Snapshot failed with display=None region=None use_vision=True use_dom=False
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 229, in capture
+    screenshot = ImageGrab.grab(**grab_kwargs)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\snapshot.py", line 49, in _state_tool
+    capture_result = capture_desktop_state(
+        get_desktop(),
+    ...<8 lines>...
+        tool_name="Snapshot tool",
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\_snapshot_helpers.py", line 81, in capture_desktop_state
+    desktop_state = desktop.get_state(
+        use_vision=use_vision,
+    ...<8 lines>...
+        max_image_size=Size(width=MAX_IMAGE_WIDTH, height=MAX_IMAGE_HEIGHT),
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 233, in get_state
+    screenshot = self.get_screenshot(capture_rect=capture_rect)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 1221, in get_screenshot
+    image, used_backend = screenshot_capture.capture(capture_rect)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 375, in capture
+    return _get_backend("pillow").capture(capture_rect), "pillow"
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 239, in capture
+    screenshot = ImageGrab.grab()
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+Failed to capture virtual screen, using primary screen
+Screenshot backend 'pillow' failed; trying next backend
+Failed to capture virtual screen, using primary screen
+Snapshot failed with display=None region=None use_vision=True use_dom=False
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 229, in capture
+    screenshot = ImageGrab.grab(**grab_kwargs)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\snapshot.py", line 49, in _state_tool
+    capture_result = capture_desktop_state(
+        get_desktop(),
+    ...<8 lines>...
+        tool_name="Snapshot tool",
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\tools\_snapshot_helpers.py", line 81, in capture_desktop_state
+    desktop_state = desktop.get_state(
+        use_vision=use_vision,
+    ...<8 lines>...
+        max_image_size=Size(width=MAX_IMAGE_WIDTH, height=MAX_IMAGE_HEIGHT),
+    )
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 233, in get_state
+    screenshot = self.get_screenshot(capture_rect=capture_rect)
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\service.py", line 1221, in get_screenshot
+    image, used_backend = screenshot_capture.capture(capture_rect)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 375, in capture
+    return _get_backend("pillow").capture(capture_rect), "pillow"
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\windows_mcp\desktop\screenshot.py", line 239, in capture
+    screenshot = ImageGrab.grab()
+  File "C:\Users\www\AppData\Local\uv\cache\archive-v0\2XGlV8yAtLr-DJmg\Lib\site-packages\PIL\ImageGrab.py", line 96, in grab
+    offset, size, data = Image.core.grabscreen_win32(
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        include_layered_windows,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        all_screens,
+        ^^^^^^^^^^^^
+        int(window) if window is not None else 0,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+OSError: screen grab failed
+[Tree] Cutting cyclic UIA branch in 'Preferences - Google Chrome': element (42, 3610462, 4, 0, 0, 151) repeats an ancestor's RuntimeId
+[Tree] Cutting cyclic UIA branch in 'Preferences - Google Chrome': element (42, 3610462, 4, 0, 0, 151) repeats an ancestor's RuntimeId
+[Tree] Cutting cyclic UIA branch in 'Preferences - Google Chrome': element (42, 3741534, 4, 0, 0, 151) repeats an ancestor's RuntimeId
+[Tree] Cutting cyclic UIA branch in 'Preferences - Google Chrome': element (42, 3741534, 4, 0, 0, 151) repeats an ancestor's RuntimeId

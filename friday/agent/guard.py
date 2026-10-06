@@ -44,6 +44,11 @@ def _port() -> int:
         return 8787
 
 
+# Buttons that only decline or close a dialog (crash/error-report prompts, "save changes?" -> never send anything).
+SAFE_DISMISS = re.compile(
+    r"^(no|no,? thanks|not now|maybe later|later|cancel|close|dismiss|ignore|skip|don.?t send|do not send|never send|"
+    r"don.?t report|do not report|don.?t save|no,? don.?t send|exit without sending)$", re.I)
+
 IRREVERSIBLE_LABEL = (
     r"\b(delete|remove|erase|uninstall|format|empty recycle|permanently|send|pay|purchase|buy now|"
     r"place order|sign out|log out|shut ?down|restart|reset|wipe|clear (all|history|data)|install)\b"
@@ -141,6 +146,8 @@ def check_action(cfg: GuardConfig, kind: str, *, title: str, element: Element | 
             return Verdict("confirm", f"shortcut '{k}' can be irreversible")
         return Verdict("allow")
     label = element.name if element else ""
+    if label and SAFE_DISMISS.search(label.strip()):
+        return Verdict("allow")          # "Don't send", "No", "Cancel", "Close" ... can only decline or close
     if label and re.search(cfg.irreversible_label, label, re.I):
         return Verdict("confirm", f"'{label[:50]}' looks irreversible")
     if kind == "click" and label and re.search(cfg.risky_submit_label, label, re.I) \
