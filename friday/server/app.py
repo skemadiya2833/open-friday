@@ -19,6 +19,7 @@ from friday.config import (
 )
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
 from friday.server.routes_runs import router as runs_router
+from friday.server.routes_experience import router as experience_router
 from friday.server.routes_skillmd import router as skillmd_router
 from friday.server.routes_tools import router as tools_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
@@ -71,6 +72,7 @@ app.add_middleware(
 )
 app.include_router(tools_router)
 app.include_router(skillmd_router)
+app.include_router(experience_router)
 app.include_router(runs_router)
 
 _ws_clients: list[WebSocket] = []

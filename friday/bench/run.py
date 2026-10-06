@@ -39,7 +39,8 @@ def _parse(argv=None):
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--countdown", type=int, default=12)
     ap.add_argument("--split", choices=["all", "dev", "heldout"], default="all", help="frozen task split")
-    ap.add_argument("--memory", choices=["off", "on"], default="off", help="experience memory hints (Stage L)")
+    ap.add_argument("--memory", choices=["off", "record", "read", "on"], default="off",
+                    help="experience memory: record=learn only, read=hints only, on=both (Stage L)")
     ap.add_argument("--budget-minutes", type=float, default=0, help="stop starting new runs after this many minutes")
     ap.add_argument("--attended", action="store_true", help="allow approval waits (default: unattended, fail closed)")
     ap.add_argument("--list", action="store_true")
@@ -56,7 +57,7 @@ def _apply_env(a) -> None:
         "MODEL_COORD_SPACE": a.coord_space or ("pixel" if a.model.startswith("qwen2.5") else "auto"),
         "FRIDAY_ESTOP": "true",
         "FRIDAY_APPROVAL_MODE": "attended" if a.attended else "unattended",
-        "FRIDAY_MEMORY": "on" if a.memory == "on" else "off",
+        "FRIDAY_MEMORY": a.memory, "FRIDAY_MEMORY_DEFER": "1",
     })
 
 
@@ -250,6 +251,18 @@ def main(argv=None) -> int:
                     success, why = task.check(ctx)
                 except Exception as exc:  # noqa: BLE001
                     success, why = False, f"check error: {type(exc).__name__}: {exc}"
+                if a.memory in ("record", "on") and run is not None:
+                    try:          # the objective check is authoritative: re-judge the trajectory, then learn from it
+                        from friday.experience import store as X
+                        from friday.experience.recorder import apply_objective
+
+                        tr = getattr(run.controller, "trajectory", None)
+                        if tr is not None:
+                            apply_objective(tr, bool(success), why)
+                            X.get_experience().attach_objective(tr)
+                            X.get_experience().ingest(tr)
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[bench] experience ingest failed: {exc}")
                 events = list(run.events) if run else []
                 actions = [e["payload"].get("step", {}).get("action") for e in events if e["type"] == "action_start"]
                 steps = sum(1 for e in events if e["type"] == "action_end")
