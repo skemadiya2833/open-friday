@@ -20,13 +20,14 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+html, body { height: 100%; height: 100dvh; margin: 0; }
 body {
   font-family: var(--font);
   color: var(--text);
   background: var(--bg);
   overflow: hidden;
   letter-spacing: 0.02em;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
 
 /* ===== HUD atmosphere ===== */
@@ -156,7 +157,7 @@ body {
 .shell {
   position: relative; z-index: 1;
   display: grid; grid-template-columns: 250px 1fr;
-  height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
   min-height: 0;
   gap: 14px; padding: 10px 18px 16px;
 }
@@ -442,7 +443,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 .composer {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: end;
+  display: grid; grid-template-columns: 48px 1fr auto auto; gap: 10px; align-items: end;
   padding: 12px; border: 1px solid var(--line); background: rgba(4,10,18,0.75);
   position: relative;
 }
@@ -563,12 +564,78 @@ select:focus, input:focus, textarea:focus {
 }
 .setting strong { font-family: var(--mono); font-size: 0.95rem; color: var(--text); }
 
+.https-banner {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-hot);
+  background: rgba(255, 106, 43, 0.12);
+  color: var(--accent-2);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+.https-banner a { color: var(--cyan); }
+.https-banner.hidden { display: none; }
+
 @media (max-width: 960px) {
-  .shell { grid-template-columns: 1fr; }
-  .rail { display: none; }
-  .bubble { max-width: 94%; }
-  .topbar { grid-template-columns: 1fr; gap: 6px; }
-  .topbar-center, .topbar-right { justify-content: flex-start; }
+  .shell {
+    grid-template-columns: 1fr;
+    height: calc(100dvh - 44px);
+    padding: 6px 8px calc(62px + env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+  .rail {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 80;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: rgba(6, 12, 22, 0.96);
+    border-top: 1px solid var(--line);
+    backdrop-filter: blur(12px);
+  }
+  .rail .brand, .rail-label, .rail-foot, .rail::before, .rail::after { display: none; }
+  .nav { flex-direction: row; flex: 1; gap: 2px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    grid-template-columns: 1fr;
+    text-align: center;
+    padding: 10px 2px 8px;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    clip-path: none;
+    justify-items: center;
+  }
+  .nav-code { display: none; }
+  .nav-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar { padding: 8px 10px; grid-template-columns: 1fr auto; gap: 6px; }
+  .topbar-center, .sys-id, .telemetry { display: none; }
+  .topbar-right { justify-content: flex-end; }
+  .stage { padding: 10px 8px 8px; }
+  .top { flex-direction: column; align-items: stretch; gap: 8px; }
+  .top h1 { font-size: 1.15rem; }
+  .top-actions { justify-content: flex-start; }
+  .top-actions #btnClearChat, .top-actions #btnNewChat { display: none; }
+  .composer {
+    grid-template-columns: 48px 1fr;
+    grid-template-areas: "mic text" "clear send";
+  }
+  .composer > .mic { grid-area: mic; }
+  .composer > .composer-main { grid-area: text; }
+  .composer > #btnClearChat2 { grid-area: clear; }
+  .composer > .send { grid-area: send; }
+  .send, #btnClearChat2 { width: 100%; }
+  .bubble { max-width: 94%; font-size: 1rem; }
+  .grid-form, .plan-form { grid-template-columns: 1fr; }
+  .card { flex-direction: column; }
+  .live-pace { position: static; flex-wrap: wrap; max-width: 94vw; justify-content: center; }
+  .live-close { top: 8px; right: 8px; }
+  .live-speed { margin-left: 0; }
+  .rem-panel { left: 8px; right: 8px; width: auto; top: 42px; }
+  .rem-popup { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); max-width: none; }
 }
 
 /* Tools & MCP */

@@ -154,8 +154,9 @@ def test_extra_origin_allowed_only_when_configured():
 
 
 def test_lan_firewall_rule_is_private_tcp_8787():
-    from friday.server.lan import RULE_NAME, add_rule_args
+    from friday.server.lan import add_rule_args, rule_name
 
     args = add_rule_args(8787)
-    assert RULE_NAME in " ".join(args)
+    assert rule_name(8787) in " ".join(args)
     assert "localport=8787" in args and "profile=private" in args and "dir=in" in args
+    assert rule_name(8788) != rule_name(8787)

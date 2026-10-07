@@ -188,6 +188,8 @@ CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
 SERVER_HOST = os.getenv("FRIDAY_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
+# HTTPS for the phone mic (HTTP on a LAN IP is not a secure context).
+SERVER_TLS_PORT = int(os.getenv("FRIDAY_TLS_PORT", str(SERVER_PORT + 1)))
 
 
 def ui_host(bind: str | None = None) -> str:
@@ -196,6 +198,8 @@ def ui_host(bind: str | None = None) -> str:
     if h in ("0.0.0.0", "::", "", "*"):
         return "127.0.0.1"
     return h
+
+
 # Required (and enforced at startup) when FRIDAY_HOST is not a loopback address.
 API_TOKEN = os.getenv("FRIDAY_API_TOKEN", "").strip()
 # Extra Host header names accepted by the request guard (e.g. a LAN name behind a TLS proxy).

@@ -14,8 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.config import (
-    API_TOKEN, EXTRA_ALLOWED_HOSTS, EXTRA_ALLOWED_ORIGINS, SERVER_HOST, SERVER_PORT, VOICE_ENABLED,
-    ensure_data_dirs, resolve_chat_model,
+    API_TOKEN, DATA_DIR, EXTRA_ALLOWED_HOSTS, EXTRA_ALLOWED_ORIGINS, SERVER_HOST, SERVER_PORT,
+    SERVER_TLS_PORT, VOICE_ENABLED, ensure_data_dirs, resolve_chat_model,
 )
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
 from friday.server.routes_runs import router as runs_router
@@ -162,6 +162,7 @@ def health() -> dict[str, Any]:
         "chat_model": resolve_chat_model(),
         "embed_model": EMBED_MODEL,
         "voice": VOICE_ENABLED,
+        "tls_port": SERVER_TLS_PORT,
     }
 
 
@@ -504,11 +505,42 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
 
     print(f"[Friday] Local  → http://127.0.0.1:{port}/")
     for ip in local_ipv4s():
-        print(f"[Friday] Phone  → http://{ip}:{port}/  (http, same Wi-Fi as this PC)")
+        print(f"[Friday] Phone  → http://{ip}:{port}/  (typing)")
+    tls_port = SERVER_TLS_PORT
     if not is_loopback(bind):
         from friday.server.lan import ensure_inbound
 
         ensure_inbound(port)
+        try:
+            from friday.server.tls import ensure_lan_cert
+
+            crt, key = ensure_lan_cert(DATA_DIR, ["127.0.0.1", *local_ipv4s()])
+            ensure_inbound(tls_port)
+            for ip in local_ipv4s():
+                print(
+                    f"[Friday] Phone mic → https://{ip}:{tls_port}/  "
+                    "(tap Advanced → Proceed, then Allow microphone)",
+                    flush=True,
+                )
+
+            def _https() -> None:
+                uvicorn.run(
+                    app,
+                    host=bind,
+                    port=tls_port,
+                    reload=False,
+                    log_level="warning",
+                    timeout_graceful_shutdown=1,
+                    lifespan="off",
+                    ssl_certfile=str(crt),
+                    ssl_keyfile=str(key),
+                )
+
+            import threading
+
+            threading.Thread(target=_https, name="FridayHTTPS", daemon=True).start()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Friday] HTTPS for phone mic unavailable: {exc}", flush=True)
     print("[Friday] Stop   → Ctrl+C", flush=True)
     from friday.shutdown import install_ctrl_c
 

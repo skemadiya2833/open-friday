@@ -9,6 +9,10 @@ RULE_NAME = "Friday Control Center 8787"
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def rule_name(port: int) -> str:
+    return f"Friday Control Center {int(port)}"
+
+
 def _netsh(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["netsh", "advfirewall", "firewall", *args],
@@ -23,7 +27,7 @@ def add_rule_args(port: int) -> list[str]:
     return [
         "add",
         "rule",
-        f"name={RULE_NAME}",
+        f"name={rule_name(port)}",
         "dir=in",
         "action=allow",
         "protocol=TCP",
@@ -37,7 +41,7 @@ def inbound_rule_present(port: int) -> bool:
     if sys.platform != "win32":
         return True
     try:
-        r = _netsh("show", "rule", f"name={RULE_NAME}")
+        r = _netsh("show", "rule", f"name={rule_name(port)}")
     except Exception:  # noqa: BLE001
         return False
     out = (r.stdout or "") + (r.stderr or "")

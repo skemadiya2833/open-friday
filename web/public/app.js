@@ -549,7 +549,74 @@ function stopVoiceMode() {
   syncSpeakToggles();
 }
 
-function startVoiceMode() {
+function micNeedsHttps() {
+  const host = location.hostname;
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") return false;
+  return !window.isSecureContext || location.protocol !== "https:";
+}
+
+async function phoneHttpsUrl() {
+  let port = 8788;
+  try {
+    const h = await (await apiFetch("/api/health")).json();
+    if (h.tls_port) port = h.tls_port;
+  } catch (_) {}
+  return `https://${location.hostname}:${port}/`;
+}
+
+async function fillHttpsBanner() {
+  const bar = $("#httpsBanner");
+  if (!bar) return "";
+  const url = await phoneHttpsUrl();
+  bar.classList.remove("hidden");
+  bar.replaceChildren();
+  bar.append("Mic needs HTTPS. Open ");
+  const a = document.createElement("a");
+  a.href = url;
+  a.textContent = url;
+  bar.append(a);
+  bar.append(" — tap Advanced, then Proceed, then Allow microphone.");
+  return url;
+}
+
+async function showHttpsMicHint() {
+  const url = await fillHttpsBanner();
+  addBubble(
+    "assistant",
+    `Mic needs a secure page. Open ${url || await phoneHttpsUrl()} — tap Advanced, then Proceed, then Allow microphone.`,
+  );
+}
+
+async function ensureMicPermission() {
+  if (micNeedsHttps()) {
+    await showHttpsMicHint();
+    return false;
+  }
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) {
+    addBubble("assistant", "This browser has no microphone API. Use Chrome.");
+    return false;
+  }
+  try {
+    const stream = await md.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch (err) {
+    const name = err && err.name;
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      addBubble("assistant", "Mic permission was denied. Chrome → site settings → Microphone → Allow.");
+    } else if (name === "NotFoundError") {
+      addBubble("assistant", "No microphone found on this device.");
+    } else {
+      addBubble("assistant", `Mic error: ${(err && err.message) || name || "unavailable"}`);
+    }
+    return false;
+  }
+}
+
+async function startVoiceMode() {
+  const allowed = await ensureMicPermission();
+  if (!allowed) return;
   const Rec = SpeechRec();
   if (!Rec) {
     // Fallback: classic click-to-record MediaRecorder path
@@ -638,6 +705,8 @@ async function startFallbackRecord() {
     mediaRecorder.stop();
     return;
   }
+  const allowed = await ensureMicPermission();
+  if (!allowed) return;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioChunks = [];
@@ -1158,8 +1227,8 @@ async function openReminderFromUrl() {
 (async function init() {
   const link = $("#linkHost");
   if (link) link.textContent = location.hostname || "local";
-  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
-    pushActivity("Phone over HTTP · typing works; the mic may be blocked until you use Chrome or a secure origin", { live: false });
+  if (micNeedsHttps()) {
+    fillHttpsBanner().catch(() => {});
   }
   syncSpeakToggles();
   openReminderFromUrl();
