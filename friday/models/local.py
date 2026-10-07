@@ -65,6 +65,7 @@ def _stream_chat(
     num_predict: int | None = None,
     num_ctx: int | None = None,
     on_token: Callable[[str], None] | None = None,
+    _retried: bool = False,
 ) -> tuple[str, str]:
     payload: dict = {
         "model": model or MODEL_NAME,
@@ -152,6 +153,13 @@ def _stream_chat(
             finally:
                 if ctrl is not None:
                     ctrl.unregister_http_client(client)
+    except httpx.ConnectError as exc:
+        from friday.models.ollama_boot import ensure_ollama
+
+        if not _retried and ensure_ollama():
+            return _stream_chat(messages, format_json=format_json, reasoning_mode=reasoning_mode, model=model,
+                                num_predict=num_predict, num_ctx=num_ctx, on_token=on_token, _retried=True)
+        raise RuntimeError(f"Ollama unreachable: {exc}") from exc
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
     except RuntimeError:
@@ -174,8 +182,10 @@ def query_model_text(
     num_predict: int | None = None,
     num_ctx: int | None = None,
     on_token: Callable[[str], None] | None = None,
+    messages: list[dict] | None = None,
 ) -> dict:
-    messages = [{"role": "user", "content": prompt}]
+    """``messages`` (system/user/assistant turns) takes precedence over ``prompt``: real chat structure keeps history."""
+    messages = messages or [{"role": "user", "content": prompt}]
     try:
         from friday.models.manager import get_model_manager
         get_model_manager().mark_used("chat")

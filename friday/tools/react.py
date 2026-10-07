@@ -113,11 +113,26 @@ Step {step + 1}/{steps}. Decide.
 
     if not final_reply:
         if tool_trace:
-            final_reply = (
-                "I ran tools but could not form a final answer. Last observation:\n"
-                + tool_trace[-1].get("result", "")[:800]
-            )
+            last = tool_trace[-1]
+            final_reply = last.get("result") or "Done."
+            if last.get("tool") == "schedule_task" and not last.get("result", "").startswith("{"):
+                final_reply = "Scheduled, boss. I'll remind you when it's due."
         else:
             final_reply = "I could not complete that request."
+
+    # Never show raw tool JSON to the owner.
+    if re.search(r'"tool"\s*:' , final_reply) or final_reply.strip().startswith("```"):
+        if tool_trace:
+            final_reply = tool_trace[-1].get("result") or "Done, boss."
+        else:
+            call = _extract_tool_call(final_reply)
+            if call:
+                name = str(call.get("tool"))
+                args = call.get("args") if isinstance(call.get("args"), dict) else {k: v for k, v in call.items() if k != "tool"}
+                out = call_tool_result(name, args, caller="react").text()
+                tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
+                final_reply = out
+            else:
+                final_reply = "Done, boss."
 
     return final_reply, {"tools": tool_trace, "steps": len(transcript)}

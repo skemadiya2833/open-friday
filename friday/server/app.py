@@ -19,6 +19,7 @@ from friday.config import (
 )
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
 from friday.server.routes_runs import router as runs_router
+from friday.server.routes_reminders import router as reminders_router
 from friday.server.routes_experience import router as experience_router
 from friday.server.routes_skillmd import router as skillmd_router
 from friday.server.routes_tools import router as tools_router
@@ -52,6 +53,12 @@ async def lifespan(_app: FastAPI):
         get_mcp_manager().start_enabled()
     except Exception as exc:  # noqa: BLE001 - never block the UI on an MCP problem
         print(f"[MCP] startup skipped: {exc}")
+    try:
+        from friday.tasks.scheduler import get_scheduler
+
+        get_scheduler()                 # arm saved reminders; late ones are delivered immediately
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Tasks] scheduler startup skipped: {exc}")
     yield
     try:
         from friday.mcp_client import get_mcp_manager
@@ -74,6 +81,7 @@ app.include_router(tools_router)
 app.include_router(skillmd_router)
 app.include_router(experience_router)
 app.include_router(runs_router)
+app.include_router(reminders_router)
 
 _ws_clients: list[WebSocket] = []
 

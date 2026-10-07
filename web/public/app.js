@@ -132,6 +132,7 @@ function pushActivity(message, { live = true, detail = "" } = {}) {
 
 function setListeningLine(text, { interim = false } = {}) {
   window.FridayLive && FridayLive.user(text, interim);
+  if (text && text !== "…") window.FridayLive && FridayLive.nudge(interim ? 0.4 : 0.7);
   const line = $("#listeningLine");
   if (!line) return;
   if (!text) {
@@ -287,6 +288,15 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
           pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
         }
+        if (ev.type === "memory_saved") pushActivity(`Remembered · ${(ev.text || "").slice(0, 80)}`, { live: false });
+        if (ev.type === "chat_cleared") {
+          $("#messages").innerHTML = "";
+          $("#messages").appendChild(live);
+        }
+        if (ev.type === "reminder_set") {
+          pushActivity(`Reminder set · ${ev.title || ""} (${ev.when || ""})`, { live: false });
+          refreshBell();
+        }
         if (ev.type === "computer_use_start") {
           filler && filler.agent();
           setState("acting");
@@ -396,6 +406,19 @@ $("#btnNewChat").addEventListener("click", async () => {
   addBubble("assistant", "New link established, boss. What are we working today?");
 });
 
+async function clearThisChat() {
+  if (!confirm("Clear this conversation? Friday will forget the messages in it (saved memories stay).")) return;
+  try {
+    if (sessionId) await apiFetch(`/api/sessions/${sessionId}/clear`, { method: "POST" });
+  } catch (_) {}
+  $("#messages").innerHTML = "";
+  $("#skillChip").classList.add("hidden");
+  clearActivity();
+  addBubble("assistant", "Chat cleared, boss. Fresh page.");
+}
+$("#btnClearChat")?.addEventListener("click", clearThisChat);
+$("#btnClearChat2")?.addEventListener("click", clearThisChat);
+
 $("#speakToggle")?.addEventListener("change", (e) => {
   setSpeakEnabled(e.target.checked);
 });
@@ -434,7 +457,7 @@ function clearPauseTimer() {
   }
 }
 
-function scheduleProcess() {
+function scheduleProcess(delay) {
   clearPauseTimer();
   pauseTimer = setTimeout(() => {
     const text = (finalBuffer || interimText || "").trim();
@@ -442,7 +465,7 @@ function scheduleProcess() {
     pushActivity("Pause detected · processing…");
     setListeningLine(text, { interim: false });
     sendMessage(text, { fromVoice: true });
-  }, pauseMs());
+  }, delay || pauseMs());
 }
 
 function pauseRecognition() {
@@ -523,7 +546,8 @@ function startVoiceMode() {
     if (shown) {
       setListeningLine(shown, { interim: !finalBuffer || !!interim });
       setState("listening");
-      scheduleProcess();
+      const quick = window.FridayVoice && FridayVoice.style() === "realtime" && finalBuffer && !interim;
+      scheduleProcess(quick ? 180 : undefined);
     }
   };
 
@@ -660,12 +684,28 @@ async function refreshSkills() {
   } catch (_) {}
 }
 
+let memFilter = "all";
+const MEM_KINDS = [
+  ["all", "Everything"], ["learned", "Learned about you"], ["note", "Notes you added"], ["desktop", "Desktop tasks"],
+  ["experience", "Agent experience"], ["plan", "Today's plan"], ["reminder", "Reminders"], ["chat", "Chat snippets"],
+];
+let memItems = [];
+
 async function refreshMemory() {
   try {
-    const stats = await (await apiFetch("/api/memory/stats")).json();
-    $("#memStats").textContent = Object.entries(stats).map(([k, v]) => `${k}:${v}`).join(" · ");
-    const items = await (await apiFetch("/api/memory?limit=50")).json();
-    renderMemCards(items);
+    const data = await (await apiFetch("/api/memory/overview")).json();
+    memItems = data.items || [];
+    const counts = data.counts || {};
+    $("#memStats").textContent = `${memItems.length} things remembered`;
+    const bar = $("#memFilters");
+    if (bar) {
+      bar.innerHTML = MEM_KINDS.map(([k, label]) => {
+        const n = k === "all" ? memItems.length : counts[k] || 0;
+        return `<button type="button" class="chip${memFilter === k ? " on" : ""}" data-k="${k}">${label} · ${n}</button>`;
+      }).join("");
+      bar.querySelectorAll("[data-k]").forEach((b) => b.addEventListener("click", () => { memFilter = b.dataset.k; refreshMemory(); }));
+    }
+    renderMemCards(memItems.filter((m) => memFilter === "all" || m.kind === memFilter));
   } catch (_) {
     $("#memStats").textContent = "server offline";
   }
@@ -674,17 +714,19 @@ async function refreshMemory() {
 function renderMemCards(items) {
   const list = $("#memList");
   list.innerHTML = "";
+  if (!items.length) list.innerHTML = `<div class="muted">Nothing here yet.</div>`;
   for (const m of items) {
     const card = document.createElement("div");
     card.className = "card";
+    const when = m.created_at ? new Date(m.created_at * 1000).toLocaleString() : "";
     card.innerHTML = `
-      <div><p>${escapeHtml(m.text)}</p><p class="muted">${m.id.slice(0, 8)} · score ${(m.score || 0).toFixed(2)}</p></div>
-      <div class="actions"><button class="ghost" data-del="${m.id}">Delete</button></div>`;
+      <div><p>${escapeHtml(m.text)}</p><p class="muted"><span class="tag">${escapeHtml(m.source || m.kind || "")}</span> ${when}</p></div>
+      <div class="actions">${m.deletable ? `<button class="ghost" data-del="${m.id}" data-coll="${m.collection}">Forget</button>` : ""}</div>`;
     list.appendChild(card);
   }
   list.querySelectorAll("[data-del]").forEach((b) => {
     b.addEventListener("click", async () => {
-      await apiFetch(`/api/memory/${b.dataset.del}`, { method: "DELETE" });
+      await apiFetch(`/api/memory/${b.dataset.del}?collection=${b.dataset.coll || "memories"}`, { method: "DELETE" });
       refreshMemory();
     });
   });
@@ -693,8 +735,9 @@ function renderMemCards(items) {
 $("#btnMemSearch").addEventListener("click", async () => {
   const q = $("#memSearch").value;
   try {
+    if (!q.trim()) return refreshMemory();
     const items = await (await apiFetch(`/api/memory/search?q=${encodeURIComponent(q)}`)).json();
-    renderMemCards(items);
+    renderMemCards(items.map((m) => ({ ...m, kind: "note", source: (m.metadata && m.metadata.source) || "memory", deletable: true, collection: "memories", created_at: (m.metadata && m.metadata.created_at) || 0 })));
   } catch (_) {}
 });
 
@@ -940,11 +983,125 @@ async function speak(text) {
   if (!ok) console.warn("[Friday] browser TTS unavailable");
 }
 
+// ---------------------------------------------------------------- reminders + notifications
+const shownReminders = new Set(JSON.parse(sessionStorage.getItem("friday.shownReminders") || "[]"));
+function rememberShown(id) {
+  shownReminders.add(id);
+  sessionStorage.setItem("friday.shownReminders", JSON.stringify([...shownReminders].slice(-100)));
+}
+
+function showReminderPopup(n, { fromToast = false } = {}) {
+  const host = $("#remPopup");
+  if (!host || host.querySelector(`[data-nid="${n.id}"]`)) return;
+  const card = document.createElement("div");
+  card.className = "rem-card";
+  card.dataset.nid = n.id;
+  const late = n.body && /missed/.test(n.body) ? ` <span class="tag">${escapeHtml(n.body)}</span>` : "";
+  card.innerHTML = `
+    <div class="rem-eyebrow">${n.kind === "task" ? "TASK UPDATE" : "REMINDER"}${fromToast ? " · FROM NOTIFICATION" : ""}</div>
+    <div class="rem-title">${escapeHtml(n.title)}${late}</div>
+    ${n.kind === "task" && n.body ? `<div class="rem-body">${escapeHtml(n.body)}</div>` : ""}
+    <div class="rem-actions">
+      <button data-a="done">Got it</button>
+      <button class="ghost" data-a="snooze">Snooze 10 min</button>
+    </div>`;
+  host.appendChild(card);
+  card.querySelector('[data-a="done"]').addEventListener("click", async () => {
+    await apiFetch(`/api/notifications/${n.id}/seen`, { method: "POST" });
+    card.remove();
+    refreshBell();
+  });
+  card.querySelector('[data-a="snooze"]').addEventListener("click", async () => {
+    await apiFetch(`/api/notifications/${n.id}/snooze?minutes=10`, { method: "POST" });
+    card.remove();
+    refreshBell();
+  });
+  if (!fromToast || !shownReminders.has(n.id)) {
+    showView("chat");
+    const say = n.kind === "task"
+      ? `Task update, boss: ${n.title}${n.body ? ". " + n.body : ""}`
+      : `Reminder, boss: ${n.title}${n.body ? ". " + n.body : ""}`;
+    addBubble("assistant", say, n.kind === "task" ? "task" : "reminder");
+    if (speakEnabled() || voiceMode) speak(say);
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Friday", { body: n.title, tag: n.id });
+    }
+  }
+  rememberShown(n.id);
+}
+
+async function pollNotifications() {
+  try {
+    const list = await (await apiFetch("/api/notifications?unseen=1")).json();
+    for (const n of list.slice().reverse()) if (!shownReminders.has(n.id)) showReminderPopup(n);
+  } catch (_) {}
+  refreshBell();
+}
+
+async function refreshBell() {
+  try {
+    const [unseen, upcoming] = await Promise.all([
+      apiFetch("/api/notifications?unseen=1").then((r) => r.json()),
+      apiFetch("/api/reminders/upcoming").then((r) => r.json()),
+    ]);
+    const badge = $("#bellCount");
+    if (badge) {
+      badge.textContent = unseen.length || "";
+      badge.classList.toggle("hidden", !unseen.length);
+    }
+    const panel = $("#remList");
+    if (panel) {
+      const rows = [];
+      for (const n of unseen) rows.push(`<div class="rem-row new"><b>${escapeHtml(n.title)}</b><span class="muted">due now</span></div>`);
+      for (const j of upcoming.slice(0, 8)) {
+        const when = j.cron ? `repeats · ${j.cron}` : new Date(j.run_at * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        rows.push(`<div class="rem-row"><b>${escapeHtml(j.title)}</b><span class="muted">${when}</span><button class="ghost" data-cancel-job="${j.id}">×</button></div>`);
+      }
+      panel.innerHTML = rows.join("") || `<div class="muted">No reminders. Say “remind me to … in 20 minutes”.</div>`;
+      panel.querySelectorAll("[data-cancel-job]").forEach((b) => b.addEventListener("click", async () => {
+        await apiFetch(`/api/tasks/${b.dataset.cancelJob}`, { method: "DELETE" });
+        refreshBell();
+      }));
+    }
+  } catch (_) {}
+}
+
+$("#btnBell")?.addEventListener("click", () => {
+  const p = $("#remPanel");
+  p.classList.toggle("hidden");
+  if (!p.classList.contains("hidden")) {
+    refreshBell();
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  }
+});
+$("#btnRemAllSeen")?.addEventListener("click", async () => {
+  await apiFetch("/api/notifications/all/seen", { method: "POST" });
+  $("#remPopup").innerHTML = "";
+  refreshBell();
+});
+
+async function openReminderFromUrl() {
+  const id = new URLSearchParams(location.search).get("reminder");
+  if (!id) return;
+  try {
+    const n = await (await apiFetch(`/api/notifications/${id}`)).json();
+    shownReminders.delete(n.id);
+    showReminderPopup(n, { fromToast: true });
+    history.replaceState(null, "", location.pathname);
+  } catch (_) {}
+}
+
 (async function init() {
   syncSpeakToggles();
+  openReminderFromUrl();
+  pollNotifications();
+  setInterval(pollNotifications, 5000);
   tickClock();
   setInterval(tickClock, 1000);
   await refreshSkills();
   await refreshSettings();
   await restoreChat();
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
 })();

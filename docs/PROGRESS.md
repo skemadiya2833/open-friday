@@ -66,7 +66,11 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 - K4 PARTIAL live: WinForms synthetic dialogs (friday/bench/synth_dialog.ps1, scripts/synth_live.py; Tk is invisible to UI Automation). crash: PASS live ("Don't send" chosen, 5.8 s). save: PASS live (nothing discarded; no button pressed). hung: UNVERIFIED live - the simulator was never reported as hung (Windows only flags hang on pending input); covered by unit tests.
 - Live time used so far: ~12 min of the 90 min budget.
 
-## 2026-10-06 harness fixes + live voice
+## 2026-10-07 voice / memory / reminders
+- Voice: fillers are captions only (no spoken "give me a minute" then a greeting); history is restated in the prompt; Clear chat is in the header and next to Transmit; orb nudges with speech; Realtime pause 280ms.
+- Memory Core lists learned facts, notes, desktop, experience, plan, reminders, and actual chat turns.
+- Scheduling is agentic: no approval JSON for reminders; follow-ups after "when?" stay on the tasks skill; due jobs toast and Friday pops the reminder in chat.
+
 - Loop breaker: state-cycle detection (3rd visit), forced strategy change, stop after 3 cycles; self-undo guard (no re-click into typed field, no clear+retype). Unit tested.
 - Composite action: multi-line 	ype is one action (click once, Enter between lines). Unit tested.
 - Tools-first router (friday/agent/router.py): writes new text files for 'type ... save as PATH' objectives, verified by read-back; off in benchmarks (--tools-first). Unit tested. UNVERIFIED on real runs.

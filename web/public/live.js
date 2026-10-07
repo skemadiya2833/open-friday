@@ -9,8 +9,8 @@
   const K_SPEED = "friday.voiceSpeed"; // 0.8 .. 1.4
   const STYLES = {
     // pauseMs: silence before a spoken turn is sent. fillerMs: how long a reply may take before Friday says a filler.
-    realtime: { pauseMs: 550, fillerMs: 1300, streamSpeech: true, label: "Realtime" },
-    relaxed: { pauseMs: 1100, fillerMs: 2400, streamSpeech: false, label: "Relaxed" },
+    realtime: { pauseMs: 280, fillerMs: 900, streamSpeech: true, label: "Realtime" },
+    relaxed: { pauseMs: 800, fillerMs: 2000, streamSpeech: false, label: "Relaxed" },
   };
   const Voice = {
     styles: STYLES,
@@ -67,7 +67,8 @@
       if (!c || !navigator.mediaDevices) return;
       micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       micAnalyser = c.createAnalyser();
-      micAnalyser.fftSize = 256;
+      micAnalyser.fftSize = 512;
+      micAnalyser.smoothingTimeConstant = 0.55;
       c.createMediaStreamSource(micStream).connect(micAnalyser); // analysis only: never routed to the speakers
     } catch (_) { micAnalyser = null; }
   }
@@ -79,7 +80,7 @@
 
   // ------------------------------------------------------------------ orb
   const $ = (s) => document.querySelector(s);
-  let overlay, canvas, g, raf = 0, state = "idle", t0 = 0, smooth = 0, speakingSynth = false, open = false;
+  let overlay, canvas, g, raf = 0, state = "idle", t0 = 0, speakingSynth = false, open = false;
   const COLORS = {
     listening: ["#3ecbff", "#9be7ff"],
     thinking: ["#ffb347", "#ffd9a0"],
@@ -88,48 +89,82 @@
     idle: ["#3ecbff", "#9be7ff"],
   };
 
+  // Real spectrum -> radial bars. Per-bar attack/decay smoothing + automatic gain, so quiet and loud voices both move the orb.
+  const NB = 72, freq = new Uint8Array(256), bars = new Float32Array(NB);
+  let peak = 60, lastTs = 0, level = 0, kick = 0;
+
+  function spectrum(an, out) {
+    an.getByteFrequencyData(freq);
+    let fmax = 0;
+    for (let i = 1; i < 56; i++) if (freq[i] > fmax) fmax = freq[i];
+    peak = Math.max(60, peak * 0.992, fmax);                 // slow-decaying auto gain
+    const half = NB / 2;
+    for (let i = 0; i < half; i++) {
+      const bin = 1 + Math.floor(Math.pow(i / half, 1.35) * 54); // low bins get more bars: that is where voice energy is
+      const v = Math.min(1, (freq[bin] / peak) * 1.15);
+      out[i] = v; out[NB - 1 - i] = v;                       // mirror so the ring is symmetric
+    }
+  }
+
   function drawOrb(ts) {
     raf = requestAnimationFrame(drawOrb);
     if (!g) return;
+    const dt = Math.min(0.05, Math.max(0.001, (ts - (lastTs || ts)) / 1000));
+    lastTs = ts;
     const t = (ts - t0) / 1000;
-    const W = canvas.width, H = canvas.height, cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.24;
-    let target = 0;
-    if (state === "listening") target = levelOf(micAnalyser);
-    else if (state === "speaking") target = outAnalyser && !speakingSynth ? levelOf(outAnalyser) : 0.35 + 0.3 * Math.abs(Math.sin(t * 7.3) * Math.sin(t * 3.1));
-    else if (state === "thinking" || state === "acting") target = 0.18 + 0.1 * Math.sin(t * 2.4);
-    smooth += (target - smooth) * (target > smooth ? 0.45 : 0.12);
+    const W = canvas.width, H = canvas.height, cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.2;
+    const target = new Float32Array(NB);
+    const an = state === "listening" ? micAnalyser : state === "speaking" && !speakingSynth ? outAnalyser : null;
+    if (an) spectrum(an, target);
+    else if (state === "speaking") {          // browser voice (no audio tap): plausible speech-like motion
+      for (let i = 0; i < NB; i++) target[i] = Math.max(0, 0.55 * Math.sin(i * 0.5 + t * 9) * Math.sin(t * 3.3 + i * 0.12) + 0.3 * Math.sin(t * 6)) * 0.9;
+    } else {                                   // thinking / acting / idle: slow travelling wave
+      const amp = state === "idle" ? 0.05 : 0.2;
+      for (let i = 0; i < NB; i++) target[i] = amp * (0.5 + 0.5 * Math.sin(i * 0.35 - t * (state === "acting" ? 5 : 3)));
+    }
+    let sum = 0;
+    const a = 1 - Math.exp(-dt * 30), d = 1 - Math.exp(-dt * 7);  // fast attack, softer release
+    for (let i = 0; i < NB; i++) {
+      bars[i] += (target[i] - bars[i]) * (target[i] > bars[i] ? a : d);
+      sum += bars[i];
+    }
+    level += (sum / NB - level) * (1 - Math.exp(-dt * 14));
+    kick += (level - kick) * (1 - Math.exp(-dt * 5));
     const [c1, c2] = COLORS[state] || COLORS.idle;
     g.clearRect(0, 0, W, H);
 
-    // soft glow
-    const glow = g.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * (1.7 + smooth * 0.3));
-    glow.addColorStop(0, c1 + "88"); glow.addColorStop(0.5, c1 + "22"); glow.addColorStop(1, "transparent");
-    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    const gl = g.createRadialGradient(cx, cy, R * 0.3, cx, cy, R * (1.9 + level * 0.9));
+    gl.addColorStop(0, c1 + "77"); gl.addColorStop(0.55, c1 + "1f"); gl.addColorStop(1, "transparent");
+    g.fillStyle = gl; g.beginPath(); g.arc(cx, cy, Math.min(cx, R * (1.9 + level * 0.9)), 0, Math.PI * 2); g.fill();
 
-    // reactive radial waveform (the "voice")
-    const N = 120;
-    g.lineWidth = 2.2; g.strokeStyle = c2; g.beginPath();
-    for (let i = 0; i <= N; i++) {
-      const a = (i / N) * Math.PI * 2 + t * 0.15;
-      const wob = Math.sin(a * 5 + t * 3) * 0.5 + Math.sin(a * 9 - t * 2.1) * 0.5;
-      const r = R * (1.08 + smooth * 0.55 * wob * (0.5 + 0.5 * Math.sin(a * 3 + t))) + (state === "thinking" ? Math.sin(a * 6 + t * 5) * 2 : 0);
-      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
-    }
-    g.closePath(); g.stroke();
-
-    // rotating arcs (HUD rings); thinking/acting spin faster
-    const spin = state === "thinking" ? 2.2 : state === "acting" ? 3.2 : 0.5;
-    for (let k = 0; k < 3; k++) {
-      g.strokeStyle = k === 1 ? c2 : c1; g.globalAlpha = 0.85 - k * 0.2; g.lineWidth = 2 + (k === 0 ? 1.5 : 0);
-      const rr = R * (1.55 + k * 0.22), dir = k % 2 ? -1 : 1, a0 = t * spin * dir + k;
-      g.beginPath(); g.arc(cx, cy, rr, a0, a0 + Math.PI * (0.55 + 0.15 * k)); g.stroke();
-      g.beginPath(); g.arc(cx, cy, rr, a0 + Math.PI, a0 + Math.PI * (1.35 + 0.1 * k)); g.stroke();
+    // radial voice bars
+    const r0 = R * (1.12 + kick * 0.18);
+    g.lineCap = "round"; g.lineWidth = Math.max(2.5, (W / 420) * 3.4);
+    const rot = t * (state === "thinking" ? 0.5 : state === "acting" ? 0.9 : 0.12);
+    for (let i = 0; i < NB; i++) {
+      const ang = (i / NB) * Math.PI * 2 + rot - Math.PI / 2;
+      const len = R * (0.07 + bars[i] * 0.95);
+      g.strokeStyle = i % 3 === 0 ? c2 : c1;
+      g.globalAlpha = 0.55 + 0.45 * Math.min(1, bars[i] * 1.6);
+      g.beginPath();
+      g.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      g.lineTo(cx + Math.cos(ang) * (r0 + len), cy + Math.sin(ang) * (r0 + len));
+      g.stroke();
     }
     g.globalAlpha = 1;
 
-    // core
-    const cr = R * (0.78 + smooth * 0.25 + 0.03 * Math.sin(t * 2));
+    // HUD arcs (speed up while thinking / working)
+    const spin = state === "thinking" ? 1.8 : state === "acting" ? 2.8 : 0.3;
+    for (let k = 0; k < 2; k++) {
+      const rr = R * (2.05 + k * 0.22), dir = k ? -1 : 1, a0 = t * spin * dir + k * 2;
+      g.strokeStyle = k ? c2 : c1; g.globalAlpha = 0.5; g.lineWidth = 2;
+      g.beginPath(); g.arc(cx, cy, rr, a0, a0 + Math.PI * 0.6); g.stroke();
+      g.beginPath(); g.arc(cx, cy, rr, a0 + Math.PI, a0 + Math.PI * 1.35); g.stroke();
+    }
+    g.globalAlpha = 1;
+
+    // core: swells with the voice
+    const cr = R * (0.8 + kick * 0.5) * (1 + 0.025 * Math.sin(t * 2.2));
     const core = g.createRadialGradient(cx - cr * 0.3, cy - cr * 0.3, cr * 0.1, cx, cy, cr);
     core.addColorStop(0, "#ffffff"); core.addColorStop(0.35, c2); core.addColorStop(1, c1);
     g.fillStyle = core; g.beginPath(); g.arc(cx, cy, cr, 0, Math.PI * 2); g.fill();
@@ -190,7 +225,7 @@
       try {
         const c = ctx();
         if (!c) return;
-        if (!outAnalyser) { outAnalyser = c.createAnalyser(); outAnalyser.fftSize = 256; outAnalyser.connect(c.destination); }
+        if (!outAnalyser) { outAnalyser = c.createAnalyser(); outAnalyser.fftSize = 512; outAnalyser.smoothingTimeConstant = 0.55; outAnalyser.connect(c.destination); }
         if (!outSources.has(audio)) {
           const src = c.createMediaElementSource(audio);
           src.connect(outAnalyser);
@@ -205,6 +240,11 @@
       document.querySelectorAll("[data-voice-style]").forEach((b) => b.classList.toggle("on", b.dataset.voiceStyle === st));
       document.querySelectorAll("input[data-voice-speed]").forEach((i) => { if (Number(i.value) !== sp) i.value = sp; });
       document.querySelectorAll("[data-voice-speed-label]").forEach((l) => { l.textContent = sp.toFixed(2) + "×"; });
+    },
+    nudge(amt) {
+      const v = Math.max(0.15, Math.min(1, Number(amt) || 0.45));
+      kick = Math.max(kick, v);
+      for (let i = 0; i < NB; i++) bars[i] = Math.max(bars[i], v * (0.35 + 0.65 * Math.abs(Math.sin(i * 0.4 + performance.now() / 90))));
     },
     interrupt() { // barge-in: stop talking immediately
       Live._speaker && Live._speaker.abort();
@@ -225,7 +265,7 @@
         const text = list[idx++ % list.length];
         spoken++;
         Live.friday(text, { filler: true });
-        if (speaker) speaker.say(text, { filler: true });
+        // Captions only — speaking the filler then a greeting is what felt "stuck".
       };
       return {
         start() { timer = setTimeout(() => say(kind || "thinking"), Voice.cfg().fillerMs); },

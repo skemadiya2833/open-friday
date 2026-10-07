@@ -95,7 +95,7 @@ def _schedule_task(args: dict[str, Any]) -> ToolResult:
 
     job = get_scheduler().add_job(
         prompt=str(args.get("prompt") or ""),
-        skill_id=str(args.get("skill_id") or "chat"),
+        skill_id=str(args.get("skill_id") or "reminder"),
         delay_seconds=args.get("delay_seconds"),
         run_at=args.get("run_at"),
         cron=args.get("cron"),
@@ -278,7 +278,7 @@ def builtin_specs() -> list[ToolSpec]:
                 },
                 ["prompt"],
             ),
-            _schedule_task, R.CONFIRM,
+            _schedule_task, R.SAFE,
         ),
         ToolSpec("list_tasks", "List scheduled tasks.", object_schema(), _list_tasks, R.SAFE),
         ToolSpec(

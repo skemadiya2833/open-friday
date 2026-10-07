@@ -251,7 +251,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
     return intent
 
 
-def _deterministic_intent(message: str) -> Intent | None:
+def _deterministic_intent(message: str, history: list[dict[str, str]] | None = None) -> Intent | None:
     """
     Decide without the LLM when the utterance is unambiguous.
     This is the architectural fix: never ask a confused model a solved question.
@@ -290,6 +290,18 @@ def _deterministic_intent(message: str) -> Intent | None:
             source="policy",
         )
 
+    # Reminders / timers / recurring tasks: parsed locally and scheduled without asking.
+    from friday.tasks.reminders import INTENT as _REMIND
+
+    if _REMIND.search(msg) or re.search(r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b", msg, re.I):
+        return Intent(mode="schedule", skill_id="tasks", confidence=0.95, objective=msg,
+                      reason="deterministic: reminder", source="policy")
+    if history:
+        last_a = next((t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
+        if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
+            return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
+                          reason="deterministic: reminder follow-up", source="policy")
+
     # Today's agenda phrases → tasks skill without waiting on the classifier.
     if re.search(
         r"\b(we('?ll| will) be doing|for today|today'?s (plan|agenda)|"
@@ -322,7 +334,21 @@ def _deterministic_intent(message: str) -> Intent | None:
             source="policy",
         )
 
+    # Plain conversation: nothing here needs a tool, so skip the classifier round-trip (saves seconds per turn).
+    if not _NEEDS_LLM.search(msg) and len(msg) < 500:
+        return Intent(mode="talk", skill_id="chat", confidence=0.85, objective=msg,
+                      reason="deterministic: conversation", source="policy")
+
     return None
+
+
+_NEEDS_LLM = re.compile(
+    r"\b(screen|desktop|monitor|display|window|windows|app|apps|open|launch|start|click|type|write|save|close|delete|"
+    r"file|files|folder|search|google|look ?up|research|browse|website|find|plan|agenda|task|tasks|memory|forget|download|"
+    r"install|run|play|send|email|e-?mail|message|whatsapp|rename|move|copy|paste|scroll|press|drag|"
+    r"notepad|chrome|excel|word|discord|spotify|settings|pc|computer)\b",
+    re.I,
+)
 
 
 def classify_intent(
@@ -349,7 +375,7 @@ def classify_intent(
         return apply_policy(proposed, message)
 
     # 1) Solved cases never reach the LLM.
-    proposed = _deterministic_intent(message)
+    proposed = _deterministic_intent(message, history)
     if proposed is None:
         try:
             data = _llm_classify(message, history)

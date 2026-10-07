@@ -612,3 +612,26 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .cap-friday.filler { color: var(--accent-2); font-style: italic; }
 .cap-friday.faded { opacity: 0.35; }
 body.live-open { overflow: hidden; }
+
+/* ---------------------------------------------------------------- reminders, chips */
+.bell { background: transparent; border: 1px solid var(--line); color: var(--cyan); cursor: pointer; padding: 3px 9px; position: relative; font-size: 0.95rem; }
+.bell:hover { border-color: var(--cyan); }
+.bell-count { position: absolute; top: -7px; right: -7px; background: var(--accent); color: #fff; border-radius: 10px; font-size: 0.65rem; padding: 1px 6px; font-family: var(--mono); }
+.bell-count.hidden, .rem-panel.hidden { display: none; }
+.rem-panel { position: fixed; top: 46px; right: 18px; width: 340px; max-height: 60vh; overflow: auto; z-index: 800; background: #0a1018; border: 1px solid var(--line-hot); padding: 12px; box-shadow: 0 10px 40px #000a; }
+.rem-panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--accent-2); font-family: var(--mono); }
+.rem-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 0.95rem; }
+.rem-row.new b { color: var(--accent-2); }
+.rem-row b { flex: 1; }
+.rem-popup { position: fixed; right: 22px; bottom: 22px; z-index: 1000; display: flex; flex-direction: column; gap: 12px; max-width: 440px; }
+.rem-card { background: linear-gradient(160deg, #101c2a, #0a1018); border: 1px solid var(--accent); padding: 20px 22px; box-shadow: 0 0 40px rgba(255, 106, 43, 0.45); animation: remIn 0.35s ease-out; }
+.rem-card .rem-title { font-size: 1.25rem; margin: 6px 0 10px; }
+@keyframes remIn { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+.rem-eyebrow { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.18em; color: var(--accent-2); }
+.rem-title { font-size: 1.25rem; margin: 6px 0 4px; color: #fff; }
+.rem-body { color: #b9d4ea; font-size: 0.95rem; margin-bottom: 6px; white-space: pre-wrap; }
+.rem-actions { display: flex; gap: 8px; margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+.chip { background: var(--cyan-dim); color: var(--cyan); border: 1px solid var(--line); padding: 5px 12px; cursor: pointer; font-family: var(--mono); font-size: 0.75rem; }
+.chip.on { background: var(--cyan); color: #04141c; }
+.tag { display: inline-block; border: 1px solid var(--line); padding: 0 7px; font-family: var(--mono); font-size: 0.68rem; color: var(--accent-2); margin-right: 6px; }
