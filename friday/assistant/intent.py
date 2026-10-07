@@ -318,6 +318,17 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Web lookup (news, google, "what's the weather") is research — not desktop control.
+    if _RESEARCH.search(msg) and not _DESKTOP_TARGET.search(msg):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.93,
+            objective=msg,
+            reason="deterministic: web lookup",
+            source="policy",
+        )
+
     # Clear imperative desktop task → act. Still runs through apply_policy.
     if _IMPERATIVE.search(msg) and re.search(
         r"\b(notepad|chrome|browser|file|folder|window|app|desktop|"
@@ -342,6 +353,17 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     return None
 
 
+_RESEARCH = re.compile(
+    r"\b(search( the web| google| online)?|google\b|look ?up|research|find out|"
+    r"what('?s| is) (the |today'?s )?(news|weather)|how('?s| is) the weather|"
+    r"headlines|breaking news|latest news|weather (today|now|in)|who won)\b",
+    re.I,
+)
+_DESKTOP_TARGET = re.compile(
+    r"\b(notepad|chrome|edge|firefox|browser window|desktop|click|type in|"
+    r"open (the )?(chrome|browser|edge|notepad))\b",
+    re.I,
+)
 _NEEDS_LLM = re.compile(
     r"\b(screen|desktop|monitor|display|window|windows|app|apps|open|launch|start|click|type|write|save|close|delete|"
     r"file|files|folder|search|google|look ?up|research|browse|website|find|plan|agenda|task|tasks|memory|forget|download|"

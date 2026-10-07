@@ -60,6 +60,7 @@ def run_react(
 
     observations = ""
     final_reply = ""
+    seen_calls: set[tuple[str, str]] = set()
 
     for step in range(steps):
         prompt = f"""{system_overlay}
@@ -98,6 +99,14 @@ Step {step + 1}/{steps}. Decide.
             # Also accept flat args
             if not args:
                 args = {k: v for k, v in call.items() if k != "tool"}
+            sig = (name, json.dumps(args, sort_keys=True, default=str)[:800])
+            if sig in seen_calls:
+                observations += (
+                    "\nYou already ran that exact tool. Do not call it again. "
+                    "Output FINAL: with the answer from the observations above.\n"
+                )
+                continue
+            seen_calls.add(sig)
             emit("tool_call", {"tool": name, "args": args})
             # Model output (possibly shaped by untrusted screen/web text) goes through
             # policy + approval + audit; it is never executed directly.
@@ -105,6 +114,11 @@ Step {step + 1}/{steps}. Decide.
             emit("tool_result", {"tool": name, "result": out[:1000]})
             tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
             observations += f"\nObservation from {name}:\n{out}\n"
+            if name == "web_search":
+                observations += (
+                    "\nYou have the search results. Output FINAL: as a briefing for the user. "
+                    "Do not search again.\n"
+                )
             continue
 
         # No tool call — treat entire response as final

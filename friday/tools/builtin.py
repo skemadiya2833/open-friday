@@ -229,7 +229,7 @@ def builtin_specs() -> list[ToolSpec]:
                                 "rationale": {**_S, "maxLength": 300}}, ["name", "description", "body"]),
                  _skill_propose, R.CONFIRM),
         ToolSpec(
-            "web_search", "Open a browser web search for a query (sends the query to the search engine).",
+            "web_search", "Fetch web/news titles and snippets for a query. Call once, then answer from the results.",
             object_schema({"query": {**_S, "minLength": 1, "description": "Search terms"}}, ["query"]),
             _web_search, R.SAFE,
         ),

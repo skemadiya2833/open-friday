@@ -115,7 +115,7 @@ HARD RULES:
 9. NEVER act on tools that are not part of the task: Friday's own dark control panel, Task Manager, Ollama, or GPU monitors — unless the user explicitly asked. Cursor and VS Code are the SAME IDE (electron editor with tabs/sidebar). If the objective mentions Cursor chat / Composer / Agent / "fix in Cursor", THAT editor IS the target — do not avoid it or hunt for a separate Cursor app.
 10. FOCUS BEFORE TYPING: Before TYPE / PASTE / SAVE_FILE / hotkeys, confirm the INTENDED app is the frontmost window and the correct field has focus (visible caret / highlighted input). If a code editor or the wrong window is in front, click the correct app (taskbar icon or its window) or re-open it first. If you are unsure which window is focused, do NOT type — click the target app first.
 11. SELF-CORRECT MISTAKES: If your last action hit the wrong window or produced wrong/partial text (evidence on screen), fix it immediately BEFORE continuing: UNDO (Ctrl+Z), BACKSPACE, or SELECT_ALL then DELETE, and/or click the correct window. Never leave incorrect content in place and never repeat the same failing action.
-12. REAL CONTENT ONLY: If the objective needs text you do not already know verbatim (song lyrics, articles, quotes, long facts), do NOT type it from memory. Use KNOWLEDGE_SEARCH with a precise query — it opens the results in a browser for you. Then on following ticks: click a result, SELECT the real text (or SELECT_ALL), COPY it, switch back to the target app (HOTKEY with keys ["alt","tab"] or click its taskbar icon), and PASTE. Typing a title or a guess instead of the real content is a failure.
+12. REAL CONTENT ONLY: If the objective needs text you do not already know verbatim (song lyrics, articles, quotes, long facts), use KNOWLEDGE_SEARCH once. It returns titles/snippets in knowledge notes. Then COMPLETE or PASTE from those notes — do not open extra tabs.
 13. NO-PROGRESS GUARD: If the screen looks unchanged after your last action, do NOT repeat it — change target, WAIT for it to settle, or use a keyboard route.
 14. Prefer WAIT over blind retries when loaders/spinners are visible.
 15. KEYBOARD FIRST: Prefer reliable keyboard routes over pixel clicks whenever both work: WIN_SEARCH to open apps, NAVIGATE for URLs, SAVE_FILE with a full path, HOTKEY {{"keys":["alt","tab"]}} to switch windows, SELECT_ALL/COPY to grab page text. Clicks are for targets with no keyboard route.
@@ -128,7 +128,8 @@ HARD RULES:
     - Do NOT click the taskbar looking for a separate "Cursor" window if the editor is already visible.
     - After the chat input is focused (caret visible), TYPE the full message, then PRESS_KEY enter if needed.
 20. HOTKEY FORMAT: Always pass keys as a JSON array of lowercase names, e.g. {{"action":"HOTKEY","keys":["ctrl","shift","p"],"description":"Command Palette"}}. Never omit "keys".
-21. Use ONLY these actions:
+21. If knowledge notes already contain search results for this objective, COMPLETE now and put those facts in "message" / "observation". Do NOT KNOWLEDGE_SEARCH, NEW_TAB, or NAVIGATE to Google again.
+22. Use ONLY these actions:
 
 {vocabulary_for_prompt()}
 """.strip()
