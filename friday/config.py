@@ -186,7 +186,7 @@ AUDIT_LOG_PATH = os.getenv("FRIDAY_AUDIT_LOG", os.path.join(DATA_DIR, "audit", "
 APPROVAL_TIMEOUT_SECONDS = float(os.getenv("FRIDAY_APPROVAL_TIMEOUT", "120"))
 CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
-SERVER_HOST = os.getenv("FRIDAY_HOST", "127.0.0.1")
+SERVER_HOST = os.getenv("FRIDAY_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
 # Required (and enforced at startup) when FRIDAY_HOST is not a loopback address.
 API_TOKEN = os.getenv("FRIDAY_API_TOKEN", "").strip()

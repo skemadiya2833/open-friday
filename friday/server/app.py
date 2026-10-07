@@ -474,15 +474,21 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
     import uvicorn
 
     bind = host or SERVER_HOST
+    port = port or SERVER_PORT
     if not is_loopback(bind) and not API_TOKEN:
-        raise SystemExit(
-            f"Refusing to bind to non-loopback address {bind!r} without FRIDAY_API_TOKEN. "
-            "Friday can control this desktop; set a long random token or bind to 127.0.0.1."
+        print(
+            f"[Friday] WARNING: listening on {bind}:{port} with no FRIDAY_API_TOKEN. "
+            "Anyone on this Wi-Fi can open the UI. Set a long token if that is not what you want."
         )
+    from friday.server.security import local_ipv4s
+
+    print(f"[Friday] Local  → http://127.0.0.1:{port}/")
+    for ip in local_ipv4s():
+        print(f"[Friday] Phone  → http://{ip}:{port}/")
     uvicorn.run(
         "friday.server.app:app",
         host=bind,
-        port=port or SERVER_PORT,
+        port=port,
         reload=False,
         log_level="info",
     )

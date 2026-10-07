@@ -1156,6 +1156,11 @@ async function openReminderFromUrl() {
 }
 
 (async function init() {
+  const link = $("#linkHost");
+  if (link) link.textContent = location.hostname || "local";
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    pushActivity("Phone over HTTP · typing works; the mic may be blocked until you use Chrome or a secure origin", { live: false });
+  }
   syncSpeakToggles();
   openReminderFromUrl();
   pollNotifications();

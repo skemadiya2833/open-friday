@@ -17,17 +17,12 @@ No CORS headers are emitted at all: the UI is same-origin.
 from __future__ import annotations
 
 import hmac
+import ipaddress
+import socket
 from typing import Iterable
 from urllib.parse import urlsplit
 
 _SAFE_METHODS = {"GET", "HEAD"}
-
-
-def default_allowed_hosts(extra: Iterable[str] = ()) -> set[str]:
-    """Allowed *hostnames* (ports are not part of the DNS-rebinding defence)."""
-    hosts = {"127.0.0.1", "localhost", "[::1]"}
-    hosts.update(h.strip().lower() for h in extra if h and h.strip())
-    return hosts
 
 
 def _hostname(hostport: str) -> str:
@@ -39,7 +34,48 @@ def _hostname(hostport: str) -> str:
 
 
 def is_loopback(host: str) -> bool:
-    return host in {"127.0.0.1", "localhost", "::1", "[::1]"}
+    h = host.strip().lower().strip("[]")
+    return h in {"127.0.0.1", "localhost", "::1"}
+
+
+def is_private_hostname(host: str) -> bool:
+    """Loopback, unspecified, or RFC1918 / link-local — safe Host values on the home LAN."""
+    h = _hostname(host).strip("[]")
+    if is_loopback(h):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return bool(ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_unspecified)
+
+
+def local_ipv4s() -> list[str]:
+    found: list[str] = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith("127."):
+                found.append(ip)
+    except OSError:
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("1.1.1.1", 80))
+            ip = s.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                found.append(ip)
+    except OSError:
+        pass
+    return list(dict.fromkeys(found))
+
+
+def default_allowed_hosts(extra: Iterable[str] = ()) -> set[str]:
+    """Allowed *hostnames* (ports are not part of the DNS-rebinding defence)."""
+    hosts = {"127.0.0.1", "localhost", "[::1]", "0.0.0.0"}
+    hosts.update(local_ipv4s())
+    hosts.update(h.strip().lower() for h in extra if h and h.strip())
+    return hosts
 
 
 class RequestGuard:
@@ -69,7 +105,10 @@ class RequestGuard:
             return False
         if parts.scheme not in ("http", "https") or not parts.netloc:
             return False
-        return parts.netloc.lower() == host.lower() and _hostname(host) in self.allowed_hosts
+        name = _hostname(host)
+        return parts.netloc.lower() == host.lower() and (
+            name in self.allowed_hosts or is_private_hostname(name)
+        )
 
     def _token_ok(self, scope) -> bool:
         if not self.token:
@@ -99,7 +138,8 @@ class RequestGuard:
             return await self.app(scope, receive, send)
 
         host = self._header(scope, b"host").lower()
-        if _hostname(host) not in self.allowed_hosts:
+        name = _hostname(host)
+        if name not in self.allowed_hosts and not is_private_hostname(name):
             return await self._deny(scope, receive, send, 403, "host not allowed")
 
         origin = self._header(scope, b"origin")

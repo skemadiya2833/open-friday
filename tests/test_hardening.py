@@ -25,7 +25,6 @@ def test_valid_default_config_has_no_errors():
     ({"CLOUD_PROVIDER": "bing"}, "CLOUD_PROVIDER"),
     ({"AGENT_BACKEND": "magic"}, "AGENT_BACKEND"),
     ({"OLLAMA_HOST": "localhost:11434"}, "OLLAMA_HOST"),
-    ({"FRIDAY_HOST": "0.0.0.0"}, "FRIDAY_HOST"),
 ])
 def test_invalid_values_give_clear_errors(env, key):
     assert key in _errs(env)

@@ -62,10 +62,13 @@ def validate_config(env: dict[str, str] | None = None) -> list[Issue]:
         v = e.get(key, "").strip().lower()
         if v not in allowed:
             out.append(Issue("error", key, f"{v!r} is not valid. Choose one of: {', '.join(sorted(a for a in allowed if a))}."))
-    host = e.get("FRIDAY_HOST", "127.0.0.1")
-    if not _is_loopback(host) and not e.get("FRIDAY_API_TOKEN", "").strip():
-        out.append(Issue("error", "FRIDAY_HOST", f"{host!r} is not a loopback address but FRIDAY_API_TOKEN is empty. "
-                         "Set a long random token, or bind to 127.0.0.1."))
+    host = e.get("FRIDAY_HOST", "0.0.0.0")
+    if not _is_loopback(host) and host not in ("0.0.0.0", "::") and not e.get("FRIDAY_API_TOKEN", "").strip():
+        out.append(Issue("warn", "FRIDAY_HOST", f"{host!r} is reachable on the network with no FRIDAY_API_TOKEN. "
+                         "Anyone on this LAN can open Friday. Set a token if that is not what you want."))
+    if host in ("0.0.0.0", "::") and not e.get("FRIDAY_API_TOKEN", "").strip():
+        out.append(Issue("warn", "FRIDAY_HOST", "listening on all interfaces so a phone on Wi-Fi can connect; "
+                         "anyone on this LAN can open Friday. Set FRIDAY_API_TOKEN to require a secret."))
     if e.get("FRIDAY_API_TOKEN", "").strip() and len(e["FRIDAY_API_TOKEN"].strip()) < 16:
         out.append(Issue("warn", "FRIDAY_API_TOKEN", "shorter than 16 characters; use a long random token."))
     ollama = e.get("OLLAMA_HOST", "http://localhost:11434")

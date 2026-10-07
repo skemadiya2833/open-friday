@@ -31,6 +31,13 @@ def test_dns_rebinding_host_rejected(client):
     assert r.status_code == 403
 
 
+def test_lan_phone_host_is_allowed(client):
+    r = client.get("/api/health", headers={"host": "192.168.1.24:8787"})
+    assert r.status_code == 200
+    r = client.post("/api/sessions", headers={"host": "192.168.1.24:8787", "Origin": "http://192.168.1.24:8787"})
+    assert r.status_code == 200
+
+
 def test_cross_origin_post_rejected_and_preflight_rejected(client):
     r = client.post("/api/mcp/kill", headers={**H, "Origin": "http://evil.example"})
     assert r.status_code == 403
