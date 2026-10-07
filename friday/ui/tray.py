@@ -5,11 +5,11 @@ from __future__ import annotations
 import threading
 import webbrowser
 
-from friday.config import SERVER_HOST, SERVER_PORT
+from friday.config import SERVER_PORT, ui_host
 
 
 def _open_ui() -> None:
-    webbrowser.open(f"http://{SERVER_HOST}:{SERVER_PORT}/")
+    webbrowser.open(f"http://{ui_host()}:{SERVER_PORT}/")
 
 
 def start_tray(server_thread: threading.Thread | None = None) -> None:

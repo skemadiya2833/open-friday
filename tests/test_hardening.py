@@ -113,3 +113,12 @@ def test_physical_gate_fails_closed_when_hook_unavailable(monkeypatch):
         assert not ok and "boom" in why
     finally:
         P.set_monitor(None)
+
+
+def test_ui_host_is_a_real_browser_address(monkeypatch):
+    from friday.config import ui_host
+
+    monkeypatch.setattr("friday.config.SERVER_HOST", "0.0.0.0")
+    assert ui_host() == "127.0.0.1"
+    assert ui_host("::") == "127.0.0.1"
+    assert ui_host("192.168.1.24") == "192.168.1.24"

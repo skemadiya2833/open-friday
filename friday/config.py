@@ -188,6 +188,14 @@ CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
 SERVER_HOST = os.getenv("FRIDAY_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
+
+
+def ui_host(bind: str | None = None) -> str:
+    """Host a browser can open. ``0.0.0.0`` / ``::`` mean listen-on-all, not a URL."""
+    h = (SERVER_HOST if bind is None else bind).strip()
+    if h in ("0.0.0.0", "::", "", "*"):
+        return "127.0.0.1"
+    return h
 # Required (and enforced at startup) when FRIDAY_HOST is not a loopback address.
 API_TOKEN = os.getenv("FRIDAY_API_TOKEN", "").strip()
 # Extra Host header names accepted by the request guard (e.g. a LAN name behind a TLS proxy).

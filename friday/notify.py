@@ -27,10 +27,9 @@ def toasts_enabled() -> bool:
 
 
 def ui_url(notification_id: str = "") -> str:
-    from friday.config import SERVER_HOST, SERVER_PORT
+    from friday.config import SERVER_PORT, ui_host
 
-    host = "127.0.0.1" if SERVER_HOST in ("0.0.0.0", "::", "") else SERVER_HOST  # noqa: S104
-    return f"http://{host}:{SERVER_PORT}/" + (f"?reminder={notification_id}" if notification_id else "")
+    return f"http://{ui_host()}:{SERVER_PORT}/" + (f"?reminder={notification_id}" if notification_id else "")
 
 
 def toast(title: str, body: str, url: str = "") -> bool:
