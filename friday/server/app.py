@@ -504,7 +504,11 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
 
     print(f"[Friday] Local  → http://127.0.0.1:{port}/")
     for ip in local_ipv4s():
-        print(f"[Friday] Phone  → http://{ip}:{port}/")
+        print(f"[Friday] Phone  → http://{ip}:{port}/  (http, same Wi-Fi as this PC)")
+    if not is_loopback(bind):
+        from friday.server.lan import ensure_inbound
+
+        ensure_inbound(port)
     print("[Friday] Stop   → Ctrl+C", flush=True)
     from friday.shutdown import install_ctrl_c
 

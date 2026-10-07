@@ -151,3 +151,11 @@ def test_extra_origin_allowed_only_when_configured():
     assert dev.post("/x", headers=hdr).status_code == 200
     assert dev.post("/x", headers={"Origin": "http://localhost:5174"}).status_code == 403
     assert dev.post("/x", headers={"Origin": "http://evil.example"}).status_code == 403
+
+
+def test_lan_firewall_rule_is_private_tcp_8787():
+    from friday.server.lan import RULE_NAME, add_rule_args
+
+    args = add_rule_args(8787)
+    assert RULE_NAME in " ".join(args)
+    assert "localport=8787" in args and "profile=private" in args and "dir=in" in args
