@@ -274,11 +274,20 @@ def memory_add(body: MemoryAddRequest) -> dict[str, Any]:
 
 @app.delete("/api/memory/{doc_id}")
 def memory_delete(doc_id: str, collection: str = "memories") -> dict[str, Any]:
-    from friday.memory import get_memory
-    ok = get_memory().delete(doc_id, collection=collection)
+    from friday.memory.forget import forget_entry
+
+    ok = forget_entry(collection, doc_id)
     if not ok:
         raise HTTPException(404, "Not found")
     return {"deleted": True}
+
+
+@app.post("/api/memory/forget-all")
+def memory_forget_all() -> dict[str, Any]:
+    from friday.memory.forget import forget_all
+
+    counts = forget_all()
+    return {"ok": True, "cleared": counts}
 
 
 @app.get("/api/memory/stats")

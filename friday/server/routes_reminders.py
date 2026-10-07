@@ -83,7 +83,7 @@ def memory_overview(limit: int = 300) -> dict[str, Any]:
 
         for e in get_experience().list_entries(limit=limit):
             items.append({"id": e["id"], "collection": e["collection"], "kind": "experience", "source": "desktop agent",
-                          "text": e.get("text", ""), "created_at": float(e.get("created_at", 0) or 0), "deletable": False})
+                          "text": e.get("text", ""), "created_at": float(e.get("created_at", 0) or 0), "deletable": True})
     except Exception as exc:  # noqa: BLE001
         errors.append(f"experience: {exc}")
 
@@ -92,7 +92,7 @@ def memory_overview(limit: int = 300) -> dict[str, Any]:
 
         for it in get_plan().get("items") or []:
             items.append({"id": it.get("id", ""), "collection": "plan", "kind": "plan", "source": "today's plan",
-                          "text": ("✓ " if it.get("done") else "") + it.get("text", ""), "created_at": 0, "deletable": False})
+                          "text": ("✓ " if it.get("done") else "") + it.get("text", ""), "created_at": 0, "deletable": True})
     except Exception as exc:  # noqa: BLE001
         errors.append(f"plan: {exc}")
 
@@ -111,7 +111,7 @@ def memory_overview(limit: int = 300) -> dict[str, Any]:
                     "source": "you said" if t.role == "user" else "Friday said",
                     "text": (t.content or "")[:500],
                     "created_at": float(t.ts or 0),
-                    "deletable": False,
+                    "deletable": True,
                 })
     except Exception as exc:  # noqa: BLE001
         errors.append(f"chat: {exc}")
@@ -123,7 +123,7 @@ def memory_overview(limit: int = 300) -> dict[str, Any]:
             if j["status"] in ("scheduled", "paused"):
                 items.append({"id": j["id"], "collection": "jobs", "kind": "reminder", "source": "scheduler",
                               "text": f"{j['title']} ({'repeats ' + j['cron'] if j['cron'] else time.strftime('%a %d %b %H:%M', time.localtime(j['run_at'] or 0))})",
-                              "created_at": float(j.get("created_at") or 0), "deletable": False})
+                              "created_at": float(j.get("created_at") or 0), "deletable": True})
     except Exception as exc:  # noqa: BLE001
         errors.append(f"jobs: {exc}")
 

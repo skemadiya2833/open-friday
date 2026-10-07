@@ -777,12 +777,12 @@ function renderMemCards(items) {
     const when = m.created_at ? new Date(m.created_at * 1000).toLocaleString() : "";
     card.innerHTML = `
       <div><p>${escapeHtml(m.text)}</p><p class="muted"><span class="tag">${escapeHtml(m.source || m.kind || "")}</span> ${when}</p></div>
-      <div class="actions">${m.deletable ? `<button class="ghost" data-del="${m.id}" data-coll="${m.collection}">Forget</button>` : ""}</div>`;
+      <div class="actions">${m.id ? `<button class="ghost" data-del="${escapeHtml(m.id)}" data-coll="${escapeHtml(m.collection || "memories")}">Forget</button>` : ""}</div>`;
     list.appendChild(card);
   }
   list.querySelectorAll("[data-del]").forEach((b) => {
     b.addEventListener("click", async () => {
-      await apiFetch(`/api/memory/${b.dataset.del}?collection=${b.dataset.coll || "memories"}`, { method: "DELETE" });
+      await apiFetch(`/api/memory/${encodeURIComponent(b.dataset.del)}?collection=${encodeURIComponent(b.dataset.coll || "memories")}`, { method: "DELETE" });
       refreshMemory();
     });
   });
@@ -795,6 +795,14 @@ $("#btnMemSearch").addEventListener("click", async () => {
     const items = await (await apiFetch(`/api/memory/search?q=${encodeURIComponent(q)}`)).json();
     renderMemCards(items.map((m) => ({ ...m, kind: "note", source: (m.metadata && m.metadata.source) || "memory", deletable: true, collection: "memories", created_at: (m.metadata && m.metadata.created_at) || 0 })));
   } catch (_) {}
+});
+
+$("#btnForgetAll")?.addEventListener("click", async () => {
+  if (!confirm("Forget everything Friday remembers? Notes, learned facts, chat snippets, plan items and reminders in Memory Core will be deleted.")) return;
+  try {
+    await apiFetch("/api/memory/forget-all", { method: "POST" });
+  } catch (_) {}
+  refreshMemory();
 });
 
 $("#memAddForm").addEventListener("submit", async (e) => {

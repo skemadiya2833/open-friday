@@ -104,6 +104,17 @@ class SessionStore:
                 continue
         return items
 
+    def delete_turn(self, session_id: str, ts: float) -> bool:
+        session = self.load(session_id)
+        if not session:
+            return False
+        before = len(session.turns)
+        session.turns = [t for t in session.turns if abs((t.ts or 0) - ts) > 1e-4]
+        if len(session.turns) == before:
+            return False
+        self.save(session)
+        return True
+
     def get_or_create(self, session_id: str | None) -> ConversationSession:
         if session_id:
             existing = self.load(session_id)
