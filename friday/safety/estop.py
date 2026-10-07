@@ -291,7 +291,16 @@ def ensure_started() -> EmergencyStop:
             _global = EmergencyStop(os.getenv("FRIDAY_STOP_HOTKEY", DEFAULT_HOTKEY))
         if os.getenv("FRIDAY_ESTOP", "true").lower() in ("0", "false", "no", "off"):
             return _global
-        if os.getenv("FRIDAY_INPUT_MONITOR", "true").lower() not in ("0", "false", "no", "off"):
+        # Off by default: a Python WH_KEYBOARD_LL hook needs the GIL and can swallow Ctrl+C.
+        # Turn on with FRIDAY_INPUT_MONITOR=true, or automatically when the physical-input gate is on.
+        want = os.getenv("FRIDAY_INPUT_MONITOR")
+        if want is None:
+            from friday.safety.physical import required as physical_required
+
+            start_hook = physical_required()
+        else:
+            start_hook = want.lower() not in ("0", "false", "no", "off")
+        if start_hook:
             try:
                 from friday.safety.physical import get_monitor
 

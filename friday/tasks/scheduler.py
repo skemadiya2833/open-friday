@@ -211,6 +211,15 @@ class TaskScheduler:
             conn.execute("UPDATE jobs SET status=? WHERE id=?", (status, job_id))
             conn.commit()
 
+    def shutdown(self) -> None:
+        if self._scheduler is None:
+            return
+        try:
+            self._scheduler.shutdown(wait=False)
+        except Exception:  # noqa: BLE001
+            pass
+        self._scheduler = None
+
 
 _sched: TaskScheduler | None = None
 

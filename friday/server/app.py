@@ -66,6 +66,26 @@ async def lifespan(_app: FastAPI):
         get_mcp_manager().shutdown()
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from friday.tasks.scheduler import get_scheduler
+
+        get_scheduler().shutdown()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from friday.safety.estop import get_estop
+
+        es = get_estop()
+        if es is not None:
+            es.stop()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from friday.safety.physical import get_monitor
+
+        get_monitor().stop()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 app = FastAPI(title="Friday", version="3.1.0", lifespan=lifespan)
@@ -485,10 +505,20 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
     print(f"[Friday] Local  → http://127.0.0.1:{port}/")
     for ip in local_ipv4s():
         print(f"[Friday] Phone  → http://{ip}:{port}/")
-    uvicorn.run(
-        "friday.server.app:app",
-        host=bind,
-        port=port,
-        reload=False,
-        log_level="info",
-    )
+    print("[Friday] Stop   → Ctrl+C", flush=True)
+    from friday.shutdown import install_ctrl_c
+
+    install_ctrl_c()
+    try:
+        uvicorn.run(
+            "friday.server.app:app",
+            host=bind,
+            port=port,
+            reload=False,
+            log_level="info",
+            timeout_graceful_shutdown=1,
+        )
+    except KeyboardInterrupt:
+        from friday.shutdown import request_stop
+
+        request_stop(0)
