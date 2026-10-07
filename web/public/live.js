@@ -9,14 +9,14 @@
   const K_SPEED = "friday.voiceSpeed"; // 0.8 .. 1.4
   const STYLES = {
     // pauseMs: silence before a spoken turn is sent. fillerMs: how long a reply may take before Friday says a filler.
-    realtime: { pauseMs: 280, fillerMs: 900, streamSpeech: true, label: "Realtime" },
+    realtime: { pauseMs: 220, fillerMs: 900, streamSpeech: true, label: "Realtime" },
     relaxed: { pauseMs: 800, fillerMs: 2000, streamSpeech: false, label: "Relaxed" },
   };
   const Voice = {
     styles: STYLES,
     style() {
       const s = localStorage.getItem(K_STYLE);
-      return STYLES[s] ? s : "relaxed"; // relaxed = the previous behaviour, so nothing changes until the owner opts in
+      return STYLES[s] ? s : "realtime";
     },
     setStyle(s) {
       if (!STYLES[s]) return;
@@ -26,11 +26,11 @@
     cfg() { return STYLES[Voice.style()]; },
     pauseMs() { return Voice.cfg().pauseMs; },
     speed() {
-      const v = parseFloat(localStorage.getItem(K_SPEED) || "1");
-      return isFinite(v) ? Math.min(1.4, Math.max(0.8, v)) : 1;
+      const v = parseFloat(localStorage.getItem(K_SPEED) || "1.2");
+      return isFinite(v) ? Math.min(1.6, Math.max(0.85, v)) : 1.2;
     },
     setSpeed(v) {
-      localStorage.setItem(K_SPEED, String(Math.min(1.4, Math.max(0.8, Number(v) || 1))));
+      localStorage.setItem(K_SPEED, String(Math.min(1.6, Math.max(0.85, Number(v) || 1.2))));
       window.FridayLive && FridayLive.syncControls();
     },
   };
@@ -199,6 +199,8 @@
       closeMic();
     },
     isOpen() { return open; },
+    isSpeaking() { return state === "speaking"; },
+    lastSpoken() { return Live._lastSpoken || ""; },
     state(s) {
       const m = { thinking: "thinking", acting: "acting", listening: "listening", idle: open ? "listening" : "idle", speaking: "speaking", running: "acting" };
       state = m[s] || state;
@@ -249,6 +251,7 @@
     interrupt() { // barge-in: stop talking immediately
       Live._speaker && Live._speaker.abort();
       if (window.stopSpeech) window.stopSpeech();
+      if (open) Live.state("listening");
     },
 
     // ---------------------------------------------------------------- fillers
@@ -288,12 +291,18 @@
           const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
           if (!clean || aborted) return;
           if (first) { first = false; onFirst && onFirst(); }
-          const pre = window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
+          const realtime = Voice.style() === "realtime";
+          const pre = !realtime && window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
           fetches.push(pre);
           chain = chain.then(async () => {
             if (aborted) return;
             Live.state("speaking");
-            if (!filler) { Live.friday(clean); spokenReal++; }
+            if (!filler) { Live.friday(clean); spokenReal++; Live._lastSpoken = clean; }
+            if (realtime) {
+              Live.synthSpeaking(true);
+              await window.speakBrowser(clean);
+              return;
+            }
             const url = await pre;
             if (aborted) return;
             if (url) await window.playUrl(url);
@@ -303,12 +312,13 @@
         push(chunk) {
           pending += chunk;
           for (;;) {
-            const re = /[.!?\u2026]+["')\]]*\s+|\n+/g;
+            const re = /[.!?\u2026]+["')\]]*\s+|\n+|,\s+/g;
             let m, cut = -1;
             while ((m = re.exec(pending))) {
               const end = m.index + m[0].length;
-              if (end >= 18 || m[0].includes("\n")) { cut = end; break; } // "3.5" has no space after the dot: never split there
+              if (end >= 10 || m[0].includes("\n")) { cut = end; break; }
             }
+            if (cut < 0 && pending.length > 80) { cut = pending.length; }
             if (cut < 0) break;
             sp.say(pending.slice(0, cut));
             pending = pending.slice(cut);

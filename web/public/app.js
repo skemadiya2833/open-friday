@@ -14,6 +14,9 @@ let pauseTimer = null;
 let interimText = "";
 let finalBuffer = "";
 let speakWasForced = false;
+let turnEpoch = 0;
+let chatAbort = null;
+let fridayReply = "";
 
 const $ = (sel) => document.querySelector(sel);
 const orb = $("#orb");
@@ -203,6 +206,39 @@ async function restoreChat() {
   }
 }
 
+function normSpeech(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function looksLikeEcho(heard) {
+  const a = normSpeech(heard);
+  if (!a) return true;
+  const refs = [window.FridayLive && FridayLive.lastSpoken && FridayLive.lastSpoken(), fridayReply];
+  for (const r of refs) {
+    const b = normSpeech(r);
+    if (!b) continue;
+    if (b.includes(a) || a.includes(b.slice(0, Math.min(48, b.length)))) return true;
+    const aw = a.split(" ").filter((w) => w.length > 2);
+    const bw = new Set(b.split(" ").filter((w) => w.length > 2));
+    if (!aw.length) continue;
+    let n = 0;
+    for (const w of aw) if (bw.has(w)) n++;
+    if (n / aw.length >= 0.65) return true;
+  }
+  return false;
+}
+
+function interruptTurn() {
+  turnEpoch += 1;
+  try { chatAbort && chatAbort.abort(); } catch (_) {}
+  window.FridayLive && FridayLive.interrupt();
+  stopSpeech();
+  voiceBusy = false;
+  setState(voiceMode ? "listening" : "idle");
+  if (voiceMode) resumeRecognition();
+  pushActivity("Interrupted · listening", { live: false });
+}
+
 async function sendMessage(text, { fromVoice = false } = {}) {
   if (!text.trim() || voiceBusy) return;
   await ensureSession();
@@ -215,12 +251,14 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   const skillOverride = $("#skillOverride").value || null;
   const chip = $("#skillChip");
   const useVoice = fromVoice || voiceMode;
+  const epoch = ++turnEpoch;
+  chatAbort = new AbortController();
 
   if (useVoice) voiceBusy = true;
 
-  // live voice: sentence-pipelined speech + spoken/shown fillers while the reply is being prepared
-  const vcfg = window.FridayVoice ? FridayVoice.cfg() : { streamSpeech: false };
-  const speaker = useVoice && speakEnabled() && window.FridayLive ? FridayLive.speaker({ onFirst: pauseRecognition }) : null;
+  // live voice: sentence-pipelined speech. Mic stays live so the owner can interrupt.
+  const vcfg = window.FridayVoice ? FridayVoice.cfg() : { streamSpeech: true };
+  const speaker = useVoice && speakEnabled() && window.FridayLive ? FridayLive.speaker() : null;
   const filler = useVoice && window.FridayLive ? FridayLive.fillers(speaker) : null;
   filler && filler.start();
 
@@ -241,6 +279,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         skill_override: skillOverride,
         voice_mode: useVoice,
       }),
+      signal: chatAbort.signal,
     });
     if (!res.ok) throw new Error(`Chat failed (${res.status})`);
     const reader = res.body.getReader();
@@ -324,7 +363,9 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           pushActivity(`Focus crop · [${ev.box.join(", ")}]`);
         }
         if (ev.type === "skill_token" && ev.text) {
+          if (epoch !== turnEpoch) return;
           streamed += ev.text;
+          fridayReply = streamed;
           liveBody.textContent = streamed;
           if (speaker && vcfg.streamSpeech) { filler && filler.stop(); speaker.push(ev.text); }
           else if (window.FridayLive && FridayLive.isOpen()) FridayLive.friday(streamed);
@@ -347,7 +388,9 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       }
     }
 
+    if (epoch !== turnEpoch) return;
     const textOut = finalReply || streamed || "(no reply)";
+    fridayReply = textOut;
     liveBody.textContent = textOut;
     if (skillId) liveMeta.textContent = `skill:${skillId}`;
     filler && filler.stop();
@@ -355,8 +398,6 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       speaker.finish();
       await speaker.done();
     } else if (speakEnabled() && textOut && textOut !== "(no reply)") {
-      // Pause mic recognition while speaking to avoid echo loops.
-      pauseRecognition();
       pushActivity("Speaking reply…");
       if (speaker) {
         speaker.push(String(textOut).slice(0, 700) + " ");
@@ -368,10 +409,15 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       pushActivity("Spoken", { live: false });
     }
   } catch (err) {
+    if (err.name === "AbortError" || /abort/i.test(err.message || "")) {
+      liveMeta.textContent = "interrupted";
+      return;
+    }
     liveBody.textContent = `Error: ${err.message}`;
     pushActivity(`Error · ${err.message}`, { live: false });
   } finally {
     filler && filler.stop();
+    if (epoch !== turnEpoch) return;
     setState(voiceMode ? "listening" : "idle");
     voiceBusy = false;
     finalBuffer = "";
@@ -531,7 +577,6 @@ function startVoiceMode() {
   recognition.lang = "en-US";
 
   recognition.onresult = (event) => {
-    if (voiceBusy) return;
     let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const piece = event.results[i][0].transcript;
@@ -543,11 +588,22 @@ function startVoiceMode() {
     }
     interimText = interim;
     const shown = `${finalBuffer} ${interim}`.trim();
+    if (voiceBusy) {
+      const stopWord = /^(stop|wait|hold on|hang on|enough|no|friday|hey)\b/i.test(shown.trim());
+      const longEnough = shown.trim().split(/\s+/).filter(Boolean).length >= 3 || shown.trim().length >= 14;
+      if ((stopWord || longEnough) && !looksLikeEcho(shown)) {
+        interruptTurn();
+        finalBuffer = shown;
+        setListeningLine(shown, { interim: !!interim });
+        scheduleProcess(stopWord ? 80 : 220);
+      }
+      return;
+    }
     if (shown) {
       setListeningLine(shown, { interim: !finalBuffer || !!interim });
       setState("listening");
       const quick = window.FridayVoice && FridayVoice.style() === "realtime" && finalBuffer && !interim;
-      scheduleProcess(quick ? 180 : undefined);
+      scheduleProcess(quick ? 140 : undefined);
     }
   };
 
@@ -562,8 +618,8 @@ function startVoiceMode() {
   };
 
   recognition.onend = () => {
-    // Chrome stops after silence — restart while voice mode is on.
-    if (voiceMode && !voiceBusy) {
+    // Keep the mic live during replies so the owner can interrupt.
+    if (voiceMode) {
       try { recognition.start(); } catch (_) {}
     }
   };
@@ -891,7 +947,7 @@ async function refreshSettings() {
         </div>
         <p class="muted" style="margin:8px 0 0">Realtime answers sooner: shorter pause, speaks sentence by sentence while the reply is written. Relaxed waits longer before sending and speaks after the reply.</p>
         <label style="margin-top:12px">Speech speed <strong data-voice-speed-label></strong></label>
-        <input type="range" min="0.8" max="1.4" step="0.05" data-voice-speed style="width:100%" />
+        <input type="range" min="0.85" max="1.6" step="0.05" data-voice-speed style="width:100%" />
       </div>`;
     bindVoiceControls();
     syncSpeakToggles();
@@ -913,7 +969,7 @@ function speakBrowser(text) {
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text.slice(0, 800));
-    u.rate = 0.92 * (window.FridayVoice ? FridayVoice.speed() : 1);
+    u.rate = 1.18 * (window.FridayVoice ? FridayVoice.speed() : 1.2);
     u.onend = () => resolve(true);
     u.onerror = () => resolve(false);
     window.speechSynthesis.speak(u);
