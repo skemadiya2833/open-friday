@@ -61,6 +61,7 @@ def _stream_chat(
     *,
     format_json: bool = False,
     reasoning_mode: bool = False,
+    think: bool | None = None,
     model: str | None = None,
     num_predict: int | None = None,
     num_ctx: int | None = None,
@@ -84,7 +85,10 @@ def _stream_chat(
     if format_json:
         payload["format"] = "json"
     if is_thinking_model(model or MODEL_NAME):
-        payload["think"] = MODEL_THINK in ("1", "true", "yes")
+        # Desktop ticks must not sit in a hidden chain-of-thought. Off unless the caller opts in.
+        if think is None:
+            think = bool(reasoning_mode) and MODEL_THINK in ("1", "true", "yes")
+        payload["think"] = bool(think)
 
     if OVERLAY_ENABLED:
         overlay.set_status("thinking")
@@ -157,8 +161,8 @@ def _stream_chat(
         from friday.models.ollama_boot import ensure_ollama
 
         if not _retried and ensure_ollama():
-            return _stream_chat(messages, format_json=format_json, reasoning_mode=reasoning_mode, model=model,
-                                num_predict=num_predict, num_ctx=num_ctx, on_token=on_token, _retried=True)
+            return _stream_chat(messages, format_json=format_json, reasoning_mode=reasoning_mode, think=think,
+                                model=model, num_predict=num_predict, num_ctx=num_ctx, on_token=on_token, _retried=True)
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
@@ -192,7 +196,8 @@ def query_model_text(
         accumulated, _ = _stream_chat(
             messages,
             format_json=format_json,
-            reasoning_mode=reasoning_mode,
+            reasoning_mode=False,
+            think=False,
             model=resolve_chat_model(),
             num_predict=num_predict if num_predict is not None else CHAT_NUM_PREDICT,
             num_ctx=num_ctx if num_ctx is not None else CHAT_NUM_CTX,
@@ -338,6 +343,7 @@ def describe_screen(
         accumulated, _ = _stream_chat(
             messages,
             reasoning_mode=False,
+            think=False,
             model=VISION_MODEL or MODEL_NAME,
             num_predict=predict,
             num_ctx=CHAT_NUM_CTX,
@@ -353,7 +359,7 @@ def query_model_vision(
     *,
     frame_b64_list: list[str] | None = None,
     video_b64: str | None = None,
-    reasoning_mode: bool = True,
+    reasoning_mode: bool = False,
 ) -> dict:
     if not video_b64 and not frame_b64_list:
         return {"routing": "FALLBACK_TO_CLOUD", "reason": "No vision input.", "steps": []}
@@ -372,8 +378,11 @@ def query_model_vision(
     try:
         accumulated, _ = _stream_chat(
             [user_msg],
-            reasoning_mode=reasoning_mode,
+            format_json=True,
+            reasoning_mode=False,
+            think=False,
             model=VISION_MODEL or MODEL_NAME,
+            num_predict=min(512, MODEL_NUM_PREDICT),
         )
     except RuntimeError as exc:
         print(f"[Model Error] {exc}")

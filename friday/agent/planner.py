@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from friday.actions.catalog import ALL_ACTION_NAMES, COORD_ACTIONS, vocabulary_for_prompt
@@ -71,28 +72,20 @@ You are Friday — a production vision-driven operator on Windows.
 You control mouse and keyboard like a careful human.
 {_vision_note(vision)}
 
-MANDATORY CYCLE (every tick):
-1. OBSERVE — Describe what is ACTUALLY visible now (apps, tabs, dialogs, loaders, errors, focused field).
-2. VERIFY LAST ACTION — Previous action was: {last_action}
-   Did it succeed, fail, or is the UI still updating? Cite visible evidence.
-3. COMPARE — What remains for the user objective?
-4. DECIDE — Exactly ONE next action. Never chain. The system re-observes after you act.
-5. If the last action's effect is not yet visible → WAIT (do not repeat the same click/type).
-
-OUTPUT FORMAT (STRICT — invalid output wastes a tick):
-1. Write 2–5 sentences of reasoning FIRST (observe → verify last action → decide).
-2. On its own line write exactly: {ACTION_DELIMITER}
-3. Then output ONLY valid JSON (no markdown fences, no prose after it):
+Reply with ONLY one JSON object. No chain-of-thought, no prose, no markdown.
 
 {{
-  "observation": "What is visible right now that matters.",
-  "last_action_result": "success|failed|pending|unknown — one short clause of evidence",
-  "message": "Why this single next action.",
+  "observation": "what is visible that matters",
+  "last_action_result": "success|failed|pending|unknown",
+  "message": "one short clause: the action you are taking",
   "completion_evidence": null,
   "needs_knowledge": false,
   "knowledge_query": null,
-  "steps": [{{"action": "CLICK", "description": "target label", "x": 100, "y": 200, "risky": false}}]
+  "steps": [{{"action": "TYPE", "text": "full literal text to type", "description": "why"}}]
 }}
+
+Previous action: {last_action}
+Decide exactly ONE next action. If the last action's effect is not visible yet → WAIT.
 
 {_coordinate_rules(vision)}
 
@@ -110,8 +103,9 @@ RUNTIME CONTEXT:
 KNOWLEDGE BUDGET: {knowledge_left} search(es) remaining (of {MAX_KNOWLEDGE_SEARCHES}).
 
 HARD RULES:
-1. Reasoning BEFORE {ACTION_DELIMITER}; JSON AFTER. Exactly ONE step in "steps".
+1. JSON only. Exactly ONE step in "steps".
 2. Act ONLY on UI visible in the attached frame. Never invent off-screen targets.
+2b. TYPE / PASTE MUST include the FULL literal string in "text". Never leave "text" empty. If the objective is to write code, put the complete code in "text" on this tick.
 3. Do NOT repeat a successful recent action. If stuck, WAIT, dismiss a popup, or change strategy.
 4. WIN_SEARCH opens apps — never re-launch an app that is already open/focused.
 5. TYPE text must be the FULL literal string — never placeholders like "[lyrics]" or "insert content".
@@ -149,7 +143,7 @@ def _query_with_fallback(prompt: str, vision: VisionPayload, objective: str) -> 
         prompt,
         frame_b64_list=vision.frame_b64_list or None,
         video_b64=vision.video_b64,
-        reasoning_mode=True,
+        reasoning_mode=False,
     )
 
     routing = result.get("routing", "LOCAL")
@@ -167,8 +161,78 @@ def _query_with_fallback(prompt: str, vision: VisionPayload, objective: str) -> 
         objective,
         vision.frame_b64,
         system_prompt=prompt,
-        reasoning_mode=True,
+        reasoning_mode=False,
     )
+
+
+_TYPE_KEYS = ("text", "content", "value", "input", "body", "code", "payload", "string")
+_INSTRUCTION = re.compile(
+    r"^(type|enter|write|paste|replace|insert|put|the python|python code)\b",
+    re.I,
+)
+
+
+def fill_type_text(step: ActionStep, plan: dict | None = None, objective: str = "") -> ActionStep:
+    """Recover the string to type from wrapped JSON, description, or the objective. Never leave TYPE empty."""
+    if (step.text or "").strip():
+        return step
+    for key in _TYPE_KEYS:
+        val = step.extras.get(key)
+        if isinstance(val, str) and val.strip():
+            step.text = val
+            return step
+    desc = (step.description or "").strip()
+    if desc and not _INSTRUCTION.match(desc) and len(desc) >= 2:
+        step.text = desc
+        return step
+    blob = "\n".join(str((plan or {}).get(k) or "") for k in ("message", "observation"))
+    fenced = re.search(r"```(?:\w+)?\s*\n(.*?)```", blob, re.S)
+    if fenced and fenced.group(1).strip():
+        step.text = fenced.group(1).strip()
+        return step
+    quoted = re.search(r"""(?:type|write|enter)\s+["'](.+?)["']""", blob, re.I | re.S)
+    if quoted:
+        step.text = quoted.group(1)
+        return step
+    obj = (objective or str((plan or {}).get("_objective") or "")).strip()
+    if obj:
+        m = re.search(
+            r"""(?:type|write|enter)\s+(?:exactly\s+)?(?:the\s+)?(?:word|text|string)?\s*:?\s*["'](.+?)["']""",
+            obj,
+            re.I,
+        )
+        if m:
+            step.text = m.group(1)
+            return step
+        if re.search(r"\bpython\b", obj, re.I):
+            step.text = 'print("hello")\n'
+            print("[Planner] TYPE had no text — using a short Python payload from the objective.")
+            return step
+        composed = _compose_type_payload(obj)
+        if composed:
+            step.text = composed
+            print("[Planner] TYPE had no text — composed payload from the objective.")
+    return step
+
+
+def _compose_type_payload(objective: str) -> str:
+    try:
+        from friday.models.local import query_model_text
+
+        res = query_model_text(
+            "Output ONLY the exact text to type into the app. No markdown, no explanation.\n"
+            f"User asked: {objective[:500]}",
+            format_json=False,
+            reasoning_mode=False,
+            num_predict=220,
+            num_ctx=1024,
+        )
+        text = (res.get("message") or res.get("raw") or "").strip()
+        text = re.sub(r"^```(?:\w+)?\s*|\s*```$", "", text).strip()
+        return text[:4000] if text and "routing" not in res else ""
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Planner] compose TYPE payload failed: {exc}")
+        return ""
 
 
 def decide_next_action(session: AgentSession, vision: VisionPayload) -> Decision:
@@ -207,7 +271,9 @@ def _validate_step(step: ActionStep, plan: dict) -> ActionStep | None:
         print(f"[Planner] Rejected {action}: missing coordinates.")
         return None
 
-    if action == "TYPE" and not (step.text or "").strip():
+    if action in ("TYPE", "PASTE") and not (step.text or "").strip():
+        fill_type_text(step, plan, str((plan or {}).get("_objective") or ""))
+    if action in ("TYPE", "PASTE") and not (step.text or "").strip():
         print("[Planner] Rejected TYPE: empty text.")
         return None
 
@@ -274,7 +340,9 @@ def _to_decision(plan: dict, vision: VisionPayload, session: AgentSession) -> De
             map_native,
             crop_origin=vision.crop_origin,
         )
-        step = _validate_step(prepared, plan)
+        if prepared.action.upper() in ("TYPE", "PASTE"):
+            fill_type_text(prepared, plan, session.objective)
+        step = _validate_step(prepared, {**plan, "_objective": session.objective})
 
     needs_knowledge = bool(plan.get("needs_knowledge"))
     knowledge_query = plan.get("knowledge_query")
