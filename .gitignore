@@ -16,3 +16,6 @@ web/dist/
 __pycache__/
 
 docs/research/diag_chrome/*.txt
+*.err
+*.log
+*.out

@@ -90,10 +90,10 @@ def test_missed_reminder_is_delivered_after_restart(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------------ memory
 @pytest.mark.parametrize("msg,fact", [
-    ("my name is Arjun", "The owner's name is Arjun"),
-    ("I live in Pune", "The owner lives in Pune"),
+    ("my name is Stark", "The owner's name is Stark"),
+    ("I live in New York", "The owner lives in New York"),
     ("I love strong black coffee", "The owner loves strong black coffee"),
-    ("my favorite editor is Neovim", "The owner's favorite editor is Neovim"),
+    ("my favorite editor is Cursor", "The owner's favorite editor is Cursor"),
     ("remember that the wifi router is in the hall", "the wifi router is in the hall"),
 ])
 def test_extracts_facts(msg, fact):
