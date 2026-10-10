@@ -123,3 +123,12 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - Unit tests: `tests/test_auth_passkeys.py` (11). Chromium virtual authenticator / Playwright: **UNVERIFIED** (playwright not installed). Live phone pairing: **UNVERIFIED** (needs owner DNS+cert).
 - Tag: `stage-O`.
 
+## Stage P (2026-10-10) — Model roles (no downloads)
+- Ollama **0.30.10** — MTP speculative decode not available (needs newer / MLX notes); not enabled.
+- `friday/models/roles.py` + `format_schema` on Ollama chat; ReAct uses `TOOL_CALL_SCHEMA`.
+- Measured: `scripts/bench_model_roles.py` → `docs/research/model_roles_bench.json` + `MODEL_ROLES.md`.
+- Co-residency: 4b+9b ~11 GB; 9b+vl ~16 GB; coder 30b unsuitable as resident.
+- Defaults **unchanged** (`qwen3.5:9b`). `FRIDAY_MODEL_ROLES` opt-in only.
+- Flash-attn / q8 KV: not applied to Ollama service (persistent change). Windows Agent Workspace: research only (build 26300).
+- Tag: `stage-P`.
+

@@ -83,7 +83,16 @@ USER: {message}
 {observations}
 Step {step + 1}/{steps}. Decide.
 """
-        result = query_model_text(prompt, format_json=False, reasoning_mode=False)
+        from friday.models.roles import TOOL_CALL_SCHEMA
+
+        # Structured outputs: prefer a tool JSON object; plain FINAL: replies still work if the
+        # model ignores the schema (Ollama may return {} — we fall through to text parsing).
+        result = query_model_text(
+            prompt,
+            format_json=False,
+            format_schema=TOOL_CALL_SCHEMA,
+            reasoning_mode=False,
+        )
         text = (result.get("message") or result.get("raw") or "").strip()
         transcript.append(text)
         emit("thinking_token", {"token": text[:400]})

@@ -104,3 +104,9 @@ Chosen: pair approve forces `FRIDAY_REQUIRE_PHYSICAL_INPUT` check so the desktop
 ## D-034 (2026-10-10) schedule_task SAFE = reminder only
 Chosen: refuse any `skill_id` other than `reminder` inside the SAFE tool. Alternative: CONFIRM for all schedules (would reintroduce approval spam for reminders).
 
+## D-035 (2026-10-10) Model roles measured; default stays qwen3.5:9b
+Chosen: ship role map + measurements; keep unified 9b until `FRIDAY_MODEL_ROLES` is explicitly enabled. Alternative: switch greetings to 4b immediately (rejected: empty-greet harness noise + no quality eval yet).
+
+## D-036 (2026-10-10) Do not change Ollama service env for flash-attn/KV
+Chosen: document only. Setting `OLLAMA_FLASH_ATTENTION` / `OLLAMA_KV_CACHE_TYPE` on the Windows service is a persistent system change. Alternative: enable for VRAM headroom (owner can do later).
+

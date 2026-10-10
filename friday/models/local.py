@@ -60,6 +60,7 @@ def _stream_chat(
     messages: list[dict],
     *,
     format_json: bool = False,
+    format_schema: dict | None = None,
     reasoning_mode: bool = False,
     think: bool | None = None,
     model: str | None = None,
@@ -82,7 +83,10 @@ def _stream_chat(
             "repeat_penalty": 1.05,
         },
     }
-    if format_json:
+    # Prefer JSON Schema structured outputs (Ollama) so planners cannot wrap {"args":...} oddly.
+    if format_schema is not None:
+        payload["format"] = format_schema
+    elif format_json:
         payload["format"] = "json"
     if is_thinking_model(model or MODEL_NAME):
         # Desktop ticks must not sit in a hidden chain-of-thought. Off unless the caller opts in.
@@ -161,8 +165,18 @@ def _stream_chat(
         from friday.models.ollama_boot import ensure_ollama
 
         if not _retried and ensure_ollama():
-            return _stream_chat(messages, format_json=format_json, reasoning_mode=reasoning_mode, think=think,
-                                model=model, num_predict=num_predict, num_ctx=num_ctx, on_token=on_token, _retried=True)
+            return _stream_chat(
+                messages,
+                format_json=format_json,
+                format_schema=format_schema,
+                reasoning_mode=reasoning_mode,
+                think=think,
+                model=model,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
+                on_token=on_token,
+                _retried=True,
+            )
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
@@ -182,11 +196,13 @@ def query_model_text(
     prompt: str,
     *,
     format_json: bool = False,
+    format_schema: dict | None = None,
     reasoning_mode: bool = False,
     num_predict: int | None = None,
     num_ctx: int | None = None,
     on_token: Callable[[str], None] | None = None,
     messages: list[dict] | None = None,
+    model: str | None = None,
 ) -> dict:
     """``messages`` (system/user/assistant turns) takes precedence over ``prompt``: real chat structure keeps history."""
     messages = messages or [{"role": "user", "content": prompt}]
@@ -196,9 +212,10 @@ def query_model_text(
         accumulated, _ = _stream_chat(
             messages,
             format_json=format_json,
+            format_schema=format_schema,
             reasoning_mode=False,
             think=False,
-            model=resolve_chat_model(),
+            model=model or resolve_chat_model(),
             num_predict=num_predict if num_predict is not None else CHAT_NUM_PREDICT,
             num_ctx=num_ctx if num_ctx is not None else CHAT_NUM_CTX,
             on_token=on_token,
