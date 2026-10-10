@@ -1,6 +1,6 @@
 # Project Friday
 
-Local-first personal AI assistant with **Hermes-inspired skills**, vector memory, voice, scheduled tasks, and a vision-driven desktop agent (**qwen2.5vl:7b-q4_K_M**).
+Local-first personal AI assistant with **Hermes-inspired skills**, vector memory, voice, scheduled tasks, and a vision-driven desktop agent (default **`qwen3.5:9b`** on this stack; see [`docs/CONTINUE.md`](docs/CONTINUE.md)).
 
 Talk to Friday. It picks the best skill for the job — chat, research, memory, files, tasks, or **computer use** (watch the screen → one action → re-observe).
 
@@ -40,7 +40,7 @@ This path was verified in a fresh Python 3.14.6 venv (76 tests pass, server star
 
 ### Security defaults
 
-- The server listens on `127.0.0.1` only and rejects foreign `Host` and `Origin` headers; there is no CORS. Binding to any other address is refused unless `FRIDAY_API_TOKEN` is set.
+- Rejects foreign `Host` / `Origin` (no CORS). Loopback is the safe default; LAN bind (`0.0.0.0`) is allowed for phone access and warns if `FRIDAY_API_TOKEN` is empty (see CONTINUE.md).
 - Tools run through a policy gate (`config/policy.yaml`): safe tools run, confirm tools ask in the UI, dangerous tools are denied. Every call is written to a hash-chained audit log.
 - MCP servers (`config/mcp_servers.yaml`) are disabled by default; PowerShell and Registry tools are excluded.
 
@@ -94,9 +94,19 @@ One supported path: pinned lock files (see Quick start). To update, change a `re
 
 `AGENT_BACKEND=legacy` (default) is the original screenshot loop. `AGENT_BACKEND=hybrid` reads the Windows accessibility tree through Windows-MCP first and falls back to vision; it verifies each action, refuses sensitive apps by default and asks before irreversible steps. Enable the `windows` server in `config/mcp_servers.yaml` first. Benchmark: `python -m friday.bench.run --backend hybrid --help`. **Keep your hands off the mouse and keyboard while a live benchmark runs.** Results and model comparison: `docs/FINAL_REPORT.md`.
 
-## More documents
+## Resume / optimization state
 
-[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) · [`docs/research/PHASE5_OPTIONS.md`](docs/research/PHASE5_OPTIONS.md) · [`docs/PROGRESS.md`](docs/PROGRESS.md) · [`docs/DECISIONS_NEEDED.md`](docs/DECISIONS_NEEDED.md)
+**Start here after a break:** [`docs/CONTINUE.md`](docs/CONTINUE.md) — current model/VRAM profile, what is optimized, what is still open, and how to pick up the branch.
+
+Also: [`docs/PROGRESS.md`](docs/PROGRESS.md) (full task log) · [`docs/DECISIONS_NEEDED.md`](docs/DECISIONS_NEEDED.md) · [`docs/FINAL_REPORT.md`](docs/FINAL_REPORT.md) · [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) · [`docs/research/PHASE5_OPTIONS.md`](docs/research/PHASE5_OPTIONS.md)
+
+### Current optimization snapshot (2026-10-10)
+
+- **Model:** `qwen3.5:9b` for vision + chat (unified on 16 GB). Thinking off. Short chat context/predict. Stay off stock Qwen3.8-27B Q4 (~18 GB → offload) unless you explicitly pull a fit-in-VRAM quant.
+- **Agent:** loop breaker, stall recovery, empty-TYPE fix, tools-first for simple “type + save as path”. Hybrid backend still opt-in; legacy default.
+- **Voice:** Realtime default + barge-in. Phone mic needs `https://<lan-ip>:8788/` (self-signed).
+- **Research:** one HTTP fetch + briefing; no Google tab spam.
+- **Phone:** `FRIDAY_HOST=0.0.0.0`, firewall 8787/8788, HUD mobile bottom nav.
 
 ---
 

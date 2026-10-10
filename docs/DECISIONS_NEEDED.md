@@ -74,9 +74,21 @@ They are only switched on by data (see final report). `save_as` / `open_folder` 
 ## D-024 (2026-10-06) tools-first router default ON
 Chosen: ON in product (FRIDAY_TOOLS_FIRST=false disables), OFF in benchmarks. Alternative: off. Writes only NEW plain-text files; outside temp/workspace it asks approval (denied when unattended). Note: it skips opening Notepad visibly.
 
-## D-025 voice pacing default Relaxed
-Chosen: Relaxed (old behaviour) until you pick Realtime in Settings or the voice overlay. Alternative: default Realtime.
+## D-025 voice pacing default Realtime (updated 2026-10-07)
+Chosen: **Realtime** (short pause, barge-in while speaking). Relaxed remains selectable in the voice overlay / Settings. Earlier note said Relaxed; owner asked for less delay. Alternative: default Relaxed again if barge-in false-triggers.
 
 ## D-026 macros stay OFF
 The composite multi-line type is always on (no flag); the other macros remain off pending a benchmark.
+
+## D-027 (2026-10-07) LAN Control Center bind + private Host allow
+Chosen: default / `.env` may use `FRIDAY_HOST=0.0.0.0` so a phone on Wi-Fi can reach Friday; RequestGuard accepts RFC1918 Host/Origin. Startup warns if no `FRIDAY_API_TOKEN` instead of refusing. Alternative: loopback-only + refuse without token (safer on hostile LAN; blocks phone).
+
+## D-028 (2026-10-07) Self-signed HTTPS for phone mic
+Chosen: second uvicorn on `FRIDAY_TLS_PORT` (default 8788) with a local cert under `data/tls/`. Browsers block getUserMedia on `http://192.168.x.x`. Alternative: reverse proxy / mkcert trusted CA (more setup).
+
+## D-029 (2026-10-07) Research fetches results; does not open tabs by default
+Chosen: DuckDuckGo HTML + Google News RSS into the tool observation; cache duplicate queries; ReAct blocks identical tool calls. Browser open only as optional fallback when fetch fails and `open_browser=True`. Alternative: vision-read Google tabs (slow, tab spam — what the owner hit).
+
+## D-030 (2026-10-10) Stay on qwen3.5:9b; do not pull Qwen3.8-27B Q4_K_M by default
+On RTX 5060 Ti 16 GB, stock 27B Q4_K_M (~18 GB) offloads and is expected ~8 tok/s class. Fit-in-VRAM Q3/~15 GB Q4 can be ~20–26 tok/s but needs an explicit download. Constraint: no new model downloads unless the owner asks. Alternative: custom smaller 27B quant for chat-only (not default agent).
 

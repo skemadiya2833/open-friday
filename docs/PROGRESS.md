@@ -1,5 +1,7 @@
 # Progress (resume from here if context resets)
 
+**Resume first:** [`docs/CONTINUE.md`](CONTINUE.md) — current optimization profile, open work, model advice (2026-10-10).
+
 Branch: `upgrade/research-first`. Never merge, never push. Tags: stage-A .. stage-E.
 Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 
@@ -76,4 +78,31 @@ Statuses: PASS, FAIL, BLOCKED, SKIPPED, UNVERIFIED (with evidence).
 - Tools-first router (friday/agent/router.py): writes new text files for 'type ... save as PATH' objectives, verified by read-back; off in benchmarks (--tools-first). Unit tested. UNVERIFIED on real runs.
 - Voice: Realtime/Relaxed pacing + speech speed settings, live overlay (orb, captions, fillers), sentence-streamed TTS. Checked in browser only; mic/TTS audio UNVERIFIED.
 - Research: docs/research/agent_failure_modes.md.
+
+## 2026-10-07 → 10 product / latency wave (CONTINUE.md)
+
+Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/planner predicts, no RAG every turn; fix loops and UX rather than pulling larger models.
+
+| Area | Status | Evidence / notes |
+|------|--------|------------------|
+| Planner empty TYPE loops | PASS (unit) | `7178766` — recover text / JSON-only / think=False |
+| Realtime voice + barge-in | PASS (code) | `ccdb018` — default realtime; mic live while speaking |
+| Memory Forget / Forget all | PASS | `7188835` |
+| Agentic reminders (no JSON approve spam) | PASS | schedule_task SAFE; toast + popup |
+| Ctrl+C stops tray | PASS | `c5c022a` — `friday/shutdown.py` |
+| LAN phone HTTP | PASS | bind `0.0.0.0`, private Host allow, firewall 8787 |
+| Phone browser URL | PASS | never open `http://0.0.0.0` — use 127.0.0.1 |
+| Phone HTTPS mic | PASS (code) | TLS on 8788, banner in HUD; restart required to verify live |
+| Mobile HUD responsiveness | PASS (CSS/JS) | bottom nav, stacked composer |
+| Research without tab spam | PASS (unit) | `33b7710` — DDG/RSS fetch + cache + ReAct dedupe |
+| Qwen3.8-27B quant on 16 GB | ADVICE only | Stock Q4_K_M ~18 GB → offload; stay on 9b (see CONTINUE.md) |
+
+### Still open after this wave
+- Live verify HTTPS mic on phone after restart.
+- Live verify one news briefing (no new tabs).
+- Owner STT samples (UNVERIFIED).
+- H3 VRAM co-load (UNVERIFIED).
+- Hybrid multi-step / Chrome-canvas (weak; default remains legacy).
+- Stage H/I/J live benches: stopped by owner — do not resume unless asked.
+- CI never run on GitHub.
 
