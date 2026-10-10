@@ -149,4 +149,14 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - LAN probe `scripts/lan_auth_probe.py` → `docs/research/lan_auth_probe.json` **9/9 deny** (unauth HTTP/SSE, forged Origin/Host, WS 403).
 - Physical gate `scripts/physical_gate_manual.py --auto-only` → synthetics refused; Hello alternative via `FRIDAY_PAIR_APPROVE=hello|either`.
 - Config drift on `/api/health/detail` (`config_drift`); non-loopback without remote = **error**.
+- Tag: `stage-S`.
+
+## Stage T (2026-10-10) — Persona / humor
+- Pre-model `blocked_context()`; security-prompt leak fixed (eval dry persona 0.97 → **1.0**).
+- Thumbs feedback API + UI; local deletable store.
+- Tag: `stage-T`.
+
+## Stage U (2026-10-10) — Capability gains
+- Direct tools router expansion; schema parse fail 0.8→0.0; fast-brain keep 9b; live backends 15/15 each → keep legacy; Ollama notes 0.30.10.
+- Report: `docs/FINAL_REPORT_3.md`. Tag: `stage-U`.
 

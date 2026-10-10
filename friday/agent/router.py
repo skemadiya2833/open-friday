@@ -111,6 +111,17 @@ def parse_text_objective(objective: str) -> tuple[str, str] | None:
 def route(objective: str, *, workspace: str | None = None,
           approve: Callable[[str, str], bool] | None = None, writer: Callable[[Path, str], None] | None = None) -> Routed:
     """Try the deterministic tools. ``handled=False`` means: use the GUI agent."""
+    # Direct native / MCP-backed actions before any click planning.
+    try:
+        from friday.agent.direct_tools import try_direct
+
+        d = try_direct(objective, workspace=workspace, approve=approve)
+        if d.handled:
+            return Routed(True, d.ok, d.message, path=d.tool, content="")
+    except Exception as exc:  # noqa: BLE001
+        # Never block the GUI agent because a direct tool crashed.
+        print(f"[Router] direct tool error: {exc}")
+
     parsed = parse_text_objective(objective)
     if parsed is None:
         return Routed(False)

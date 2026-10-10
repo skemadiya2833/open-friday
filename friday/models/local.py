@@ -397,9 +397,12 @@ def query_model_vision(
         emit("thinking_clear")
 
     try:
+        from friday.models.roles import PLANNER_SCHEMA
+
         accumulated, _ = _stream_chat(
             [user_msg],
             format_json=True,
+            format_schema=PLANNER_SCHEMA,
             reasoning_mode=False,
             think=False,
             model=VISION_MODEL or MODEL_NAME,

@@ -194,7 +194,13 @@ def _ollama_decider(cfg: HybridConfig) -> Decider:
     from friday.models import local
 
     def decide(messages: list[dict]) -> str:
-        text, _ = local._stream_chat(messages, format_json=True, model=cfg.model,
+        from friday.models.roles import PLANNER_SCHEMA
+
+        text, _ = local._stream_chat(
+            messages,
+            format_json=True,
+            format_schema=PLANNER_SCHEMA,
+            model=cfg.model,
                                      num_predict=cfg.num_predict, num_ctx=cfg.num_ctx)
         return text
     return decide

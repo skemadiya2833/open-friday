@@ -51,7 +51,7 @@ def run_agent(
     show_overlay = OVERLAY_ENABLED if use_overlay is None else use_overlay
 
     print(f"\n[Friday] Starting task: {objective}\n")
-    print("[Friday] Mode: vision-first observe → decide → one action → re-evaluate")
+    print("[Friday] Mode: vision-first observe -> decide -> one action -> re-evaluate")
     emit("session_start", objective=objective)
 
     if show_overlay:
