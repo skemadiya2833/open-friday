@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-10-10T15:24:27",
+  "hook_running": true,
+  "synthetic": {
+    "sendinput": {
+      "injected_delta": 0,
+      "check_physical_ok": false,
+      "why": "no physical key press or mouse click was detected just before this approval",
+      "pass": true
+    },
+    "keybd_event": {
+      "injected_delta": 1,
+      "check_physical_ok": false,
+      "why": "no physical key press or mouse click was detected just before this approval",
+      "pass": true
+    }
+  },
+  "physical": {
+    "skipped": true,
+    "reason": "--auto-only"
+  },
+  "rdp_lockout_note": "If Remote Desktop or some accessibility tools mark your keys as injected, set FRIDAY_PAIR_APPROVE=hello and approve pairing with Windows Hello on the PC instead of the physical-input gate.",
+  "windows_mcp": "UNVERIFIED this run \u2014 see docs/research/injected_input_probe.json (prior PASS)",
+  "summary": {
+    "synthetic_refused": true,
+    "physical_accepted": true,
+    "overall": true
+  }
+}

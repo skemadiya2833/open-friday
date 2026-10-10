@@ -134,32 +134,22 @@ def pair_pending(request: Request) -> dict[str, Any]:
 
 @router.post("/pair/approve")
 def pair_approve(body: PairApprove, request: Request) -> dict[str, Any]:
-    require_session(request, min_role=Role.ADMIN)
-    # Physical input gate — desktop agent must not be able to click Allow.
+    sess = require_session(request, min_role=Role.ADMIN)
+    # Physical / Windows Hello gate — desktop agent must not be able to click Allow.
     try:
-        from friday.safety.physical import check_physical, required
+        from friday.safety.physical import check_pair_approve, pair_approve_mode
 
-        # Force the check when pairing even if the global gate is off (D / Stage O).
-        if get_auth_config().require_physical_for_pair:
-            from friday.safety import physical as P
-
-            was = P.required()
-            import os
-
-            os.environ["FRIDAY_REQUIRE_PHYSICAL_INPUT"] = "true"
-            try:
-                ok, why = check_physical(window=5.0)
-            finally:
-                if not was:
-                    os.environ["FRIDAY_REQUIRE_PHYSICAL_INPUT"] = "false"
+        if get_auth_config().require_physical_for_pair or pair_approve_mode() != "physical":
+            # require_physical_for_pair still enables the gate; hello/either always gated.
+            ok, why = check_pair_approve(session_id=sess.get("id"), window=5.0)
             if not ok:
                 _audit("auth_pair_approve", outcome="denied", detail=why)
-                raise HTTPException(403, f"physical confirmation required: {why}")
+                raise HTTPException(403, f"pair confirmation required: {why}")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         _audit("auth_pair_approve", outcome="error", detail=str(exc))
-        raise HTTPException(403, f"physical confirmation unavailable: {exc}") from exc
+        raise HTTPException(403, f"pair confirmation unavailable: {exc}") from exc
 
     store = get_store()
     if not store.rate_hit("pair_approve", limit=20, window=300):

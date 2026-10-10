@@ -116,3 +116,9 @@ Chosen: `FRIDAY_HUMOR=dry`, `FRIDAY_OWNER_NAME=boss`. Persona rewritten fresh (n
 ## D-038 (2026-10-10) Deep mode opt-in only
 Chosen: thinking stays off for normal chat/desktop ticks; `FRIDAY_DEEP` or phrases like "think carefully" enable a bounded budget with timeout fallback. Alternative: always-on thinking (rejected: planner latency regressions).
 
+## D-039 (2026-10-10) Pair approve: physical default, Hello fallback
+Chosen: `FRIDAY_PAIR_APPROVE=physical` by default; document RDP lock-out and support `hello` / `either` (PC WebAuthn step-up). Alternative: Hello-only (weaker against stolen session cookie on the PC).
+
+## D-040 (2026-10-10) Non-loopback bind without remote auth is an error
+Chosen: `validate_config` errors (refuses start) when `FRIDAY_HOST` is a LAN IP and `FRIDAY_AUTH!=remote`. Alternative: warn-only (rejected: silent exposure).
+

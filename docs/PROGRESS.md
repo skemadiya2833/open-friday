@@ -144,3 +144,9 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - Full local pytest: **338 passed** (`docs/research/pytest_stage_r.txt`); fixed stale intent expectation for web search.
 - Report: `docs/FINAL_REPORT_2.md`. Tag: `stage-R`.
 
+## Stage S (2026-10-10) — Security verification gaps
+- Playwright 1.63.0 in `requirements/dev.*`; Chromium virtual-authenticator suite `tests/test_webauthn_virtual.py` **6 passed** (register/login/step-up/revoke + challenge/UV/enrollment/counter cases).
+- LAN probe `scripts/lan_auth_probe.py` → `docs/research/lan_auth_probe.json` **9/9 deny** (unauth HTTP/SSE, forged Origin/Host, WS 403).
+- Physical gate `scripts/physical_gate_manual.py --auto-only` → synthetics refused; Hello alternative via `FRIDAY_PAIR_APPROVE=hello|either`.
+- Config drift on `/api/health/detail` (`config_drift`); non-loopback without remote = **error**.
+

@@ -148,6 +148,17 @@ def set_monitor(m: PhysicalInputMonitor | None) -> None:
         _monitor = m
 
 
+def pair_approve_mode() -> str:
+    """How the owner confirms a device pairing on the PC.
+
+    physical — non-injected key/click (default). Can lock out over Remote Desktop.
+    hello    — fresh WebAuthn / Windows Hello step-up on the PC session (no physical hook).
+    either   — physical OR hello.
+    """
+    v = (os.getenv("FRIDAY_PAIR_APPROVE") or "physical").strip().lower()
+    return v if v in {"physical", "hello", "either"} else "physical"
+
+
 def check_physical(window: float = 3.0) -> tuple[bool, str]:
     """(ok, reason). Always ok when the feature is off. Fails CLOSED when on but the hook is not running."""
     if not required():
@@ -158,3 +169,33 @@ def check_physical(window: float = 3.0) -> tuple[bool, str]:
     if m.recent_physical(window):
         return True, ""
     return False, "no physical key press or mouse click was detected just before this approval"
+
+
+def check_pair_approve(*, session_id: str | None = None, window: float = 5.0) -> tuple[bool, str]:
+    """Pairing approval gate: physical and/or Windows Hello step-up depending on FRIDAY_PAIR_APPROVE."""
+    mode = pair_approve_mode()
+    reasons: list[str] = []
+    if mode in {"physical", "either"}:
+        # Force the physical check even if the global gate env is off.
+        was = required()
+        os.environ["FRIDAY_REQUIRE_PHYSICAL_INPUT"] = "true"
+        try:
+            ok, why = check_physical(window=window)
+        finally:
+            if not was:
+                os.environ["FRIDAY_REQUIRE_PHYSICAL_INPUT"] = "false"
+        if ok:
+            return True, "physical"
+        reasons.append(why or "physical failed")
+    if mode in {"hello", "either"} and session_id:
+        try:
+            from friday.auth.store import get_store
+
+            if get_store().stepup_ok(session_id):
+                return True, "hello"
+            reasons.append("Windows Hello / passkey step-up required (complete step-up on this PC first)")
+        except Exception as exc:  # noqa: BLE001
+            reasons.append(f"hello check failed: {exc}")
+    elif mode == "hello":
+        reasons.append("Windows Hello step-up required but no session")
+    return False, "; ".join(reasons) or "pair approval refused"

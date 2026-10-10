@@ -65,6 +65,10 @@ def validate_config(env: dict[str, str] | None = None) -> list[Issue]:
     host = e.get("FRIDAY_HOST", "127.0.0.1")
     auth_mode = e.get("FRIDAY_AUTH", "local").strip().lower() or "local"
     public = e.get("FRIDAY_PUBLIC_HOST", "").strip()
+    if auth_mode == "off":
+        out.append(Issue("warn", "FRIDAY_AUTH",
+                         "authentication is disabled (FRIDAY_AUTH=off). Safe only for local tests; "
+                         "default is local (passkeys on loopback)."))
     if auth_mode == "remote" and not public:
         out.append(Issue("error", "FRIDAY_PUBLIC_HOST",
                          "FRIDAY_AUTH=remote requires a registrable hostname (not an IP). See docs/PHONE_SETUP.md."))
@@ -75,6 +79,11 @@ def validate_config(env: dict[str, str] | None = None) -> list[Issue]:
         out.append(Issue("warn", "FRIDAY_HOST",
                          "all-interfaces bind ignored until FRIDAY_AUTH=remote and FRIDAY_PUBLIC_HOST are set; "
                          "server forces loopback. See docs/PHONE_SETUP.md."))
+    # Non-loopback bind without remote auth → refuse to start (not just warn).
+    if host and not _is_loopback(host) and host not in ("0.0.0.0", "::") and auth_mode != "remote":
+        out.append(Issue("error", "FRIDAY_HOST",
+                         f"non-loopback bind {host!r} requires FRIDAY_AUTH=remote and FRIDAY_PUBLIC_HOST. "
+                         "Default is 127.0.0.1."))
     if e.get("FRIDAY_API_TOKEN", "").strip() and len(e["FRIDAY_API_TOKEN"].strip()) < 16:
         out.append(Issue("warn", "FRIDAY_API_TOKEN", "shorter than 16 characters; use a long random token."))
     shell = e.get("SHELL_TOOLS_ENABLED", "false").strip().lower()
@@ -130,6 +139,28 @@ def ollama_status(timeout: float = 1.5) -> dict[str, Any]:
         return {"up": False, "error": type(exc).__name__}
 
 
+def config_drift(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Compare effective settings to safe defaults (shown on /health)."""
+    e = dict(os.environ if env is None else env)
+    safe = {
+        "FRIDAY_HOST": "127.0.0.1",
+        "FRIDAY_AUTH": "local",
+        "SHELL_TOOLS_ENABLED": "false",
+        "FRIDAY_PAIR_APPROVE": "physical",
+    }
+    effective = {
+        "FRIDAY_HOST": e.get("FRIDAY_HOST", "127.0.0.1") or "127.0.0.1",
+        "FRIDAY_AUTH": (e.get("FRIDAY_AUTH", "local") or "local").strip().lower(),
+        "SHELL_TOOLS_ENABLED": (e.get("SHELL_TOOLS_ENABLED", "false") or "false").strip().lower(),
+        "FRIDAY_PAIR_APPROVE": (e.get("FRIDAY_PAIR_APPROVE", "physical") or "physical").strip().lower(),
+        "FRIDAY_PUBLIC_HOST": (e.get("FRIDAY_PUBLIC_HOST") or "").strip(),
+    }
+    drifted = {k: {"safe": safe[k], "effective": effective[k]}
+               for k in safe if effective.get(k, "").lower() != safe[k].lower()}
+    return {"safe_defaults": safe, "effective": effective, "drifted": drifted,
+            "has_drift": bool(drifted)}
+
+
 def health_report(*, probe_ollama: bool = True) -> dict[str, Any]:
     """Cheap, side-effect-free status. Never raises: each probe reports its own failure."""
     from friday.config import DATA_DIR
@@ -137,6 +168,7 @@ def health_report(*, probe_ollama: bool = True) -> dict[str, Any]:
     rep: dict[str, Any] = {"ok": True}
     issues = validate_config()
     rep["config_issues"] = [str(i) for i in issues]
+    rep["config_drift"] = config_drift()
     if any(i.level == "error" for i in issues):
         rep["ok"] = False
     rep["ollama"] = ollama_status() if probe_ollama else {"up": None}
