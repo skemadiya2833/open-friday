@@ -140,7 +140,7 @@ Admin elevation beyond existing, real accounts, money, persistent system changes
 | `stage-O` | `554e7ff` | Passkey auth |
 | `stage-P` | `02705ac` | Model roles research |
 | `stage-Q` | `0d2f86d` | Persona / humor / deep / eval |
-| `stage-R` | `8a08e54` (body `5085ed2`) | Docs sync + pytest + report |
+| `stage-R` | `fe863ea` | Docs sync + pytest + report |
 
 ---
 
