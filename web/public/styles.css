@@ -437,6 +437,26 @@ select:focus, input:focus, textarea:focus {
   box-shadow: 0 0 24px rgba(255,106,43,0.06);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
 }
+.bubble .feedback {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  opacity: 0.45;
+}
+.bubble .feedback:hover,
+.bubble .feedback.voted-up,
+.bubble .feedback.voted-down { opacity: 1; }
+.bubble .feedback button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text, #ccc) 25%, transparent);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.bubble .feedback.voted-up .fb-up,
+.bubble .feedback.voted-down .fb-down { border-color: currentColor; }
 .bubble .meta {
   color: var(--cyan); font-size: 0.68rem; margin-bottom: 6px;
   font-family: var(--mono); letter-spacing: 0.1em; text-transform: uppercase;

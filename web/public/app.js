@@ -104,9 +104,37 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 function addBubble(role, text, meta = "") {
   const el = document.createElement("div");
   el.className = `bubble ${role}`;
-  el.innerHTML = `${meta ? `<div class="meta">${meta}</div>` : ""}${escapeHtml(text)}`;
+  const rid = `r-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  el.dataset.replyId = rid;
+  let feedback = "";
+  if (role === "assistant") {
+    feedback = `<div class="feedback" data-reply-id="${rid}">
+      <button type="button" class="fb-up" title="Thumbs up" aria-label="Thumbs up">▲</button>
+      <button type="button" class="fb-down" title="Thumbs down" aria-label="Thumbs down">▼</button>
+    </div>`;
+  }
+  el.innerHTML = `${meta ? `<div class="meta">${meta}</div>` : ""}<div class="body">${escapeHtml(text)}</div>${feedback}`;
   $("#messages").appendChild(el);
+  el.querySelector(".fb-up")?.addEventListener("click", () => sendFeedback(el, "up"));
+  el.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(el, "down"));
   $("#messages").scrollTop = $("#messages").scrollHeight;
+}
+
+async function sendFeedback(bubble, vote) {
+  const text = bubble.querySelector(".body")?.textContent || "";
+  const replyId = bubble.dataset.replyId || "";
+  const paras = text.split(/\n\n+/);
+  const kind = paras.length >= 2 && paras[paras.length - 1].split(/\s+/).length <= 20 ? "quip" : "reply";
+  try {
+    await apiFetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vote, kind, text: kind === "quip" ? paras[paras.length - 1] : text.slice(0, 400), reply_id: replyId }),
+    });
+    bubble.querySelector(".feedback")?.classList.add(vote === "up" ? "voted-up" : "voted-down");
+  } catch (err) {
+    console.warn("[Friday] feedback failed", err);
+  }
 }
 
 function escapeHtml(s) {
@@ -393,6 +421,16 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     const textOut = finalReply || streamed || "(no reply)";
     fridayReply = textOut;
     liveBody.textContent = textOut;
+    if (!live.querySelector(".feedback")) {
+      live.dataset.replyId = `r-${Date.now()}`;
+      const fb = document.createElement("div");
+      fb.className = "feedback";
+      fb.innerHTML = `<button type="button" class="fb-up" title="Thumbs up" aria-label="Thumbs up">▲</button>
+        <button type="button" class="fb-down" title="Thumbs down" aria-label="Thumbs down">▼</button>`;
+      live.appendChild(fb);
+      fb.querySelector(".fb-up")?.addEventListener("click", () => sendFeedback(live, "up"));
+      fb.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(live, "down"));
+    }
     if (skillId) liveMeta.textContent = `skill:${skillId}`;
     filler && filler.stop();
     if (speaker && vcfg.streamSpeech && speaker.spoken() > 0) {

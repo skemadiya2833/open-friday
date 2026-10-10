@@ -80,6 +80,7 @@ Open `http://localhost:8787/`. First visit bootstraps an admin passkey for this 
 
 - Device identity = **passkey**. Browser fingerprint is never an authenticator (soft signals: UA, IP, time, name — shown only as info).
 - Owner approval of a pairing requires the **physical-input gate** (or equivalent user verification on the PC), not a click the desktop agent can forge.
+- **Remote Desktop / accessibility lock-out:** some sessions mark real keys as “injected”. If that happens, set `FRIDAY_PAIR_APPROVE=hello` (or `either`) and complete a Windows Hello / passkey **step-up on the PC** before tapping Approve. Synthetic SendInput / keybd_event / Windows-MCP clicks still fail the physical gate (`scripts/physical_gate_manual.py`).
 - New devices get role **`chat`** (chat + reminders). Owner raises roles on the PC Devices page after a step-up passkey.
 - Revoking a device kills its sessions immediately.
 - No password fallback. Recovery = physical access to this PC.
