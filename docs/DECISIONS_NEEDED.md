@@ -110,3 +110,9 @@ Chosen: ship role map + measurements; keep unified 9b until `FRIDAY_MODEL_ROLES`
 ## D-036 (2026-10-10) Do not change Ollama service env for flash-attn/KV
 Chosen: document only. Setting `OLLAMA_FLASH_ATTENTION` / `OLLAMA_KV_CACHE_TYPE` on the Windows service is a persistent system change. Alternative: enable for VRAM headroom (owner can do later).
 
+## D-037 (2026-10-10) Humor default `dry`; owner address `boss`
+Chosen: `FRIDAY_HUMOR=dry`, `FRIDAY_OWNER_NAME=boss`. Persona rewritten fresh (no MCU dialogue). Alternative: humor off by default (safer for stressed owners; dry still suppresses on stress/security/errors).
+
+## D-038 (2026-10-10) Deep mode opt-in only
+Chosen: thinking stays off for normal chat/desktop ticks; `FRIDAY_DEEP` or phrases like "think carefully" enable a bounded budget with timeout fallback. Alternative: always-on thinking (rejected: planner latency regressions).
+

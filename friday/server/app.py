@@ -124,6 +124,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     skill_override: str | None = None
     voice_mode: bool = False
+    humor: str | None = None  # off | dry | full — optional per-request override
 
 
 class MemoryAddRequest(BaseModel):
@@ -185,18 +186,26 @@ def health_page() -> str:
 @app.post("/api/chat")
 def chat(req: ChatRequest) -> dict[str, Any]:
     from friday.assistant.orchestrator import handle_message
+    from friday.humor import set_humor_override
 
-    return handle_message(
-        req.message,
-        session_id=req.session_id,
-        skill_override=req.skill_override,
-        voice_mode=req.voice_mode,
-    )
+    set_humor_override(req.humor)
+    try:
+        return handle_message(
+            req.message,
+            session_id=req.session_id,
+            skill_override=req.skill_override,
+            voice_mode=req.voice_mode,
+        )
+    finally:
+        set_humor_override(None)
 
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     from friday.assistant.orchestrator import stream_message
+    from friday.humor import set_humor_override
+
+    set_humor_override(req.humor)
 
     def _safe(obj: Any) -> Any:
         if obj is None or isinstance(obj, (bool, int, float, str)):
@@ -214,13 +223,16 @@ async def chat_stream(req: ChatRequest):
             return str(obj)
 
     def event_gen():
-        for ev in stream_message(
-            req.message,
-            session_id=req.session_id,
-            skill_override=req.skill_override,
-            voice_mode=req.voice_mode,
-        ):
-            yield f"data: {json.dumps(_safe(ev), default=str)}\n\n"
+        try:
+            for ev in stream_message(
+                req.message,
+                session_id=req.session_id,
+                skill_override=req.skill_override,
+                voice_mode=req.voice_mode,
+            ):
+                yield f"data: {json.dumps(_safe(ev), default=str)}\n\n"
+        finally:
+            set_humor_override(None)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 

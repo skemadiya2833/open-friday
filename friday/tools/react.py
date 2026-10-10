@@ -54,6 +54,11 @@ def run_react(
     transcript: list[str] = []
     tool_trace: list[dict[str, Any]] = []
 
+    from friday.agent.behavior import with_plan_if_needed
+    from friday.persona import system_prompt
+
+    overlay = with_plan_if_needed(system_overlay or system_prompt("agent"), message)
+
     hist = ""
     for turn in (history or [])[-6:]:
         hist += f"{turn.get('role','user').upper()}: {turn.get('content','')}\n"
@@ -63,7 +68,7 @@ def run_react(
     seen_calls: set[tuple[str, str]] = set()
 
     for step in range(steps):
-        prompt = f"""{system_overlay}
+        prompt = f"""{overlay}
 
 You are Friday's tool-using skill. You may call ONE tool per step OR give a final answer.
 

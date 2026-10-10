@@ -278,6 +278,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         session_id: sessionId,
         skill_override: skillOverride,
         voice_mode: useVoice,
+        humor: humorSetting(),
       }),
       signal: chatAbort.signal,
     });
@@ -1001,6 +1002,23 @@ function bindVoiceControls() {
   window.FridayLive && FridayLive.syncControls();
 }
 
+function humorSetting() {
+  return localStorage.getItem("friday_humor") || "dry";
+}
+
+function bindHumorControls() {
+  const cur = humorSetting();
+  document.querySelectorAll("#humorSeg [data-humor]").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-humor") === cur);
+    btn.addEventListener("click", () => {
+      localStorage.setItem("friday_humor", btn.getAttribute("data-humor"));
+      document.querySelectorAll("#humorSeg [data-humor]").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+    });
+  });
+}
+
 async function refreshSettings() {
   try {
     const h = await (await apiFetch("/api/health")).json();
@@ -1025,9 +1043,18 @@ async function refreshSettings() {
         <p class="muted" style="margin:8px 0 0">Realtime answers sooner: shorter pause, speaks sentence by sentence while the reply is written. Relaxed waits longer before sending and speaks after the reply.</p>
         <label style="margin-top:12px">Speech speed <strong data-voice-speed-label></strong></label>
         <input type="range" min="0.85" max="1.6" step="0.05" data-voice-speed style="width:100%" />
+      </div>
+      <div class="setting"><label>Humor</label>
+        <div class="seg" id="humorSeg">
+          <button type="button" data-humor="off">Off</button>
+          <button type="button" data-humor="dry">Dry</button>
+          <button type="button" data-humor="full">Full</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">Stored as FRIDAY_HUMOR for this browser (server default still comes from .env). No quips during errors or security prompts.</p>
       </div>`;
     bindVoiceControls();
     syncSpeakToggles();
+    bindHumorControls();
     $("#speakToggleSettings")?.addEventListener("change", (e) => {
       setSpeakEnabled(e.target.checked);
     });

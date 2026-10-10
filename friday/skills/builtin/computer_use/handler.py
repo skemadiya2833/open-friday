@@ -45,8 +45,16 @@ class SkillHandler(Skill):
 
         get_model_manager().ensure_loaded("vision")
         objective = ctx.message.strip()
-        ctx.emit("computer_use_start", {"objective": objective})
-        ctx.emit("activity", {"step": "act", "message": f"Desktop agent · {objective[:80]}"})
+        from friday.agent.behavior import looks_multi_step, plan_preamble
+
+        if looks_multi_step(objective):
+            plan_note = plan_preamble(objective)
+            ctx.emit("activity", {"step": "plan", "message": "Short plan before desktop steps…"})
+            ctx.emit("thinking_set", {"text": plan_note[:600]})
+            # Seed the run objective with the multi-step protocol so the vision loop sees it.
+            objective = f"{plan_note}\n\nUSER OBJECTIVE:\n{objective}"
+        ctx.emit("computer_use_start", {"objective": objective[:200]})
+        ctx.emit("activity", {"step": "act", "message": f"Desktop agent · {ctx.message.strip()[:80]}"})
         ctx.emit("status", {"status": "acting"})
 
         # The run owns its controller and event log; only ITS events are forwarded here, so a

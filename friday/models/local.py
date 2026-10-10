@@ -198,6 +198,7 @@ def query_model_text(
     format_json: bool = False,
     format_schema: dict | None = None,
     reasoning_mode: bool = False,
+    think: bool | None = None,
     num_predict: int | None = None,
     num_ctx: int | None = None,
     on_token: Callable[[str], None] | None = None,
@@ -206,6 +207,9 @@ def query_model_text(
 ) -> dict:
     """``messages`` (system/user/assistant turns) takes precedence over ``prompt``: real chat structure keeps history."""
     messages = messages or [{"role": "user", "content": prompt}]
+    # Desktop/chat default: no hidden CoT. Deep mode may pass think=True.
+    if think is None:
+        think = False
     try:
         from friday.models.manager import get_model_manager
         get_model_manager().mark_used("chat")
@@ -213,8 +217,8 @@ def query_model_text(
             messages,
             format_json=format_json,
             format_schema=format_schema,
-            reasoning_mode=False,
-            think=False,
+            reasoning_mode=bool(reasoning_mode) and bool(think),
+            think=bool(think),
             model=model or resolve_chat_model(),
             num_predict=num_predict if num_predict is not None else CHAT_NUM_PREDICT,
             num_ctx=num_ctx if num_ctx is not None else CHAT_NUM_CTX,
@@ -346,14 +350,14 @@ def describe_screen(
     """Answer a question about the current screenshot in plain text (no actions)."""
     from friday.config import CHAT_NUM_CTX, CHAT_NUM_PREDICT
     from friday.models.manager import get_model_manager
-    from friday.persona import PERSONA_OBSERVE, PERSONA_OBSERVE_VOICE
+    from friday.persona import system_prompt
 
     get_model_manager().mark_used("vision")
     if voice_mode:
-        prompt = f"{PERSONA_OBSERVE_VOICE}\n\nUser question: {question.strip()}"
+        prompt = f"{system_prompt('observe_voice')}\n\nUser question: {question.strip()}"
         predict = 96
     else:
-        prompt = f"{PERSONA_OBSERVE}\n\nUser question: {question.strip()}"
+        prompt = f"{system_prompt('observe')}\n\nUser question: {question.strip()}"
         predict = min(384, CHAT_NUM_PREDICT + 128)
     messages = [{"role": "user", "content": prompt, "images": [frame_b64]}]
     try:

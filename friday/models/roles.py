@@ -35,6 +35,20 @@ def get_model_roles() -> ModelRoles:
     )
 
 
+def model_for(role: str) -> str:
+    """Resolve a role name to a model tag (falls back to main when roles disabled)."""
+    roles = get_model_roles()
+    if not roles.enabled:
+        return roles.main
+    return {
+        "fast": roles.fast,
+        "main": roles.main,
+        "vision": roles.vision,
+        "coder": roles.coder,
+        "embed": roles.embed,
+    }.get(role, roles.main)
+
+
 # JSON Schema used for planner / tool decisions (Ollama structured outputs).
 PLANNER_SCHEMA: dict = {
     "type": "object",

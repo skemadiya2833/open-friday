@@ -132,3 +132,10 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - Flash-attn / q8 KV: not applied to Ollama service (persistent change). Windows Agent Workspace: research only (build 26300).
 - Tag: `stage-P`.
 
+## Stage Q (2026-10-10) — Intelligence / persona / humor
+- `docs/PERSONA.md` + rewritten `friday/persona.py` (original voice; no film quotes; `{owner}` configurable).
+- `friday/humor.py`: off/dry/full; stress/security/error suppress; bank + optional fast-model quip; Settings + chat `humor` field.
+- `friday/agent/behavior.py`: multi-step plan preamble; deep mode (`FRIDAY_DEEP` / phrase) with think budget + timeout fallback.
+- Chat / ReAct / computer_use wired; 6 unit tests PASS; eval `scripts/eval_persona.py` → `docs/research/persona_eval.json`: humor off 1.0/1.0/1.0, dry 1.0/1.0/0.97 (20 prompts, ran live against Ollama).
+- Tag: `stage-Q` (pending commit).
+
