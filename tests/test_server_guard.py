@@ -31,11 +31,12 @@ def test_dns_rebinding_host_rejected(client):
     assert r.status_code == 403
 
 
-def test_lan_phone_host_is_allowed(client):
+def test_lan_ip_host_is_rejected_without_public_hostname(client):
+    """Stage O: private IP Host values are no longer allowed (need FRIDAY_PUBLIC_HOST)."""
     r = client.get("/api/health", headers={"host": "192.168.1.24:8787"})
-    assert r.status_code == 200
+    assert r.status_code == 403
     r = client.post("/api/sessions", headers={"host": "192.168.1.24:8787", "Origin": "http://192.168.1.24:8787"})
-    assert r.status_code == 200
+    assert r.status_code == 403
 
 
 def test_cross_origin_post_rejected_and_preflight_rejected(client):
@@ -93,8 +94,13 @@ def test_approval_roundtrip_over_http(client):
     assert client.post("/api/approvals/nope", json={"approved": True}, headers=ui).status_code == 404
 
 
-def test_token_required_when_configured():
+def test_token_is_script_fallback_for_api(monkeypatch):
+    """FRIDAY_API_TOKEN is optional for scripts; UI static stays public; API needs session or token when auth on."""
+    from friday.auth.config import reset_auth_config
     from friday.server.security import RequestGuard, default_allowed_hosts
+
+    monkeypatch.setenv("FRIDAY_AUTH", "local")
+    reset_auth_config()
 
     async def inner(scope, receive, send):
         await send({"type": "http.response.start", "status": 200, "headers": []})
@@ -102,9 +108,12 @@ def test_token_required_when_configured():
 
     c = TestClient(RequestGuard(inner, allowed_hosts=default_allowed_hosts(), token="s3cret"),
                    base_url="http://127.0.0.1:1")
-    assert c.get("/").status_code == 401
-    assert c.get("/", headers={"Authorization": "Bearer wrong"}).status_code == 401
-    assert c.get("/", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+    assert c.get("/").status_code == 200  # static public
+    assert c.get("/api/tools").status_code == 401
+    assert c.get("/api/tools", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert c.get("/api/tools", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+    monkeypatch.setenv("FRIDAY_AUTH", "off")
+    reset_auth_config()
 
 
 def test_polling_only_script_cannot_approve(client):

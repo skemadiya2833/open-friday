@@ -111,3 +111,15 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - `.gitignore` tightened (`.env.*`, `*.pem`, `*.key`, credential filenames).
 - Tag: `stage-N`.
 
+## Stage O (2026-10-10) — Device passkeys
+- `webauthn==2.8.0` installs on Python 3.14.6 (cryptography, cbor2 OK). Pinned in `requirements/core.in` + lock.
+- Auth package: `friday/auth/*`, routes `/api/auth/*`, Devices UI (`web/public/auth.js`).
+- Modes: `FRIDAY_AUTH=off|local|remote`. Default **local** → loopback bind; remote needs `FRIDAY_PUBLIC_HOST` (registrable domain, not IP/.local).
+- Pairing: matching 6-digit code; approve requires physical-input gate; enrollment token 5 min; new devices role `chat`.
+- Session cookie HttpOnly/Secure/SameSite=Strict; roles chat→tools→desktop-control→admin; step-up 60 s; revoke kills sessions.
+- RequestGuard: exact hosts only (no RFC1918 Host relaxation); auth on API/WS; static + auth ceremony public; `FRIDAY_API_TOKEN` script fallback.
+- `docs/PHONE_SETUP.md` — Option A DNS-01 domain, Option B Tailscale; router DNS rebinding note.
+- `schedule_task` SAFE **reminder-only**; non-reminder refused. `SHELL_TOOLS_ENABLED` default false + startup warn if .env enables.
+- Unit tests: `tests/test_auth_passkeys.py` (11). Chromium virtual authenticator / Playwright: **UNVERIFIED** (playwright not installed). Live phone pairing: **UNVERIFIED** (needs owner DNS+cert).
+- Tag: `stage-O`.
+

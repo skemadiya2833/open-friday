@@ -93,7 +93,8 @@
         <button class="nav-btn" data-view="skills"><span class="nav-code">03</span><span class="nav-text">Skills</span></button>
         <button class="nav-btn" data-view="tasks"><span class="nav-code">04</span><span class="nav-text">Tasks</span></button>
         <button class="nav-btn" data-view="tools"><span class="nav-code">05</span><span class="nav-text">Tools</span></button>
-        <button class="nav-btn" data-view="settings"><span class="nav-code">06</span><span class="nav-text">Systems</span></button>
+        <button class="nav-btn" data-view="devices"><span class="nav-code">06</span><span class="nav-text">Devices</span></button>
+        <button class="nav-btn" data-view="settings"><span class="nav-code">07</span><span class="nav-text">Systems</span></button>
       </nav>
 
       <div class="rail-foot">
@@ -234,6 +235,32 @@
         <div class="cards" id="auditList"></div>
       </section>
 
+      <!-- DEVICES / PASSKEYS -->
+      <section class="view" id="view-devices">
+        <header class="top">
+          <div>
+            <p class="eyebrow">ACCESS CONTROL</p>
+            <h1>Devices</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost" type="button" id="btnAuthLogin">Sign in</button>
+            <button class="ghost" type="button" id="btnAuthBootstrap">Register this PC</button>
+            <button class="ghost" type="button" id="btnAuthRefresh">Refresh</button>
+          </div>
+        </header>
+        <p class="lede" id="authStatusLine">Passkeys: local mode until a public hostname is configured. See docs/PHONE_SETUP.md.</p>
+        <div class="plan-head"><h2>Pending pairing</h2></div>
+        <div class="cards" id="pairPending"></div>
+        <div class="plan-head"><h2>Registered devices</h2></div>
+        <div class="cards" id="deviceList"></div>
+        <div class="card-form" style="margin-top:12px">
+          <p class="muted">Phone: open the site after DNS+TLS, tap Request access, then enter the matching code here (physical key required).</p>
+          <input id="pairPendingId" placeholder="Pending request id" />
+          <input id="pairCode" placeholder="6-digit code" maxlength="6" />
+          <button type="button" id="btnPairApprove">Approve pairing</button>
+        </div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="view" id="view-settings">
         <header class="top">
@@ -263,5 +290,6 @@
   <script src="/live.js?v=6"></script>
   <script src="/app.js?v=9"></script>
   <script src="/tools.js?v=3"></script>
+  <script src="/auth.js?v=1"></script>
 </body>
 </html>

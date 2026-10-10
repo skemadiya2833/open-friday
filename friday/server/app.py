@@ -23,6 +23,7 @@ from friday.server.routes_reminders import router as reminders_router
 from friday.server.routes_experience import router as experience_router
 from friday.server.routes_skillmd import router as skillmd_router
 from friday.server.routes_tools import router as tools_router
+from friday.server.routes_auth import router as auth_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
 ensure_data_dirs()
@@ -102,6 +103,7 @@ app.include_router(skillmd_router)
 app.include_router(experience_router)
 app.include_router(runs_router)
 app.include_router(reminders_router)
+app.include_router(auth_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -494,34 +496,44 @@ _mount_frontend(app)
 def run_server(host: str | None = None, port: int | None = None) -> None:
     import uvicorn
 
+    from friday.auth.config import get_auth_config
+
+    auth = get_auth_config()
     bind = host or SERVER_HOST
     port = port or SERVER_PORT
-    if not is_loopback(bind) and not API_TOKEN:
+    # Until a registrable public host + cert are configured, remote access stays OFF.
+    if auth.bind_loopback_only and not is_loopback(bind):
         print(
-            f"[Friday] WARNING: listening on {bind}:{port} with no FRIDAY_API_TOKEN. "
-            "Anyone on this Wi-Fi can open the UI. Set a long token if that is not what you want."
+            f"[Friday] Auth mode={auth.mode}: binding 127.0.0.1 instead of {bind}. "
+            "Set FRIDAY_PUBLIC_HOST (and FRIDAY_AUTH=remote) after DNS+certificate — see docs/PHONE_SETUP.md.",
+            flush=True,
+        )
+        bind = "127.0.0.1"
+    if not is_loopback(bind) and auth.mode != "remote":
+        print(
+            f"[Friday] WARNING: listening on {bind}:{port} without FRIDAY_AUTH=remote. "
+            "Prefer loopback until passkeys + public host are ready.",
+            flush=True,
         )
     from friday.server.security import local_ipv4s
 
     print(f"[Friday] Local  → http://127.0.0.1:{port}/")
-    for ip in local_ipv4s():
-        print(f"[Friday] Phone  → http://{ip}:{port}/  (typing)")
+    print(f"[Friday] Auth   → mode={auth.mode} rp_id={auth.rp_id} origin={auth.origin}", flush=True)
+    if auth.mode == "remote" and auth.public_host:
+        print(f"[Friday] Phone  → https://{auth.public_host}/  (passkey required)", flush=True)
+    else:
+        print("[Friday] Phone  → disabled until FRIDAY_PUBLIC_HOST is set (docs/PHONE_SETUP.md)", flush=True)
     tls_port = SERVER_TLS_PORT
-    if not is_loopback(bind):
+    if not is_loopback(bind) and auth.mode == "remote":
         from friday.server.lan import ensure_inbound
 
         ensure_inbound(port)
         try:
             from friday.server.tls import ensure_lan_cert
 
-            crt, key = ensure_lan_cert(DATA_DIR, ["127.0.0.1", *local_ipv4s()])
+            # Prefer owner-supplied cert paths when present; else self-signed for the public host name.
+            crt, key = ensure_lan_cert(DATA_DIR, ["127.0.0.1", auth.public_host, *local_ipv4s()])
             ensure_inbound(tls_port)
-            for ip in local_ipv4s():
-                print(
-                    f"[Friday] Phone mic → https://{ip}:{tls_port}/  "
-                    "(tap Advanced → Proceed, then Allow microphone)",
-                    flush=True,
-                )
 
             def _https() -> None:
                 uvicorn.run(
@@ -539,8 +551,9 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
             import threading
 
             threading.Thread(target=_https, name="FridayHTTPS", daemon=True).start()
+            print(f"[Friday] TLS    → https://{auth.public_host}:{tls_port}/ (or install a real cert)", flush=True)
         except Exception as exc:  # noqa: BLE001
-            print(f"[Friday] HTTPS for phone mic unavailable: {exc}", flush=True)
+            print(f"[Friday] HTTPS unavailable: {exc}", flush=True)
     print("[Friday] Stop   → Ctrl+C", flush=True)
     from friday.shutdown import install_ctrl_c
 

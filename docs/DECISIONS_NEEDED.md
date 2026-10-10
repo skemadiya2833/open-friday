@@ -95,3 +95,12 @@ On RTX 5060 Ti 16 GB, stock 27B Q4_K_M (~18 GB) offloads and is expected ~8 tok/
 ## D-031 (2026-10-10) Remove CI; require local secrets check before push
 Chosen: delete `.github/workflows/ci.yml` (never ran) and document local `pytest` + `scripts/pre_push_secrets_check.py`. Alternative: keep a dormant workflow (rejected: implies coverage that did not exist).
 
+## D-032 (2026-10-10) Passkey auth; remote off until public hostname
+Chosen: `FRIDAY_AUTH=local` by default (loopback + localhost RP ID). Remote phone access requires `FRIDAY_AUTH=remote` + `FRIDAY_PUBLIC_HOST` (registrable domain). Private IP Host allow-list removed. Alternative: keep open LAN HTTP (rejected: unauthenticated desktop control).
+
+## D-033 (2026-10-10) Pairing approval requires physical input
+Chosen: pair approve forces `FRIDAY_REQUIRE_PHYSICAL_INPUT` check so the desktop agent cannot click Allow. Alternative: Windows Hello-only on PC (also valid; physical gate is already in-tree).
+
+## D-034 (2026-10-10) schedule_task SAFE = reminder only
+Chosen: refuse any `skill_id` other than `reminder` inside the SAFE tool. Alternative: CONFIRM for all schedules (would reintroduce approval spam for reminders).
+

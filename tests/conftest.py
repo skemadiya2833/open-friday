@@ -39,3 +39,5 @@ def isolated(tmp_path, monkeypatch):
 
 # Never arm the real global hotkey from the test suite unless a test does so explicitly.
 os.environ.setdefault("FRIDAY_ESTOP", "false")
+# Passkey auth is exercised in tests/test_auth_*.py; other suites keep auth off.
+os.environ.setdefault("FRIDAY_AUTH", "off")

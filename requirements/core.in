@@ -18,3 +18,4 @@ pyttsx3
 python-multipart
 jsonschema
 mcp==2.3.0
+webauthn>=2.0,<3

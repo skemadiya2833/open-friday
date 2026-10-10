@@ -186,10 +186,14 @@ AUDIT_LOG_PATH = os.getenv("FRIDAY_AUDIT_LOG", os.path.join(DATA_DIR, "audit", "
 APPROVAL_TIMEOUT_SECONDS = float(os.getenv("FRIDAY_APPROVAL_TIMEOUT", "120"))
 CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
-SERVER_HOST = os.getenv("FRIDAY_HOST", "0.0.0.0")
+# Loopback by default. LAN bind only after FRIDAY_AUTH=remote + FRIDAY_PUBLIC_HOST (docs/PHONE_SETUP.md).
+SERVER_HOST = os.getenv("FRIDAY_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
-# HTTPS for the phone mic (HTTP on a LAN IP is not a secure context).
 SERVER_TLS_PORT = int(os.getenv("FRIDAY_TLS_PORT", str(SERVER_PORT + 1)))
+# Auth: off (tests) | local (PC passkeys, loopback) | remote (public hostname + passkeys).
+FRIDAY_AUTH = os.getenv("FRIDAY_AUTH", "local").strip().lower() or "local"
+FRIDAY_PUBLIC_HOST = os.getenv("FRIDAY_PUBLIC_HOST", "").strip()
+
 
 
 def ui_host(bind: str | None = None) -> str:

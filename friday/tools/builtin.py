@@ -91,18 +91,26 @@ def _list_files(args: dict[str, Any]) -> ToolResult:
 
 
 def _schedule_task(args: dict[str, Any]) -> ToolResult:
+    """SAFE only for notification-style reminders. Any other skill is refused here
+    (must use a confirm-tier path / owner approval — never silently run computer_use later)."""
     from friday.tasks.scheduler import get_scheduler
 
+    skill = str(args.get("skill_id") or "reminder").strip() or "reminder"
+    if skill not in ("reminder",):
+        return ToolResult.error(
+            f"schedule_task is SAFE only for skill_id=reminder (notifications). "
+            f"Refusing skill_id={skill!r} — ask the owner to approve a confirm-tier schedule."
+        )
     job = get_scheduler().add_job(
         prompt=str(args.get("prompt") or ""),
-        skill_id=str(args.get("skill_id") or "reminder"),
+        skill_id="reminder",
         delay_seconds=args.get("delay_seconds"),
         run_at=args.get("run_at"),
         cron=args.get("cron"),
-        title=str(args.get("title") or "Friday task"),
+        title=str(args.get("title") or "Friday reminder"),
     )
-    res = ToolResult.text_result(f"Scheduled task id={job['id']} title={job['title']}")
-    res.structured = {"id": job["id"], "title": job["title"]}
+    res = ToolResult.text_result(f"Scheduled reminder id={job['id']} title={job['title']}")
+    res.structured = {"id": job["id"], "title": job["title"], "skill_id": "reminder"}
     return res
 
 
@@ -266,11 +274,12 @@ def builtin_specs() -> list[ToolSpec]:
             object_schema({"path": _S}), _list_files, R.SAFE,
         ),
         ToolSpec(
-            "schedule_task", "Schedule a future Friday job (it will run a skill later).",
+            "schedule_task",
+            "Schedule a notification reminder only (skill_id=reminder). Other skills are refused.",
             object_schema(
                 {
                     "prompt": {**_S, "minLength": 1},
-                    "skill_id": _S,
+                    "skill_id": {**_S, "description": "Must be 'reminder'"},
                     "delay_seconds": {"type": "number", "minimum": 0},
                     "run_at": _S,
                     "cron": _S,
