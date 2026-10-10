@@ -137,5 +137,10 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - `friday/humor.py`: off/dry/full; stress/security/error suppress; bank + optional fast-model quip; Settings + chat `humor` field.
 - `friday/agent/behavior.py`: multi-step plan preamble; deep mode (`FRIDAY_DEEP` / phrase) with think budget + timeout fallback.
 - Chat / ReAct / computer_use wired; 6 unit tests PASS; eval `scripts/eval_persona.py` → `docs/research/persona_eval.json`: humor off 1.0/1.0/1.0, dry 1.0/1.0/0.97 (20 prompts, ran live against Ollama).
-- Tag: `stage-Q` (pending commit).
+- Tag: `stage-Q` (`0d2f86d`).
+
+## Stage R (2026-10-10) — Housekeeping + FINAL_REPORT_2
+- Synced README, CONTINUE.md, `.env.example`; code `MODEL` fallback → `qwen3.5:9b`.
+- Full local pytest: **338 passed** (`docs/research/pytest_stage_r.txt`); fixed stale intent expectation for web search.
+- Report: `docs/FINAL_REPORT_2.md`. Tag: `stage-R`.
 

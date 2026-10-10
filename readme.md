@@ -11,8 +11,9 @@ Talk to Friday. It picks the best skill for the job — chat, research, memory, 
 Requires Windows 11, Python 3.14 (tested on 3.14.6), and [Ollama](https://ollama.com).
 
 ```powershell
-ollama pull qwen2.5vl:7b-q4_K_M
-ollama pull nomic-embed-text
+# Use already-installed Ollama models (do not pull unless the owner asks):
+#   qwen3.5:9b (default), qwen3.5:4b, qwen3-vl:8b-instruct,
+#   qwen2.5vl:7b-q4_K_M, nomic-embed-text, qwen3-coder:30b
 
 python -m venv friday_env
 friday_env\Scripts\activate
@@ -22,7 +23,7 @@ copy .env.example .env
 
 python main.py              # tray + Control Center
 # or
-python main.py --server     # http://127.0.0.1:8787/
+python main.py --server     # http://127.0.0.1:8787/  (loopback until phone hostname is set)
 ```
 
 Optional extras (each is a separate pinned lock file):
@@ -40,9 +41,11 @@ This path was verified in a fresh Python 3.14.6 venv (76 tests pass, server star
 
 ### Security defaults
 
-- Rejects foreign `Host` / `Origin` (no CORS). Loopback is the safe default; LAN bind (`0.0.0.0`) is allowed for phone access and warns if `FRIDAY_API_TOKEN` is empty (see CONTINUE.md).
-- Tools run through a policy gate (`config/policy.yaml`): safe tools run, confirm tools ask in the UI, dangerous tools are denied. Every call is written to a hash-chained audit log.
+- **Passkey device auth** (`FRIDAY_AUTH=local` by default): loopback only until a registrable hostname + trusted cert are configured (`FRIDAY_AUTH=remote` + `FRIDAY_PUBLIC_HOST`). See [`docs/PHONE_SETUP.md`](docs/PHONE_SETUP.md). Phones cannot use passkeys against raw LAN IPs or `.local` names.
+- Request guard: exact Host/Origin allow-list (no private-IP Host relaxation). `FRIDAY_API_TOKEN` remains an optional script fallback only.
+- Tools run through a policy gate (`config/policy.yaml`): safe tools run, confirm tools ask in the UI, dangerous tools are denied. Every call is written to a hash-chained audit log. `SHELL_TOOLS_ENABLED` defaults to **false**.
 - MCP servers (`config/mcp_servers.yaml`) are disabled by default; PowerShell and Registry tools are excluded.
+- There is **no CI**. Before any push: `python scripts/pre_push_secrets_check.py` and `pytest` locally.
 
 ### Optional React shell (Vite)
 
@@ -102,11 +105,12 @@ Also: [`docs/PROGRESS.md`](docs/PROGRESS.md) (full task log) · [`docs/DECISIONS
 
 ### Current optimization snapshot (2026-10-10)
 
-- **Model:** `qwen3.5:9b` for vision + chat (unified on 16 GB). Thinking off. Short chat context/predict. Stay off stock Qwen3.8-27B Q4 (~18 GB → offload) unless you explicitly pull a fit-in-VRAM quant.
-- **Agent:** loop breaker, stall recovery, empty-TYPE fix, tools-first for simple “type + save as path”. Hybrid backend still opt-in; legacy default.
-- **Voice:** Realtime default + barge-in. Phone mic needs `https://<lan-ip>:8788/` (self-signed).
+- **Model:** `qwen3.5:9b` default (unified on 16 GB). Role map opt-in (`FRIDAY_MODEL_ROLES`); see [`docs/research/MODEL_ROLES.md`](docs/research/MODEL_ROLES.md). Thinking off unless deep mode.
+- **Auth / phone:** passkeys; remote off until hostname (PHONE_SETUP). Loopback default.
+- **Agent:** loop breaker, stall recovery, plan-before-act on multi-step, tools-first. Hybrid opt-in.
+- **Persona:** [`docs/PERSONA.md`](docs/PERSONA.md) — calm, dry, address as boss; humor off/dry/full.
+- **Voice:** Realtime + barge-in. Phone mic needs a trusted HTTPS hostname (not raw IP for passkeys).
 - **Research:** one HTTP fetch + briefing; no Google tab spam.
-- **Phone:** `FRIDAY_HOST=0.0.0.0`, firewall 8787/8788, HUD mobile bottom nav.
 
 ---
 
@@ -163,10 +167,12 @@ See [`.env.example`](.env.example). Important keys:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `VISION_MODEL` | `qwen2.5vl:7b-q4_K_M` | Desktop agent |
-| `CHAT_MODEL` | _(empty)_ | Chat/tools model (falls back to vision) |
+| `MODEL` / `VISION_MODEL` / `CHAT_MODEL` | `qwen3.5:9b` | Unified default |
 | `EMBED_MODEL` | `nomic-embed-text` | Vector memory |
+| `FRIDAY_AUTH` | `local` | `off` / `local` / `remote` |
+| `FRIDAY_HOST` | `127.0.0.1` | Loopback until remote hostname |
 | `FRIDAY_PORT` | `8787` | Control Center |
+| `FRIDAY_HUMOR` | `dry` | `off` / `dry` / `full` |
 | `VOICE_ENABLED` | `true` | Mic / speak APIs |
 | `SHELL_TOOLS_ENABLED` | `false` | Gate `run_shell` |
 

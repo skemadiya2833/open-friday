@@ -35,7 +35,7 @@ OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
 MODEL_NAME = os.getenv(
     "MODEL",
-    os.getenv("LOCAL_MODEL", "qwen2.5vl:7b-q4_K_M"),
+    os.getenv("LOCAL_MODEL", "qwen3.5:9b"),
 )
 MODEL_KEEP_ALIVE = os.getenv("MODEL_KEEP_ALIVE", "-1")
 # Decision responses are short (~300 tokens); a low cap stops runaway rambling.
