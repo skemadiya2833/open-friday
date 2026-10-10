@@ -4,13 +4,13 @@ Thanks for helping. Maintenance time is limited — focused PRs are gold.
 
 ## Setup
 
-```bash
+```powershell
 python -m venv friday_env
 friday_env\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-ollama pull qwen2.5vl:7b-q4_K_M
-ollama pull nomic-embed-text
+pip install -r requirements/core.lock.txt
+pip install -r requirements/dev.lock.txt
+copy .env.example .env
+# Use models already installed locally (default: qwen3.5:9b). Do not pull extras unless asked.
 python main.py --server
 ```
 
@@ -43,10 +43,13 @@ npm run build   # serves from web/dist via FastAPI
 
 ## Tests and checks
 
+There is **no CI**. Run everything locally:
+
 ```powershell
 pip install -r requirements/dev.lock.txt
-pytest -q                                  # ~175 tests; add --ignore=tests/test_runs_estop.py if you have no interactive desktop
+pytest -q                                  # add -k "not real_hotkey and not hotkey_conflict" if the e-stop hotkey is in use
 ruff check friday tests main.py scripts --select F,E9
+python scripts/pre_push_secrets_check.py   # required before any push — scans for secrets / data/tls / audit dumps
 ```
 
 Rules that keep this project safe:

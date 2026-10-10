@@ -83,7 +83,7 @@ You → Control Center → SkillRouter → Skill
 
 ## Install, update, check
 
-One supported path: pinned lock files (see Quick start). To update, change a `requirements/*.in` file, re-run `uv pip compile` (command above), review the lock diff, then `uv pip install -r requirements/core.lock.txt` (add `voice` / `dev` locks as needed). Never `pip install <package>` ad hoc; CI fails if `core.lock.txt` stops satisfying `core.in`.
+One supported path: pinned lock files (see Quick start). To update, change a `requirements/*.in` file, re-run `uv pip compile` (command above), review the lock diff, then `uv pip install -r requirements/core.lock.txt` (add `voice` / `dev` locks as needed). Never `pip install <package>` ad hoc. Before any push, run `python scripts/pre_push_secrets_check.py` (there is no CI).
 
 - Startup validates your configuration and stops with a readable message for bad values (`friday/diagnostics.py`).
 - Health page: `http://127.0.0.1:8787/health` (JSON: `/api/health/detail`): config issues, Ollama, audit-chain check, e-stop hotkey, MCP servers, disk.

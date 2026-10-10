@@ -104,5 +104,10 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - H3 VRAM co-load (UNVERIFIED).
 - Hybrid multi-step / Chrome-canvas (weak; default remains legacy).
 - Stage H/I/J live benches: stopped by owner — do not resume unless asked.
-- CI never run on GitHub.
+
+## Stage N (2026-10-10) — Remove CI + local secrets check
+- Deleted `.github/workflows/ci.yml` and CI mentions in README / CONTRIBUTING / CONTINUE.
+- Added `scripts/pre_push_secrets_check.py` (+ tests): scans tracked/staged files for `.env`, API keys, private keys, `data/tls`, audit/memory dumps.
+- `.gitignore` tightened (`.env.*`, `*.pem`, `*.key`, credential filenames).
+- Tag: `stage-N`.
 

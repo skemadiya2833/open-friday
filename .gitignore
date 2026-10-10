@@ -7,6 +7,12 @@ venv/
 web/node_modules/
 web/dist/
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519
 *.wav
 *.mp3
 .DS_Store
@@ -19,3 +25,7 @@ docs/research/diag_chrome/*.txt
 *.err
 *.log
 *.out
+srv.out
+*.secrets
+credentials.json
+service-account*.json

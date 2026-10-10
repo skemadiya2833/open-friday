@@ -97,7 +97,7 @@ Constraint still in force: **no new Ollama downloads** unless the owner explicit
 5. H3 VRAM: `scripts/vram_coload.py` with 9b + Whisper (never run to completion for this stack).
 6. Hybrid: keep off as default until multi-step pass rate improves; live Chrome/canvas failures still unexplained.
 7. Stage H/I/J benches: **stopped by owner** — do not resume live desktop benches unless asked.
-8. CI on GitHub: workflow exists, **never run**.
+8. CI removed (Stage N). Use `python scripts/pre_push_secrets_check.py` before any push.
 9. `friday_env` may still need `uv pip install -r requirements/core.lock.txt` for `google-genai` (cloud fallback).
 
 ---

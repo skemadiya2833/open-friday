@@ -92,3 +92,6 @@ Chosen: DuckDuckGo HTML + Google News RSS into the tool observation; cache dupli
 ## D-030 (2026-10-10) Stay on qwen3.5:9b; do not pull Qwen3.8-27B Q4_K_M by default
 On RTX 5060 Ti 16 GB, stock 27B Q4_K_M (~18 GB) offloads and is expected ~8 tok/s class. Fit-in-VRAM Q3/~15 GB Q4 can be ~20–26 tok/s but needs an explicit download. Constraint: no new model downloads unless the owner asks. Alternative: custom smaller 27B quant for chat-only (not default agent).
 
+## D-031 (2026-10-10) Remove CI; require local secrets check before push
+Chosen: delete `.github/workflows/ci.yml` (never ran) and document local `pytest` + `scripts/pre_push_secrets_check.py`. Alternative: keep a dormant workflow (rejected: implies coverage that did not exist).
+
