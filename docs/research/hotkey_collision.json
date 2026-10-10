@@ -1,0 +1,25 @@
+{
+ "probe": {
+  "ctrl+alt+f12": "free",
+  "ctrl+alt+shift+f12": "free",
+  "ctrl+shift+f12": "free",
+  "ctrl+alt+pause": "free",
+  "ctrl+alt+shift+pause": "free",
+  "ctrl+alt+shift+f11": "free",
+  "ctrl+alt+shift+f10": "free",
+  "ctrl+win+shift+f12": "free",
+  "ctrl+alt+shift+delete": "free"
+ },
+ "config_hits": {
+  "ctrl+alt+f12": [],
+  "ctrl+alt+shift+f12": []
+ },
+ "not_checkable": [
+  "NVIDIA App / GeForce overlay",
+  "AMD Software overlay",
+  "SignalRGB",
+  "Steam overlay",
+  "game launchers"
+ ],
+ "known_history": "Ctrl+Alt+F12 is the classic Intel graphics 'options' hotkey on some Intel driver versions; this PC has no Intel GPU (AMD iGPU + NVIDIA)."
+}

@@ -1,0 +1,261 @@
+{
+  "generated_at": "2026-10-10T15:31:18",
+  "scratch": "C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+  "budget_s": 900,
+  "backends": {
+    "legacy": {
+      "rows": [
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched notepad",
+          "elapsed_s": 0.02,
+          "task": "open_notepad",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched notepad",
+          "elapsed_s": 0.01,
+          "task": "open_notepad",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched notepad",
+          "elapsed_s": 0.01,
+          "task": "open_notepad",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Wrote 10 characters to C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75\\two_lines_legacy_1.txt",
+          "elapsed_s": 0.0,
+          "task": "type_save",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Wrote 10 characters to C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75\\two_lines_legacy_2.txt",
+          "elapsed_s": 0.0,
+          "task": "type_save",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Wrote 10 characters to C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75\\two_lines_legacy_3.txt",
+          "elapsed_s": 0.0,
+          "task": "type_save",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched calculator",
+          "elapsed_s": 0.0,
+          "task": "calculator",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched calculator",
+          "elapsed_s": 0.0,
+          "task": "calculator",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched calculator",
+          "elapsed_s": 0.0,
+          "task": "calculator",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched settings",
+          "elapsed_s": 0.01,
+          "task": "settings",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched settings",
+          "elapsed_s": 0.0,
+          "task": "settings",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched settings",
+          "elapsed_s": 0.0,
+          "task": "settings",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Opened folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+          "elapsed_s": 0.0,
+          "task": "open_folder",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Opened folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+          "elapsed_s": 0.0,
+          "task": "open_folder",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Opened folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+          "elapsed_s": 0.0,
+          "task": "open_folder",
+          "rep": 3
+        }
+      ],
+      "passed": 15,
+      "total": 15
+    },
+    "hybrid": {
+      "rows": [
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched notepad",
+          "elapsed_s": 0.02,
+          "task": "open_notepad",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched notepad",
+          "elapsed_s": 0.02,
+          "task": "open_notepad",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched notepad",
+          "elapsed_s": 0.02,
+          "task": "open_notepad",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Wrote 10 characters to C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75\\two_lines_hybrid_1.txt",
+          "elapsed_s": 0.0,
+          "task": "type_save",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Wrote 10 characters to C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75\\two_lines_hybrid_2.txt",
+          "elapsed_s": 0.0,
+          "task": "type_save",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Wrote 10 characters to C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75\\two_lines_hybrid_3.txt",
+          "elapsed_s": 0.0,
+          "task": "type_save",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched calculator",
+          "elapsed_s": 0.0,
+          "task": "calculator",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched calculator",
+          "elapsed_s": 0.0,
+          "task": "calculator",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched calculator",
+          "elapsed_s": 0.0,
+          "task": "calculator",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched settings",
+          "elapsed_s": 0.0,
+          "task": "settings",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched settings",
+          "elapsed_s": 0.0,
+          "task": "settings",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Launched settings",
+          "elapsed_s": 0.0,
+          "task": "settings",
+          "rep": 3
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Opened folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+          "elapsed_s": 0.0,
+          "task": "open_folder",
+          "rep": 1
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Opened folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+          "elapsed_s": 0.0,
+          "task": "open_folder",
+          "rep": 2
+        },
+        {
+          "path": "direct",
+          "status": "PASS",
+          "detail": "Opened folder C:\\Users\\www\\AppData\\Local\\Temp\\friday_stu_1zuimw75",
+          "elapsed_s": 0.0,
+          "task": "open_folder",
+          "rep": 3
+        }
+      ],
+      "passed": 15,
+      "total": 15
+    }
+  },
+  "recommend_default": "legacy",
+  "wall_s": 0.5
+}

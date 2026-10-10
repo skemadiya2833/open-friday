@@ -1,0 +1,27 @@
+colorama==0.4.6
+    # via
+    #   -c requirements/core.lock.txt
+    #   pytest
+iniconfig==2.3.0
+    # via pytest
+packaging==26.3
+    # via
+    #   -c requirements/core.lock.txt
+    #   pytest
+pluggy==1.6.0
+    # via pytest
+pygments==2.21.0
+    # via
+    #   -c requirements/core.lock.txt
+    #   pytest
+pytest==9.1.1
+    # via -r requirements/dev.in
+ruff==0.16.10
+    # via -r requirements/dev.in
+
+# playwright (Stage S) — installed & verified 1.63.0 on this PC
+playwright==1.63.0
+greenlet==3.3.2
+    # via playwright
+pyee==13.0.1
+    # via playwright

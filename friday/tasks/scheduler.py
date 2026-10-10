@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 from friday.config import TASKS_DB, ensure_data_dirs
@@ -50,8 +48,8 @@ class TaskScheduler:
     def _start_scheduler(self) -> None:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
-            from apscheduler.triggers.cron import CronTrigger
-            from apscheduler.triggers.date import DateTrigger
+            from apscheduler.triggers.cron import CronTrigger  # noqa: F401
+            from apscheduler.triggers.date import DateTrigger  # noqa: F401
         except ImportError:
             print("[Tasks] APScheduler not installed — scheduling disabled until deps install.")
             return
@@ -59,8 +57,14 @@ class TaskScheduler:
         self._scheduler = BackgroundScheduler()
         self._scheduler.start()
         # Restore pending jobs
+        now = time.time()
         for job in self.list_jobs():
             if job["status"] not in ("scheduled", "paused"):
+                continue
+            # a one-shot reminder that came due while Friday was not running: deliver it now, flagged as late
+            if job.get("run_at") and not job.get("cron") and float(job["run_at"]) < now and not job.get("last_run") and job["status"] == "scheduled":
+                late = int((now - float(job["run_at"])) // 60)
+                threading.Timer(3.0, self._execute, args=(job["id"], f"missed {late} min ago" if late else "")).start()
                 continue
             self._arm(job)
 
@@ -171,7 +175,7 @@ class TaskScheduler:
         threading.Thread(target=self._execute, args=(job_id,), daemon=True).start()
         return True
 
-    def _execute(self, job_id: str) -> None:
+    def _execute(self, job_id: str, note: str = "") -> None:
         jobs = {j["id"]: j for j in self.list_jobs()}
         job = jobs.get(job_id)
         if not job or job["status"] == "cancelled":
@@ -184,20 +188,37 @@ class TaskScheduler:
             )
             conn.commit()
         try:
-            from friday.assistant.orchestrator import handle_message
+            from friday.tasks import reminders as RM
 
-            handle_message(
-                job["prompt"],
-                session_id=f"task:{job_id}",
-                skill_override=job.get("skill_id") or None,
-            )
+            if (job.get("skill_id") or "") == "reminder":
+                RM.add_notification(job["prompt"], note, job_id=job_id, kind="reminder")
+            else:
+                from friday.assistant.orchestrator import handle_message
+
+                out = handle_message(job["prompt"], session_id=f"task:{job_id}", skill_override=job.get("skill_id") or None)
+                RM.add_notification(job["title"] or "Task finished", str(out.get("reply", ""))[:600], job_id=job_id, kind="task")
             status = "scheduled" if job.get("cron") else "done"
         except Exception as exc:
             print(f"[Tasks] Job failed: {exc}")
             status = "failed"
+            try:
+                from friday.tasks import reminders as RM
+
+                RM.add_notification(f"Task failed: {job['title']}", str(exc)[:300], job_id=job_id, kind="task")
+            except Exception:  # noqa: BLE001
+                pass
         with self._conn() as conn:
             conn.execute("UPDATE jobs SET status=? WHERE id=?", (status, job_id))
             conn.commit()
+
+    def shutdown(self) -> None:
+        if self._scheduler is None:
+            return
+        try:
+            self._scheduler.shutdown(wait=False)
+        except Exception:  # noqa: BLE001
+            pass
+        self._scheduler = None
 
 
 _sched: TaskScheduler | None = None

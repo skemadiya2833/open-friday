@@ -1,0 +1,258 @@
+{
+ "meta": {
+  "backend": "legacy",
+  "model": "qwen2.5vl:7b-q4_K_M",
+  "num_ctx": 32768,
+  "max_iterations": 15,
+  "timeout_s": 100,
+  "reps": 3,
+  "coord_space": "pixel",
+  "started": "2026-10-06T11:41:47",
+  "gpu_baseline_mb": 9298,
+  "invalidated": "11 runs after the first one were discarded: the Python environment was modified under the running process (my package install), causing FileNotFoundError at step 0. Rerun from this point."
+ },
+ "runs": [
+  {
+   "task": "notepad_open",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad.",
+   "outcome": "PASS",
+   "success": true,
+   "status": "timeout",
+   "steps": 7,
+   "actions": [
+    "WIN_SEARCH",
+    "CLOSE_TAB",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK"
+   ],
+   "wall_s": 100.5,
+   "peak_vram_mb": 9551,
+   "failure_reason": "",
+   "check": "notepad window present"
+  },
+  {
+   "task": "notepad_open",
+   "group": "notepad",
+   "rep": 2,
+   "objective": "Open Notepad.",
+   "outcome": "PASS",
+   "success": true,
+   "status": "timeout",
+   "steps": 7,
+   "actions": [
+    "WIN_SEARCH",
+    "CLICK",
+    "CLICK",
+    "SEARCH",
+    "CLICK",
+    "CLICK",
+    "CLICK"
+   ],
+   "wall_s": 105.0,
+   "peak_vram_mb": 9549,
+   "failure_reason": "",
+   "check": "notepad window present"
+  },
+  {
+   "task": "notepad_open",
+   "group": "notepad",
+   "rep": 3,
+   "objective": "Open Notepad.",
+   "outcome": "PASS",
+   "success": true,
+   "status": "failed",
+   "steps": 4,
+   "actions": [
+    "WIN_SEARCH",
+    "CLICK",
+    "CLICK",
+    "CLICK"
+   ],
+   "wall_s": 70.4,
+   "peak_vram_mb": 9429,
+   "failure_reason": "",
+   "check": "notepad window present"
+  },
+  {
+   "task": "notepad_type_save",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad, type exactly: hello friday  then save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_type_save_1\\n2.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "timeout",
+   "steps": 8,
+   "actions": [
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "TYPE",
+    "SAVE_FILE"
+   ],
+   "wall_s": 102.0,
+   "peak_vram_mb": 9381,
+   "failure_reason": "timeout after 100s; file missing: n2.txt",
+   "check": "file missing: n2.txt"
+  },
+  {
+   "task": "notepad_type_save",
+   "group": "notepad",
+   "rep": 2,
+   "objective": "Open Notepad, type exactly: hello friday  then save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_type_save_2\\n2.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "failed",
+   "steps": 4,
+   "actions": [
+    "WIN_SEARCH",
+    "CLICK",
+    "CLICK",
+    "SAVE_FILE"
+   ],
+   "wall_s": 78.2,
+   "peak_vram_mb": 9444,
+   "failure_reason": "agent failed: see actions; file missing: n2.txt",
+   "check": "file missing: n2.txt"
+  },
+  {
+   "task": "notepad_type_save",
+   "group": "notepad",
+   "rep": 3,
+   "objective": "Open Notepad, type exactly: hello friday  then save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_type_save_3\\n2.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "failed",
+   "steps": 3,
+   "actions": [
+    "WIN_SEARCH",
+    "TYPE",
+    "SAVE_FILE"
+   ],
+   "wall_s": 59.2,
+   "peak_vram_mb": 9442,
+   "failure_reason": "agent failed: see actions; file missing: n2.txt",
+   "check": "file missing: n2.txt"
+  },
+  {
+   "task": "notepad_two_lines",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad, type the word alpha, press Enter, type the word beta, and save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_two_lines_1\\n3.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "timeout",
+   "steps": 8,
+   "actions": [
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "CLICK",
+    "WAIT",
+    "WAIT"
+   ],
+   "wall_s": 101.2,
+   "peak_vram_mb": 9391,
+   "failure_reason": "timeout after 100s; file missing: n3.txt",
+   "check": "file missing: n3.txt"
+  },
+  {
+   "task": "notepad_two_lines",
+   "group": "notepad",
+   "rep": 2,
+   "objective": "Open Notepad, type the word alpha, press Enter, type the word beta, and save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_two_lines_2\\n3.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "timeout",
+   "steps": 7,
+   "actions": [
+    "WIN_SEARCH",
+    "WIN_SEARCH",
+    "CLICK",
+    "WIN_SEARCH",
+    "CLICK",
+    "HOVER",
+    "CLICK"
+   ],
+   "wall_s": 100.5,
+   "peak_vram_mb": 9428,
+   "failure_reason": "timeout after 100s; file missing: n3.txt",
+   "check": "file missing: n3.txt"
+  },
+  {
+   "task": "notepad_two_lines",
+   "group": "notepad",
+   "rep": 3,
+   "objective": "Open Notepad, type the word alpha, press Enter, type the word beta, and save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_two_lines_3\\n3.txt",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "timeout",
+   "steps": 8,
+   "actions": [
+    "WIN_SEARCH",
+    "WIN_SEARCH",
+    "WAIT",
+    "WAIT",
+    "WIN_SEARCH",
+    "WIN_SEARCH",
+    "WAIT",
+    "WIN_SEARCH"
+   ],
+   "wall_s": 100.5,
+   "peak_vram_mb": 9429,
+   "failure_reason": "timeout after 100s; file missing: n3.txt",
+   "check": "file missing: n3.txt"
+  },
+  {
+   "task": "notepad_save_and_close",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad, type: friday benchmark 42  save it as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_save_and_close_1\\n4.txt and then close Notepad.",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "timeout",
+   "steps": 9,
+   "actions": [
+    "WIN_SEARCH",
+    "WIN_SEARCH",
+    "WAIT",
+    "WAIT",
+    "WAIT",
+    "WAIT",
+    "WAIT",
+    "WAIT",
+    "CLICK"
+   ],
+   "wall_s": 101.0,
+   "peak_vram_mb": 9426,
+   "failure_reason": "timeout after 100s; file missing: n4.txt; Notepad still open",
+   "check": "file missing: n4.txt; Notepad still open"
+  },
+  {
+   "task": "notepad_save_and_close",
+   "group": "notepad",
+   "rep": 2,
+   "objective": "Open Notepad, type: friday benchmark 42  save it as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_xvfwwcfc\\notepad_save_and_close_2\\n4.txt and then close Notepad.",
+   "outcome": "FAIL",
+   "success": false,
+   "status": "failed",
+   "steps": 1,
+   "actions": [
+    "WIN_SEARCH"
+   ],
+   "wall_s": 34.1,
+   "peak_vram_mb": 9427,
+   "failure_reason": "agent failed: see actions; file missing: n4.txt; Notepad still open",
+   "check": "file missing: n4.txt; Notepad still open"
+  }
+ ]
+}

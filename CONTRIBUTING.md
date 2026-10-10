@@ -4,13 +4,13 @@ Thanks for helping. Maintenance time is limited — focused PRs are gold.
 
 ## Setup
 
-```bash
+```powershell
 python -m venv friday_env
 friday_env\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-ollama pull qwen2.5vl:7b-q4_K_M
-ollama pull nomic-embed-text
+pip install -r requirements/core.lock.txt
+pip install -r requirements/dev.lock.txt
+copy .env.example .env
+# Use models already installed locally (default: qwen3.5:9b). Do not pull extras unless asked.
 python main.py --server
 ```
 
@@ -41,12 +41,25 @@ npm run build   # serves from web/dist via FastAPI
 2. Add `manifest.yaml` + `handler.py` with `SkillHandler`
 3. Restart the server — the registry hot-loads on startup
 
-## Tests
+## Tests and checks
 
-```bash
-python tests/test_skills_tools.py
+There is **no CI**. Run everything locally:
+
+```powershell
+pip install -r requirements/dev.lock.txt
+pytest -q                                  # add -k "not real_hotkey and not hotkey_conflict" if the e-stop hotkey is in use
+ruff check friday tests main.py scripts --select F,E9
+python scripts/pre_push_secrets_check.py   # required before any push — scans for secrets / data/tls / audit dumps
 ```
 
+Rules that keep this project safe:
+
+- New dependencies go in `requirements/*.in`, are locked with `uv pip compile`, and need a licence and Python 3.14 wheel check (see `docs/decisions/DEPENDENCY_MATRIX.md`).
+- Anything that changes the system, sends data out, or controls the desktop is a `confirm`-tier tool at minimum and goes through `friday/tools/registry.py` (policy, approval, audit). No direct `subprocess`/`os.system` from skills.
+- Screen text, web pages and tool output are untrusted data; never concatenate them into instructions (see `friday/agent/guard.py`).
+- Write state files with `friday.atomic.write_text_atomic`.
+- Tests must use scratch folders only and must not touch real accounts. Live-desktop checks belong in `friday/bench/`, never in `pytest`.
+- Read `docs/THREAT_MODEL.md` before touching `friday/server/` or `friday/safety/`.
 ## Contact
 
 Maintainer: **Sunil Kemadiya** (CEO, [Devoids](https://devoids.in)) — skemadiya@gmail.com

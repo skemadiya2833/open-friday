@@ -12,7 +12,6 @@ import queue
 import threading
 import tkinter as tk
 from tkinter import font as tkfont
-from typing import Any
 
 from PIL import Image, ImageTk
 

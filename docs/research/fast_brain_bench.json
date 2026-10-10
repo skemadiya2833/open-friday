@@ -1,0 +1,466 @@
+{
+  "generated_at": "2026-10-10T15:31:05",
+  "fast_4b": {
+    "model": "qwen3.5:4b",
+    "n": 20,
+    "avg_latency_s": 3.08,
+    "avg_correctness": 0.975,
+    "avg_concision": 1.0,
+    "avg_persona": 1.0,
+    "rows": [
+      {
+        "id": 1,
+        "cat": "chat",
+        "elapsed_s": 7.52,
+        "reply": "I can handle your emails, organize your files, or draft that report you've been avoiding. Just tell me what needs doing before the coffee gets cold.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 26,
+        "reasons": []
+      },
+      {
+        "id": 2,
+        "cat": "chat",
+        "elapsed_s": 2.77,
+        "reply": "I run entirely on your machine, processing everything through the local models installed on your PC rather than sending anything to the cloud. This means your files, conversations, and personal information stay safely within your own network boundaries.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 38,
+        "reasons": []
+      },
+      {
+        "id": 3,
+        "cat": "persona",
+        "elapsed_s": 2.69,
+        "reply": "You can call me Friday. I prefer \"boss\" when we're getting things done, though I'll take \"owner\" if you want to sound a bit more formal.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 26,
+        "reasons": []
+      },
+      {
+        "id": 4,
+        "cat": "research",
+        "elapsed_s": 2.87,
+        "reply": "A passkey is a digital credential combining a public key and a secret key that replaces passwords. It's stored on your device and verified via biometrics or PIN, making it harder to steal. This means no more typing passwords or worrying about them being leaked.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 45,
+        "reasons": []
+      },
+      {
+        "id": 5,
+        "cat": "reminders",
+        "elapsed_s": 2.52,
+        "reply": "Got it, boss. I'll set a timer for twenty minutes to remind you to stretch.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 15,
+        "reasons": []
+      },
+      {
+        "id": 6,
+        "cat": "tool",
+        "elapsed_s": 2.81,
+        "reply": "I can read, write, search, and organize files directly from your system. I don't have access to external cloud storage or third-party apps unless you explicitly grant that permission. Just tell me what you need done with your local data.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 40,
+        "reasons": []
+      },
+      {
+        "id": 7,
+        "cat": "error",
+        "elapsed_s": 2.6,
+        "reply": "I hear you, boss. The situation sounds critical, so tell me exactly what's broken and what we need to do to fix it immediately.",
+        "correctness": 0.5,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 24,
+        "reasons": [
+          "weak_stress_ack"
+        ]
+      },
+      {
+        "id": 8,
+        "cat": "security",
+        "elapsed_s": 2.97,
+        "reply": "I can't just open shells on your system without permission; that would be a security breach and I'd be in trouble with you.\n\nHowever, if you need a new terminal session to work on something specific, just let me know what you're trying to do and I'll guide you through the steps safely.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 53,
+        "reasons": []
+      },
+      {
+        "id": 9,
+        "cat": "chat",
+        "elapsed_s": 2.86,
+        "reply": "Desktop control is fragile because it relies on a single point of failure. A corrupted driver or a stuck key can lock you out of your entire workflow instantly. Regular updates and backups aren't just suggestions; they are the only insurance policy you have against total system paralysis.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 48,
+        "reasons": []
+      },
+      {
+        "id": 10,
+        "cat": "persona",
+        "elapsed_s": 2.65,
+        "reply": "Waiting for the model is like waiting for a snail to finish a marathon; it's technically moving forward, but you're convinced it's stuck in mud.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 25,
+        "reasons": []
+      },
+      {
+        "id": 11,
+        "cat": "research",
+        "elapsed_s": 3.02,
+        "reply": "The WebAuthn RP ID is a unique string identifying the website or application initiating the authentication request, ensuring browsers know exactly which service needs to be verified.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 27,
+        "reasons": []
+      },
+      {
+        "id": 12,
+        "cat": "reminders",
+        "elapsed_s": 3.02,
+        "reply": "Ask for a reminder when you need a gentle nudge to check something later without interrupting your current flow. Use desktop control when you need immediate, hands-on assistance like opening files or adjusting settings right now. It's about respecting your focus while keeping things moving efficiently.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 46,
+        "reasons": []
+      },
+      {
+        "id": 13,
+        "cat": "tool",
+        "elapsed_s": 2.92,
+        "reply": "I'd check your calendar for open slots, verify the specific software you need, and confirm any required permissions before booking the time. Once that's clear, I'll send out the confirmation with the details.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 33,
+        "reasons": []
+      },
+      {
+        "id": 14,
+        "cat": "error",
+        "elapsed_s": 2.75,
+        "reply": "The file handle is still locked by a background process, boss. I'm retrying with a fresh session now. Let me know if it opens.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 24,
+        "reasons": []
+      },
+      {
+        "id": 15,
+        "cat": "chat",
+        "elapsed_s": 2.75,
+        "reply": "Hello, boss. Ready to tackle that project or need a quick data dump? Just let me know where your focus is today.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 22,
+        "reasons": []
+      },
+      {
+        "id": 16,
+        "cat": "persona",
+        "elapsed_s": 3.03,
+        "reply": "Boss, forty tabs is basically a digital fire hazard waiting to happen. I'm pretty sure your browser is just trying to tell you that you're running on fumes and caffeine right now. Time to close a few or we'll be rebooting before lunch.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 43,
+        "reasons": []
+      },
+      {
+        "id": 17,
+        "cat": "research",
+        "elapsed_s": 3.0,
+        "reply": "Structured JSON tool calls make it easy for your code to parse responses reliably without guessing at formats. They also let you validate inputs automatically before sending them off, which saves time debugging later. Plus, they keep your API logs clean and consistent for anyone reviewing the history.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 48,
+        "reasons": []
+      },
+      {
+        "id": 18,
+        "cat": "security",
+        "elapsed_s": 3.05,
+        "reply": "No, another phone can't use Friday without pairing because the service is tied to your specific device ID. The system is designed to prevent unauthorized access, so even if you're on the same network, a different phone would need to go through the full pairing process to establish a connection.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 50,
+        "reasons": []
+      },
+      {
+        "id": 19,
+        "cat": "chat",
+        "elapsed_s": 2.73,
+        "reply": "My humor policy is simple: I deliver dry wit only when it lands naturally, never forcing jokes at the expense of clarity or your time.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 25,
+        "reasons": []
+      },
+      {
+        "id": 20,
+        "cat": "error",
+        "elapsed_s": 3.07,
+        "reply": "I've checked the logs; Ollama isn't actually down, just running slower than usual due to a high memory spike. Try restarting the service with `ollama serve` to clear the cache and free up RAM. If it still lags, let me know your available RAM so I can suggest a model swap.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 51,
+        "reasons": []
+      }
+    ]
+  },
+  "main_9b": {
+    "model": "qwen3.5:9b",
+    "n": 20,
+    "avg_latency_s": 3.363,
+    "avg_correctness": 1.0,
+    "avg_concision": 1.0,
+    "avg_persona": 1.0,
+    "rows": [
+      {
+        "id": 1,
+        "cat": "chat",
+        "elapsed_s": 2.74,
+        "reply": "I can handle your schedule, draft emails, or summarize that long report you mentioned.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 14,
+        "reasons": []
+      },
+      {
+        "id": 2,
+        "cat": "chat",
+        "elapsed_s": 2.94,
+        "reply": "I run entirely on your PC without connecting to external servers or cloud services. All processing happens locally using only the resources available on your machine.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 26,
+        "reasons": []
+      },
+      {
+        "id": 3,
+        "cat": "persona",
+        "elapsed_s": 3.29,
+        "reply": "You can call me Friday; I'll stick with that. For you, \"boss\" works well enough, though I'm open to whatever you prefer if it feels more natural. Let me know if you'd like to adjust either name.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 37,
+        "reasons": []
+      },
+      {
+        "id": 4,
+        "cat": "research",
+        "elapsed_s": 3.55,
+        "reply": "A passkey is a cryptographic credential that replaces passwords by using public-key cryptography to authenticate your identity. It relies on a private key stored securely on your device and a corresponding public key registered with the service you're logging into. This method eliminates the need for shared secrets, making it significantly harder for attackers to steal or guess your login details.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 61,
+        "reasons": []
+      },
+      {
+        "id": 5,
+        "cat": "reminders",
+        "elapsed_s": 3.01,
+        "reply": "Noted. I'll set a reminder for you to stretch in twenty minutes. Your body will thank you later. Just let me know if you need anything else before then.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 29,
+        "reasons": []
+      },
+      {
+        "id": 6,
+        "cat": "tool",
+        "elapsed_s": 4.01,
+        "reply": "I have access to standard system utilities like `ls`, `cat`, `grep`, `find`, and `rm` to navigate and inspect your file structure. For editing or creating content, I can utilize `nano`, `vim`, or `sed` depending on your preference. If you need to process data in bulk, I can write Python scripts using the `pandas` or `csv` modules directly within the terminal environment. Let me know which tool you",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 71,
+        "reasons": []
+      },
+      {
+        "id": 7,
+        "cat": "error",
+        "elapsed_s": 2.92,
+        "reply": "I hear you, boss. The situation is noted as urgent. I'm ready to help fix it immediately if you tell me what's wrong.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 23,
+        "reasons": []
+      },
+      {
+        "id": 8,
+        "cat": "security",
+        "elapsed_s": 3.12,
+        "reply": "Terminal window opened. You're looking at a clean bash prompt waiting for your input. I'm here if you need to close it or run something specific next. Just type your command, boss.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 32,
+        "reasons": []
+      },
+      {
+        "id": 9,
+        "cat": "chat",
+        "elapsed_s": 3.11,
+        "reply": "Remote desktops are fragile; a single misconfiguration can expose your entire network. They bypass local firewalls and often lack the same hardening as physical machines. Treat them like high-value targets, not convenient shortcuts.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 33,
+        "reasons": []
+      },
+      {
+        "id": 10,
+        "cat": "persona",
+        "elapsed_s": 2.79,
+        "reply": "Patience is a virtue, but it's not a feature I can toggle on for your slow model.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 17,
+        "reasons": []
+      },
+      {
+        "id": 11,
+        "cat": "research",
+        "elapsed_s": 3.62,
+        "reply": "The WebAuthn RP ID is the unique identifier that tells your browser which website or domain is requesting authentication credentials. It ensures that passkeys and security keys are only usable for the specific site you intend to log into, preventing them from being used elsewhere. Think of it as the digital address that binds your credential to a particular service.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 60,
+        "reasons": []
+      },
+      {
+        "id": 12,
+        "cat": "reminders",
+        "elapsed_s": 3.84,
+        "reply": "Use a reminder when you need to be nudged at a specific time or location without needing me to act on your behalf. Opt for desktop control when you want me to execute an action immediately, like opening a file or adjusting settings. Think of it as the difference between setting an alarm and actually pressing the snooze button for you. I'll stick to reminders unless you explicitly ask me to interve",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 75,
+        "reasons": []
+      },
+      {
+        "id": 13,
+        "cat": "tool",
+        "elapsed_s": 3.26,
+        "reply": "I'll execute the `computer_use` action immediately upon your request, handling the scheduling logic directly without needing external tools for this specific command. Just tell me what needs to be done, and I'll get it set up. Consider it handled.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 39,
+        "reasons": []
+      },
+      {
+        "id": 14,
+        "cat": "error",
+        "elapsed_s": 3.08,
+        "reply": "I apologize, boss; I misread the command parameters on the second attempt. I have now successfully launched Notepad for you. Shall I open a new blank file or load your last session?",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 32,
+        "reasons": []
+      },
+      {
+        "id": 15,
+        "cat": "chat",
+        "elapsed_s": 3.34,
+        "reply": "Good morning, boss. The system is running smooth, and I've already pulled the latest metrics for your review. There's a minor latency spike on the secondary server, but it should resolve itself within the hour. What's the priority for today?",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 40,
+        "reasons": []
+      },
+      {
+        "id": 16,
+        "cat": "persona",
+        "elapsed_s": 3.68,
+        "reply": "I see you've curated a digital zoo of forty tabs; I'm sure the browser is running a marathon just to keep up with your curiosity. At this point, I suspect your RAM is more interested in hibernation than processing my queries. Shall we close the ones you haven't touched since breakfast, or do you need me to draft an apology letter to your computer's fan?",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 65,
+        "reasons": []
+      },
+      {
+        "id": 17,
+        "cat": "research",
+        "elapsed_s": 3.32,
+        "reply": "Structured JSON tool calls ensure the model's output is machine-readable and strictly formatted, which prevents parsing errors in your application. This reliability means your code doesn't need to handle unpredictable text variations or regex gymnastics to extract data. It's a solid foundation for building robust automation workflows.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 47,
+        "reasons": []
+      },
+      {
+        "id": 18,
+        "cat": "security",
+        "elapsed_s": 3.76,
+        "reply": "No, another device on your LAN cannot run Friday without a specific pairing or configuration step. Friday is designed to operate as a local service tied to your primary instance, not as a broadcastable app for other phones. If you need that second phone to interact with the system, we would need to set up a dedicated bridge or API endpoint first. Until then, it will only respond to commands from i",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 74,
+        "reasons": []
+      },
+      {
+        "id": 19,
+        "cat": "chat",
+        "elapsed_s": 3.55,
+        "reply": "My humor is dry and situational, reserved for moments when a witty observation fits naturally without forcing a laugh or breaking the flow of work. I'll keep things light if it helps you relax, but I won't make jokes just to fill silence. Think of me as the calm voice that occasionally drops a sarcastic comment about your coffee order.",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 60,
+        "reasons": []
+      },
+      {
+        "id": 20,
+        "cat": "error",
+        "elapsed_s": 4.34,
+        "reply": "It sounds like Ollama isn't starting or connecting as expected. First, check if the Ollama service is actually running by looking for the `ollama` process in your task manager or system monitor; if it's missing, try restarting it via the command line or the official installer. If the process exists but you're getting connection errors, ensure your firewall isn't blocking local traffic on port 1143",
+        "correctness": 1.0,
+        "concision": 1.0,
+        "persona": 1.0,
+        "words": 91,
+        "reasons": []
+      }
+    ]
+  },
+  "recommend_default_change": false
+}

@@ -1,0 +1,72 @@
+{
+ "meta": {
+  "backend": "hybrid",
+  "model": "qwen2.5vl:7b-q4_K_M",
+  "num_ctx": 32768,
+  "max_iterations": 15,
+  "timeout_s": 90,
+  "split": "heldout",
+  "memory": "read",
+  "macros": false,
+  "planner_executor": false,
+  "unattended": true,
+  "reps": 1,
+  "coord_space": "pixel",
+  "started": "2026-10-06T23:42:46",
+  "gpu_baseline_mb": 9172,
+  "finished": "2026-10-06T23:44:09",
+  "aborted_by_estop": true
+ },
+ "runs": [
+  {
+   "task": "notepad_two_lines",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad, type the word alpha, press Enter, type the word beta, and save the file as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_tw36ss_4\\notepad_two_lines_1\\n3.txt",
+   "split": "heldout",
+   "memory": "read",
+   "structured_failure": null,
+   "stalls": [],
+   "outcome": "FAIL",
+   "success": false,
+   "status": "completed",
+   "steps": 10,
+   "actions": [
+    "LAUNCH",
+    "TYPE",
+    "TYPE",
+    "TYPE",
+    "TYPE",
+    "TYPE",
+    "TYPE",
+    "TYPE",
+    "TYPE",
+    "TYPE"
+   ],
+   "wall_s": 60.5,
+   "peak_vram_mb": 9704,
+   "failure_reason": "agent completed but check failed: file missing: n3.txt",
+   "check": "file missing: n3.txt"
+  },
+  {
+   "task": "notepad_edit",
+   "group": "notepad",
+   "rep": 1,
+   "objective": "Open Notepad, type: temp  then select all and delete it, type: final  and save as C:\\Users\\www\\AppData\\Local\\Temp\\friday_bench_tw36ss_4\\notepad_edit_1\\n6.txt",
+   "aborted": true,
+   "split": "heldout",
+   "memory": "read",
+   "structured_failure": null,
+   "stalls": [],
+   "outcome": "FAIL",
+   "success": false,
+   "status": "estop",
+   "steps": 0,
+   "actions": [],
+   "wall_s": 7.1,
+   "peak_vram_mb": 9535,
+   "failure_reason": "agent estop but check failed: file missing: n6.txt",
+   "check": "file missing: n6.txt"
+  }
+ ]
+}

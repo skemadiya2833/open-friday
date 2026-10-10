@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from friday.atomic import write_text_atomic
 from friday.config import SKILLS_DIR
 from friday.skills.base import Skill, SkillManifest
 
@@ -79,7 +80,7 @@ class SkillRegistry:
         if path.exists():
             raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             raw["enabled"] = enabled
-            path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            write_text_atomic(path, yaml.safe_dump(raw, sort_keys=False))
         return True
 
     def update_manifest(self, skill_id: str, patch: dict[str, Any]) -> SkillManifest | None:
@@ -105,7 +106,7 @@ class SkillRegistry:
                 "priority": m.priority,
                 "enabled": m.enabled,
             })
-            path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            write_text_atomic(path, yaml.safe_dump(raw, sort_keys=False))
         return m
 
 

@@ -2,30 +2,110 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from friday.config import SERVER_HOST, SERVER_PORT, VOICE_ENABLED, ensure_data_dirs, resolve_chat_model
+from friday.config import (
+    API_TOKEN, DATA_DIR, EXTRA_ALLOWED_HOSTS, EXTRA_ALLOWED_ORIGINS, SERVER_HOST, SERVER_PORT,
+    SERVER_TLS_PORT, VOICE_ENABLED, ensure_data_dirs, resolve_chat_model,
+)
 from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
+from friday.server.routes_runs import router as runs_router
+from friday.server.routes_reminders import router as reminders_router
+from friday.server.routes_experience import router as experience_router
+from friday.server.routes_skillmd import router as skillmd_router
+from friday.server.routes_tools import router as tools_router
+from friday.server.routes_auth import router as auth_router
+from friday.server.routes_feedback import router as feedback_router
+from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
 ensure_data_dirs()
 
-app = FastAPI(title="Friday", version="3.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        from friday.diagnostics import enforce
+        from friday.logs import setup_logging
+
+        enforce()                       # clear error + refuse to start on invalid config
+        setup_logging()
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Friday] WARNING: diagnostics unavailable: {exc}")
+    try:
+        from friday.safety.estop import ensure_started
+
+        ensure_started()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Friday] WARNING: emergency stop unavailable: {exc}")
+    # Start MCP servers marked `enabled: true` in config/mcp_servers.yaml (none by default).
+    try:
+        from friday.mcp_client import get_mcp_manager
+
+        get_mcp_manager().start_enabled()
+    except Exception as exc:  # noqa: BLE001 - never block the UI on an MCP problem
+        print(f"[MCP] startup skipped: {exc}")
+    try:
+        from friday.tasks.scheduler import get_scheduler
+
+        get_scheduler()                 # arm saved reminders; late ones are delivered immediately
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Tasks] scheduler startup skipped: {exc}")
+    yield
+    try:
+        from friday.mcp_client import get_mcp_manager
+
+        get_mcp_manager().shutdown()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from friday.tasks.scheduler import get_scheduler
+
+        get_scheduler().shutdown()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from friday.safety.estop import get_estop
+
+        es = get_estop()
+        if es is not None:
+            es.stop()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from friday.safety.physical import get_monitor
+
+        get_monitor().stop()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+app = FastAPI(title="Friday", version="3.1.0", lifespan=lifespan)
+# No CORS: the UI is served same-origin. The guard rejects foreign Host/Origin headers
+# (DNS rebinding / CSRF) and enforces a bearer token for non-loopback binds.
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    RequestGuard,
+    allowed_hosts=default_allowed_hosts(EXTRA_ALLOWED_HOSTS),
+    token=API_TOKEN or None,
+    extra_origins=EXTRA_ALLOWED_ORIGINS,
 )
+app.include_router(tools_router)
+app.include_router(skillmd_router)
+app.include_router(experience_router)
+app.include_router(runs_router)
+app.include_router(reminders_router)
+app.include_router(auth_router)
+app.include_router(feedback_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -46,6 +126,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     skill_override: str | None = None
     voice_mode: bool = False
+    humor: str | None = None  # off | dry | full — optional per-request override
 
 
 class MemoryAddRequest(BaseModel):
@@ -86,24 +167,47 @@ def health() -> dict[str, Any]:
         "chat_model": resolve_chat_model(),
         "embed_model": EMBED_MODEL,
         "voice": VOICE_ENABLED,
+        "tls_port": SERVER_TLS_PORT,
     }
+
+
+@app.get("/api/health/detail")
+def health_detail() -> dict[str, Any]:
+    from friday.diagnostics import health_report
+
+    return health_report()
+
+
+@app.get("/health", response_class=HTMLResponse)
+def health_page() -> str:
+    from friday.diagnostics import HEALTH_HTML
+
+    return HEALTH_HTML
 
 
 @app.post("/api/chat")
 def chat(req: ChatRequest) -> dict[str, Any]:
     from friday.assistant.orchestrator import handle_message
+    from friday.humor import set_humor_override
 
-    return handle_message(
-        req.message,
-        session_id=req.session_id,
-        skill_override=req.skill_override,
-        voice_mode=req.voice_mode,
-    )
+    set_humor_override(req.humor)
+    try:
+        return handle_message(
+            req.message,
+            session_id=req.session_id,
+            skill_override=req.skill_override,
+            voice_mode=req.voice_mode,
+        )
+    finally:
+        set_humor_override(None)
 
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     from friday.assistant.orchestrator import stream_message
+    from friday.humor import set_humor_override
+
+    set_humor_override(req.humor)
 
     def _safe(obj: Any) -> Any:
         if obj is None or isinstance(obj, (bool, int, float, str)):
@@ -121,13 +225,16 @@ async def chat_stream(req: ChatRequest):
             return str(obj)
 
     def event_gen():
-        for ev in stream_message(
-            req.message,
-            session_id=req.session_id,
-            skill_override=req.skill_override,
-            voice_mode=req.voice_mode,
-        ):
-            yield f"data: {json.dumps(_safe(ev), default=str)}\n\n"
+        try:
+            for ev in stream_message(
+                req.message,
+                session_id=req.session_id,
+                skill_override=req.skill_override,
+                voice_mode=req.voice_mode,
+            ):
+                yield f"data: {json.dumps(_safe(ev), default=str)}\n\n"
+        finally:
+            set_humor_override(None)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -204,11 +311,20 @@ def memory_add(body: MemoryAddRequest) -> dict[str, Any]:
 
 @app.delete("/api/memory/{doc_id}")
 def memory_delete(doc_id: str, collection: str = "memories") -> dict[str, Any]:
-    from friday.memory import get_memory
-    ok = get_memory().delete(doc_id, collection=collection)
+    from friday.memory.forget import forget_entry
+
+    ok = forget_entry(collection, doc_id)
     if not ok:
         raise HTTPException(404, "Not found")
     return {"deleted": True}
+
+
+@app.post("/api/memory/forget-all")
+def memory_forget_all() -> dict[str, Any]:
+    from friday.memory.forget import forget_all
+
+    counts = forget_all()
+    return {"ok": True, "cleared": counts}
 
 
 @app.get("/api/memory/stats")
@@ -293,21 +409,24 @@ def plan_delete(item_id: str) -> dict[str, Any]:
 @app.post("/api/agent/cancel")
 def agent_cancel() -> dict[str, Any]:
     """Hard-stop the active computer-use / agent loop (and abort Ollama streams)."""
-    from friday.agent.control import cancel_active_agent
+    from friday.agent.control import cancel_all_agents
+    from friday.agent.runs import get_run_manager
 
-    stopped = cancel_active_agent()
-    return {"cancelled": stopped, "message": "halt requested" if stopped else "no agent running"}
+    n = cancel_all_agents("api") + 0
+    get_run_manager().cancel_all("api")
+    return {"cancelled": n > 0, "message": "halt requested" if n else "no agent running"}
 
 
 @app.get("/api/agent/status")
 def agent_status() -> dict[str, Any]:
-    from friday.agent.control import get_controller
+    from friday.agent.control import live_controllers
 
-    ctrl = get_controller()
+    ctrls = live_controllers()
     return {
-        "running": ctrl is not None,
-        "cancel_requested": bool(ctrl and ctrl.should_stop()),
-        "paused": bool(ctrl and ctrl.is_paused),
+        "running": bool(ctrls),
+        "runs": len(ctrls),
+        "cancel_requested": any(c.should_stop() for c in ctrls),
+        "paused": any(c.is_paused for c in ctrls),
     }
 
 
@@ -317,10 +436,15 @@ async def voice_transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(400, "Voice disabled")
     from friday.voice.stt import transcribe_bytes
 
-    data = await file.read()
+    max_bytes = 25 * 1024 * 1024            # ~13 min of 16 kHz mono wav; stops disk/RAM exhaustion
+    data = await file.read(max_bytes + 1)
     if not data:
         raise HTTPException(400, "Empty audio upload")
+    if len(data) > max_bytes:
+        raise HTTPException(413, "Audio upload too large (limit 25 MB)")
     suffix = Path(file.filename or "speech.webm").suffix or ".webm"
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,8}", suffix):
+        suffix = ".webm"
     try:
         text = transcribe_bytes(data, suffix=suffix)
     except Exception as exc:
@@ -386,10 +510,78 @@ _mount_frontend(app)
 def run_server(host: str | None = None, port: int | None = None) -> None:
     import uvicorn
 
-    uvicorn.run(
-        "friday.server.app:app",
-        host=host or SERVER_HOST,
-        port=port or SERVER_PORT,
-        reload=False,
-        log_level="info",
-    )
+    from friday.auth.config import get_auth_config
+
+    auth = get_auth_config()
+    bind = host or SERVER_HOST
+    port = port or SERVER_PORT
+    # Until a registrable public host + cert are configured, remote access stays OFF.
+    if auth.bind_loopback_only and not is_loopback(bind):
+        print(
+            f"[Friday] Auth mode={auth.mode}: binding 127.0.0.1 instead of {bind}. "
+            "Set FRIDAY_PUBLIC_HOST (and FRIDAY_AUTH=remote) after DNS+certificate — see docs/PHONE_SETUP.md.",
+            flush=True,
+        )
+        bind = "127.0.0.1"
+    if not is_loopback(bind) and auth.mode != "remote":
+        print(
+            f"[Friday] WARNING: listening on {bind}:{port} without FRIDAY_AUTH=remote. "
+            "Prefer loopback until passkeys + public host are ready.",
+            flush=True,
+        )
+    from friday.server.security import local_ipv4s
+
+    print(f"[Friday] Local  → http://127.0.0.1:{port}/")
+    print(f"[Friday] Auth   → mode={auth.mode} rp_id={auth.rp_id} origin={auth.origin}", flush=True)
+    if auth.mode == "remote" and auth.public_host:
+        print(f"[Friday] Phone  → https://{auth.public_host}/  (passkey required)", flush=True)
+    else:
+        print("[Friday] Phone  → disabled until FRIDAY_PUBLIC_HOST is set (docs/PHONE_SETUP.md)", flush=True)
+    tls_port = SERVER_TLS_PORT
+    if not is_loopback(bind) and auth.mode == "remote":
+        from friday.server.lan import ensure_inbound
+
+        ensure_inbound(port)
+        try:
+            from friday.server.tls import ensure_lan_cert
+
+            # Prefer owner-supplied cert paths when present; else self-signed for the public host name.
+            crt, key = ensure_lan_cert(DATA_DIR, ["127.0.0.1", auth.public_host, *local_ipv4s()])
+            ensure_inbound(tls_port)
+
+            def _https() -> None:
+                uvicorn.run(
+                    app,
+                    host=bind,
+                    port=tls_port,
+                    reload=False,
+                    log_level="warning",
+                    timeout_graceful_shutdown=1,
+                    lifespan="off",
+                    ssl_certfile=str(crt),
+                    ssl_keyfile=str(key),
+                )
+
+            import threading
+
+            threading.Thread(target=_https, name="FridayHTTPS", daemon=True).start()
+            print(f"[Friday] TLS    → https://{auth.public_host}:{tls_port}/ (or install a real cert)", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Friday] HTTPS unavailable: {exc}", flush=True)
+    print("[Friday] Stop   → Ctrl+C", flush=True)
+    from friday.shutdown import install_ctrl_c
+
+    install_ctrl_c()
+    try:
+        uvicorn.run(
+            "friday.server.app:app",
+            host=bind,
+            port=port,
+            reload=False,
+            log_level="info",
+            timeout_graceful_shutdown=1,
+        )
+    except KeyboardInterrupt:
+        from friday.shutdown import request_stop
+
+        request_stop(0)

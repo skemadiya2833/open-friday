@@ -75,10 +75,10 @@ def _run_cli(task: str | None) -> None:
 
 
 def _run_control_center(*, tray: bool) -> None:
-    from friday.config import SERVER_HOST, SERVER_PORT, ensure_data_dirs
+    from friday.config import SERVER_PORT, ensure_data_dirs, ui_host
 
     ensure_data_dirs()
-    print(f"[Friday] Control Center → http://{SERVER_HOST}:{SERVER_PORT}/")
+    print(f"[Friday] Control Center → http://{ui_host()}:{SERVER_PORT}/")
 
     def _serve() -> None:
         from friday.server.app import run_server

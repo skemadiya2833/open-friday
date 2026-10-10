@@ -33,6 +33,43 @@ class SkillHandler(Skill):
     def run(self, ctx: SkillContext) -> SkillResult:
         msg = ctx.message.strip()
 
+        from friday.tasks import reminders as RM
+
+        pending = False
+        for turn in reversed(ctx.history or []):
+            if turn.get("role") == "assistant":
+                pending = bool(RM.ASKED_WHEN.search(turn.get("content") or ""))
+                break
+
+        # Reminders, timers and recurring jobs: schedule immediately, no approval round-trip, no JSON dump.
+        if RM.is_reminder_request(msg) or pending:
+            text = msg
+            if pending and not RM.is_reminder_request(msg):
+                prev = next((t.get("content") or "" for t in reversed(ctx.history or []) if t.get("role") == "user"), "")
+                text = f"{prev} {msg}".strip()
+            made = RM.schedule_from_text(text)
+            if made:
+                ctx.emit("reminder_set", {"title": made["title"], "when": made["when"], "job_id": made["job"]["id"]})
+                return SkillResult(reply=made["reply"], skill_id="tasks", metadata={"reminder": made["job"]})
+            if RM.is_reminder_request(msg) or pending:
+                return SkillResult(
+                    reply="Sure, boss. When should I remind you? Say something like \"in 20 minutes\", \"tomorrow at 9\" or \"every weekday at 8\".",
+                    skill_id="tasks",
+                )
+        if re.search(r"\b(reminders?|alarms?|scheduled)\b", msg, re.I) and re.search(r"\b(what|which|show|list|any)\b", msg, re.I):
+            import datetime as _dt
+
+            from friday.tasks.scheduler import get_scheduler
+
+            jobs = [j for j in get_scheduler().list_jobs() if j["status"] == "scheduled" and (j.get("cron") or j.get("run_at"))]
+            if not jobs:
+                return SkillResult(reply="Nothing scheduled right now, boss.", skill_id="tasks")
+            lines = []
+            for j in sorted(jobs, key=lambda j: j.get("run_at") or 1e18)[:8]:
+                when = j["cron"] and f"repeats ({j['cron']})" or _dt.datetime.fromtimestamp(j["run_at"]).strftime("%a %H:%M")
+                lines.append(f"• {j['title']} — {when}")
+            return SkillResult(reply="Here's what's coming up:\n" + "\n".join(lines), skill_id="tasks")
+
         # Fast path: today's agenda without a full ReAct loop.
         if _LIST_TODAY.search(msg) and not _ADD_TODAY.search(msg):
             from friday.tasks.plan import format_for_prompt, get_plan
@@ -70,6 +107,7 @@ class SkillHandler(Skill):
             result = call_tool("plan_done", {"text": msg})
             return SkillResult(reply=result, skill_id="tasks")
 
+        # Never dump tool JSON at the owner. Timed work is handled above; leftover agenda goes through tools internally.
         from friday.tools.react import run_react
 
         reply, meta = run_react(

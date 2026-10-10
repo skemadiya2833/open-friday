@@ -35,7 +35,7 @@ OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
 MODEL_NAME = os.getenv(
     "MODEL",
-    os.getenv("LOCAL_MODEL", "qwen2.5vl:7b-q4_K_M"),
+    os.getenv("LOCAL_MODEL", "qwen3.5:9b"),
 )
 MODEL_KEEP_ALIVE = os.getenv("MODEL_KEEP_ALIVE", "-1")
 # Decision responses are short (~300 tokens); a low cap stops runaway rambling.
@@ -177,19 +177,54 @@ WORKSPACE_DIR = os.getenv(
     os.path.join(DATA_DIR, "workspace"),
 )
 CHROMA_DIR = os.path.join(DATA_DIR, "chroma")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_DIR = os.getenv("FRIDAY_CONFIG_DIR", os.path.join(_REPO_ROOT, "config"))
+POLICY_PATH = os.getenv("FRIDAY_POLICY_FILE", os.path.join(CONFIG_DIR, "policy.yaml"))
+MCP_CONFIG_PATH = os.getenv("FRIDAY_MCP_CONFIG", os.path.join(CONFIG_DIR, "mcp_servers.yaml"))
+AUDIT_LOG_PATH = os.getenv("FRIDAY_AUDIT_LOG", os.path.join(DATA_DIR, "audit", "tool_calls.jsonl"))
+# Seconds a confirm-tier call waits for the owner before it is denied (fail closed).
+APPROVAL_TIMEOUT_SECONDS = float(os.getenv("FRIDAY_APPROVAL_TIMEOUT", "120"))
 CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
+# Loopback by default. LAN bind only after FRIDAY_AUTH=remote + FRIDAY_PUBLIC_HOST (docs/PHONE_SETUP.md).
 SERVER_HOST = os.getenv("FRIDAY_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("FRIDAY_PORT", "8787"))
+SERVER_TLS_PORT = int(os.getenv("FRIDAY_TLS_PORT", str(SERVER_PORT + 1)))
+# Auth: off (tests) | local (PC passkeys, loopback) | remote (public hostname + passkeys).
+FRIDAY_AUTH = os.getenv("FRIDAY_AUTH", "local").strip().lower() or "local"
+FRIDAY_PUBLIC_HOST = os.getenv("FRIDAY_PUBLIC_HOST", "").strip()
+
+
+
+def ui_host(bind: str | None = None) -> str:
+    """Host a browser can open. ``0.0.0.0`` / ``::`` mean listen-on-all, not a URL."""
+    h = (SERVER_HOST if bind is None else bind).strip()
+    if h in ("0.0.0.0", "::", "", "*"):
+        return "127.0.0.1"
+    return h
+
+
+# Required (and enforced at startup) when FRIDAY_HOST is not a loopback address.
+API_TOKEN = os.getenv("FRIDAY_API_TOKEN", "").strip()
+# Extra Host header names accepted by the request guard (e.g. a LAN name behind a TLS proxy).
+# Exact extra browser origins, comma separated. Dev only: set to the Vite dev server,
+# e.g. FRIDAY_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+EXTRA_ALLOWED_ORIGINS = [o for o in os.getenv("FRIDAY_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+EXTRA_ALLOWED_HOSTS = [h for h in os.getenv("FRIDAY_ALLOWED_HOSTS", "").split(",") if h.strip()]
 SKILLS_DIR = os.getenv(
     "FRIDAY_SKILLS_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "builtin"),
 )
 MAX_TOOL_STEPS = int(os.getenv("MAX_TOOL_STEPS", "8"))
-VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "base")
+VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "large-v3-turbo")   # provisional; accuracy on owner's voice UNVERIFIED
 VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "en-IE-EmilyNeural")
 VOICE_ENABLED = _env_bool("VOICE_ENABLED", "true")
 SHELL_TOOLS_ENABLED = _env_bool("SHELL_TOOLS_ENABLED", "false")
+
+# Persona / humor / deep mode (see docs/PERSONA.md)
+FRIDAY_OWNER_NAME = os.getenv("FRIDAY_OWNER_NAME", "boss").strip() or "boss"
+FRIDAY_HUMOR = (os.getenv("FRIDAY_HUMOR", "dry") or "dry").strip().lower()
+FRIDAY_DEEP = _env_bool("FRIDAY_DEEP", "false")
 
 # Back-compat aliases
 LOCAL_MODEL_NAME = MODEL_NAME

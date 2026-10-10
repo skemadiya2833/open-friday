@@ -1,0 +1,142 @@
+{
+  "ollama_version": "0.30.10",
+  "mtp_note": "MTP speculative decoding docs target Ollama >=0.32 / MLX; this host is older \u2014 not enabled.",
+  "flash_attn_kv": {
+    "OLLAMA_FLASH_ATTENTION": null,
+    "OLLAMA_KV_CACHE_TYPE": null,
+    "note": "Must be set on the Ollama service, not only this script. Untouched here (no persistent system change)."
+  },
+  "rows": [
+    {
+      "model": "qwen3.5:4b",
+      "vram_idle_mb": 636,
+      "greet": {
+        "s": 7.442,
+        "chars": 0,
+        "json_ok": false,
+        "sample": ""
+      },
+      "load_and_greet_s": 7.442,
+      "vram_after_mb": 4498,
+      "tool_schema": {
+        "s": 2.942,
+        "chars": 245,
+        "json_ok": true,
+        "sample": "{\n  \"status\": \"error\",\n  \"message\": \"The 'schedule_task' tool is not available in this environment.\",\n  \"suggestion\": \"Please use the 'web_search' tool to find information about stretching exercises, or manually set a reminder on your devic"
+      },
+      "plan_schema": {
+        "s": 2.741,
+        "chars": 85,
+        "json_ok": true,
+        "sample": "{\n  \"action\": \"HOTKEY\",\n  \"parameters\": {\n    \"key\": \"Windows\",\n    \"key2\": \"R\"\n  }\n}"
+      },
+      "wall_s": 13.165
+    },
+    {
+      "model": "qwen3.5:9b",
+      "vram_idle_mb": 621,
+      "greet": {
+        "s": 9.338,
+        "chars": 0,
+        "json_ok": false,
+        "sample": ""
+      },
+      "load_and_greet_s": 9.338,
+      "vram_after_mb": 7092,
+      "tool_schema": {
+        "s": 2.93,
+        "chars": 98,
+        "json_ok": true,
+        "sample": "{\n  \"tool\": \"schedule_task\",\n  \"parameters\": {\n    \"task\": \"stretch\",\n    \"delay_minutes\": 5\n  }\n}"
+      },
+      "plan_schema": {
+        "s": 2.851,
+        "chars": 68,
+        "json_ok": true,
+        "sample": "{\n  \"action\": \"HOTKEY\",\n  \"params\": {\n    \"keys\": [\"win\", \"r\"]\n  }\n}"
+      },
+      "wall_s": 15.153
+    },
+    {
+      "model": "qwen3-vl:8b-instruct",
+      "vram_idle_mb": 621,
+      "greet": {
+        "s": 13.824,
+        "chars": 0,
+        "json_ok": false,
+        "sample": ""
+      },
+      "load_and_greet_s": 13.824,
+      "vram_after_mb": 7412,
+      "tool_schema": {
+        "s": 2.767,
+        "chars": 105,
+        "json_ok": true,
+        "sample": "{\n  \"tool\": \"schedule_task\",\n  \"args\": {\n    \"task\": \"remind me to stretch\",\n    \"delay_minutes\": 5\n  }\n}"
+      },
+      "plan_schema": {
+        "s": 2.538,
+        "chars": 56,
+        "json_ok": true,
+        "sample": "{\n  \"action\": \"HOTKEY\",\n  \"key_combination\": \"win + r\"\n}"
+      },
+      "wall_s": 19.17
+    },
+    {
+      "model": "qwen2.5vl:7b-q4_K_M",
+      "vram_idle_mb": 623,
+      "greet": {
+        "s": 8.585,
+        "chars": 0,
+        "json_ok": false,
+        "sample": ""
+      },
+      "load_and_greet_s": 8.585,
+      "vram_after_mb": 7108,
+      "tool_schema": {
+        "s": 2.613,
+        "chars": 87,
+        "json_ok": true,
+        "sample": "{\n  \"tool\": \"schedule_task\",\n  \"args\": {\n    \"task\": \"stretch\",\n    \"time\": \"+5m\"\n  }\n}"
+      },
+      "plan_schema": {
+        "s": 2.461,
+        "chars": 43,
+        "json_ok": true,
+        "sample": "{\n  \"action\": \"TYPE\",\n  \"text\": \"notepad\"\n}"
+      },
+      "wall_s": 13.705
+    }
+  ],
+  "co_residency": [
+    {
+      "pair": "4b+9b",
+      "vram_start": 623,
+      "vram_after_4b": 4494,
+      "vram_after_9b": 10965,
+      "note": "Ollama may evict; values are observational."
+    },
+    {
+      "pair": "9b+3-vl",
+      "vram_start": 4494,
+      "vram_after_9b": 10969,
+      "vram_after_vl": 15962
+    }
+  ],
+  "windows_mcp_preview": {
+    "build_query": "\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\n    CurrentBuild    REG_SZ    26300\n\n",
+    "note": "Windows 11 on-device MCP registry / Agent Workspace are preview features. This run does not enable them. If Agent Workspace isolates input, it could reduce hands-off-keyboard risk during benches \u2014 UNVERIFIED on this PC."
+  },
+  "coder": {
+    "vram_before": 15962,
+    "vram_after": 14854,
+    "result": {
+      "s": 27.034,
+      "chars": 0,
+      "json_ok": false,
+      "sample": ""
+    },
+    "s": 27.067
+  },
+  "recommendation": "Keep default qwen3.5:9b unified. Optional FRIDAY_MODEL_ROLES=true can route greetings to 4b after reviewing rows. Do not co-reside 30b coder. MTP not available on Ollama 0.30.10."
+}

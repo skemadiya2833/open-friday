@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from friday.config import MAX_TOOL_STEPS
 from friday.models.manager import get_model_manager
-from friday.tools.registry import call_tool, tools_prompt_block
+from friday.tools.registry import call_tool_result, tools_prompt_block
 
 _TOOL_RE = re.compile(
     r"```(?:json)?\s*(\{.*?\})\s*```|(\{[^{}]*\"tool\"\s*:\s*\"[^\"]+\"[^{}]*\})",
@@ -54,15 +54,21 @@ def run_react(
     transcript: list[str] = []
     tool_trace: list[dict[str, Any]] = []
 
+    from friday.agent.behavior import with_plan_if_needed
+    from friday.persona import system_prompt
+
+    overlay = with_plan_if_needed(system_overlay or system_prompt("agent"), message)
+
     hist = ""
     for turn in (history or [])[-6:]:
         hist += f"{turn.get('role','user').upper()}: {turn.get('content','')}\n"
 
     observations = ""
     final_reply = ""
+    seen_calls: set[tuple[str, str]] = set()
 
     for step in range(steps):
-        prompt = f"""{system_overlay}
+        prompt = f"""{overlay}
 
 You are Friday's tool-using skill. You may call ONE tool per step OR give a final answer.
 
@@ -82,7 +88,16 @@ USER: {message}
 {observations}
 Step {step + 1}/{steps}. Decide.
 """
-        result = query_model_text(prompt, format_json=False, reasoning_mode=False)
+        from friday.models.roles import TOOL_CALL_SCHEMA
+
+        # Structured outputs: prefer a tool JSON object; plain FINAL: replies still work if the
+        # model ignores the schema (Ollama may return {} — we fall through to text parsing).
+        result = query_model_text(
+            prompt,
+            format_json=False,
+            format_schema=TOOL_CALL_SCHEMA,
+            reasoning_mode=False,
+        )
         text = (result.get("message") or result.get("raw") or "").strip()
         transcript.append(text)
         emit("thinking_token", {"token": text[:400]})
@@ -98,11 +113,26 @@ Step {step + 1}/{steps}. Decide.
             # Also accept flat args
             if not args:
                 args = {k: v for k, v in call.items() if k != "tool"}
+            sig = (name, json.dumps(args, sort_keys=True, default=str)[:800])
+            if sig in seen_calls:
+                observations += (
+                    "\nYou already ran that exact tool. Do not call it again. "
+                    "Output FINAL: with the answer from the observations above.\n"
+                )
+                continue
+            seen_calls.add(sig)
             emit("tool_call", {"tool": name, "args": args})
-            out = call_tool(name, args)
+            # Model output (possibly shaped by untrusted screen/web text) goes through
+            # policy + approval + audit; it is never executed directly.
+            out = call_tool_result(name, args, caller="react").text()
             emit("tool_result", {"tool": name, "result": out[:1000]})
             tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
             observations += f"\nObservation from {name}:\n{out}\n"
+            if name == "web_search":
+                observations += (
+                    "\nYou have the search results. Output FINAL: as a briefing for the user. "
+                    "Do not search again.\n"
+                )
             continue
 
         # No tool call — treat entire response as final
@@ -111,11 +141,26 @@ Step {step + 1}/{steps}. Decide.
 
     if not final_reply:
         if tool_trace:
-            final_reply = (
-                "I ran tools but could not form a final answer. Last observation:\n"
-                + tool_trace[-1].get("result", "")[:800]
-            )
+            last = tool_trace[-1]
+            final_reply = last.get("result") or "Done."
+            if last.get("tool") == "schedule_task" and not last.get("result", "").startswith("{"):
+                final_reply = "Scheduled, boss. I'll remind you when it's due."
         else:
             final_reply = "I could not complete that request."
+
+    # Never show raw tool JSON to the owner.
+    if re.search(r'"tool"\s*:' , final_reply) or final_reply.strip().startswith("```"):
+        if tool_trace:
+            final_reply = tool_trace[-1].get("result") or "Done, boss."
+        else:
+            call = _extract_tool_call(final_reply)
+            if call:
+                name = str(call.get("tool"))
+                args = call.get("args") if isinstance(call.get("args"), dict) else {k: v for k, v in call.items() if k != "tool"}
+                out = call_tool_result(name, args, caller="react").text()
+                tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
+                final_reply = out
+            else:
+                final_reply = "Done, boss."
 
     return final_reply, {"tools": tool_trace, "steps": len(transcript)}

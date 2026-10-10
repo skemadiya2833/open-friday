@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#05070c" />
   <title>F.R.I.D.A.Y. — HUD</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=6" />
 </head>
 <body>
   <div class="hud-bg" aria-hidden="true">
@@ -41,10 +42,33 @@
       <span id="dateReadout">—</span>
     </div>
     <div class="topbar-right">
+      <button type="button" class="bell" id="btnBell" title="Reminders and notifications">&#128276;<span class="bell-count hidden" id="bellCount"></span></button>
       <span class="telemetry" id="uplinkStatus">UPLINK · SECURE</span>
       <span class="pill" id="modelPill">local</span>
     </div>
   </header>
+
+  <div class="rem-panel hidden" id="remPanel">
+    <div class="rem-panel-head"><strong>Reminders</strong><button class="ghost" id="btnRemAllSeen" type="button">Mark all seen</button></div>
+    <div id="remList"></div>
+  </div>
+  <div class="rem-popup" id="remPopup" aria-live="assertive"></div>
+
+  <div class="live hidden" id="liveOverlay" role="dialog" aria-label="Voice mode" data-state="listening">
+    <button class="live-close" id="liveClose" type="button">&times; End voice</button>
+    <div class="live-pace" role="group" aria-label="Voice pacing">
+      <button type="button" data-voice-style="realtime">Realtime</button>
+      <button type="button" data-voice-style="relaxed">Relaxed</button>
+      <span class="live-speed">Speed <strong data-voice-speed-label></strong>
+        <input type="range" min="0.85" max="1.6" step="0.05" data-voice-speed /></span>
+    </div>
+    <div class="live-state" id="liveState">LISTENING</div>
+    <canvas id="liveOrb" title="Click to interrupt"></canvas>
+    <div class="live-caps">
+      <div class="cap cap-user" id="capUser"></div>
+      <div class="cap cap-friday faded" id="capFriday"></div>
+    </div>
+  </div>
 
   <div class="shell">
     <aside class="rail panel-frame">
@@ -68,19 +92,22 @@
         <button class="nav-btn" data-view="memory"><span class="nav-code">02</span><span class="nav-text">Memory</span></button>
         <button class="nav-btn" data-view="skills"><span class="nav-code">03</span><span class="nav-text">Skills</span></button>
         <button class="nav-btn" data-view="tasks"><span class="nav-code">04</span><span class="nav-text">Tasks</span></button>
-        <button class="nav-btn" data-view="settings"><span class="nav-code">05</span><span class="nav-text">Systems</span></button>
+        <button class="nav-btn" data-view="tools"><span class="nav-code">05</span><span class="nav-text">Tools</span></button>
+        <button class="nav-btn" data-view="devices"><span class="nav-code">06</span><span class="nav-text">Devices</span></button>
+        <button class="nav-btn" data-view="settings"><span class="nav-code">07</span><span class="nav-text">Systems</span></button>
       </nav>
 
       <div class="rail-foot">
         <div class="stat-row"><span>CORE</span><strong id="coreState">STANDBY</strong></div>
         <div class="stat-row"><span>VOICE</span><strong id="voiceState">READY</strong></div>
-        <div class="stat-row"><span>LINK</span><strong>127.0.0.1</strong></div>
+        <div class="stat-row"><span>LINK</span><strong id="linkHost">local</strong></div>
       </div>
     </aside>
 
     <main class="stage panel-frame">
       <!-- CHAT -->
       <section class="view active" id="view-chat">
+        <div class="https-banner hidden" id="httpsBanner"></div>
         <header class="top">
           <div>
             <p class="eyebrow">CHANNEL · PRIMARY</p>
@@ -92,6 +119,7 @@
               <input type="checkbox" id="speakToggle" />
               <span>Audio Out</span>
             </label>
+            <button class="ghost" id="btnClearChat" type="button" title="Delete the messages in this conversation">Clear chat</button>
             <button class="ghost" id="btnNewChat">New Link</button>
             <select id="skillOverride">
               <option value="">Auto skill</option>
@@ -112,6 +140,7 @@
             <div class="listening-line hidden" id="listeningLine" aria-live="polite"></div>
             <textarea id="input" rows="1" placeholder="Address Friday… or engage voice mode"></textarea>
           </div>
+          <button type="button" class="ghost" id="btnClearChat2" title="Clear this conversation">Clear</button>
           <button type="submit" class="send">Transmit</button>
         </form>
       </section>
@@ -125,8 +154,11 @@
           </div>
           <div class="top-actions">
             <span class="muted" id="memStats"></span>
+            <button class="ghost danger" id="btnForgetAll" type="button" title="Delete everything Friday remembers">Forget all</button>
           </div>
         </header>
+        <p class="lede">Everything Friday knows: facts it learned from you automatically, notes you added, desktop-task history, agent experience, your plan and reminders.</p>
+        <div class="chips" id="memFilters"></div>
         <div class="toolbar">
           <input id="memSearch" placeholder="Query memory lattice…" />
           <button class="ghost" id="btnMemSearch">Scan</button>
@@ -182,6 +214,53 @@
         <div class="cards" id="taskList"></div>
       </section>
 
+      <!-- TOOLS & MCP -->
+      <section class="view" id="view-tools">
+        <header class="top">
+          <div>
+            <p class="eyebrow">CONTROL CENTER</p>
+            <h1>Tools &amp; MCP</h1>
+          </div>
+          <div class="top-actions">
+            <button type="button" id="mcpReload">Reload config</button>
+            <button type="button" id="mcpKill" class="danger">KILL SWITCH</button>
+          </div>
+        </header>
+        <p class="lede" id="toolsPolicyLine"></p>
+        <div class="plan-head"><h2>MCP servers</h2></div>
+        <div class="cards" id="mcpServers"></div>
+        <div class="plan-head"><h2>Registered tools</h2><span class="muted" id="toolsCount"></span></div>
+        <div class="cards" id="toolList"></div>
+        <div class="plan-head"><h2>Audit log</h2><span class="muted" id="auditChain"></span></div>
+        <div class="cards" id="auditList"></div>
+      </section>
+
+      <!-- DEVICES / PASSKEYS -->
+      <section class="view" id="view-devices">
+        <header class="top">
+          <div>
+            <p class="eyebrow">ACCESS CONTROL</p>
+            <h1>Devices</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost" type="button" id="btnAuthLogin">Sign in</button>
+            <button class="ghost" type="button" id="btnAuthBootstrap">Register this PC</button>
+            <button class="ghost" type="button" id="btnAuthRefresh">Refresh</button>
+          </div>
+        </header>
+        <p class="lede" id="authStatusLine">Passkeys: local mode until a public hostname is configured. See docs/PHONE_SETUP.md.</p>
+        <div class="plan-head"><h2>Pending pairing</h2></div>
+        <div class="cards" id="pairPending"></div>
+        <div class="plan-head"><h2>Registered devices</h2></div>
+        <div class="cards" id="deviceList"></div>
+        <div class="card-form" style="margin-top:12px">
+          <p class="muted">Phone: open the site after DNS+TLS, tap Request access, then enter the matching code here (physical key required).</p>
+          <input id="pairPendingId" placeholder="Pending request id" />
+          <input id="pairCode" placeholder="6-digit code" maxlength="6" />
+          <button type="button" id="btnPairApprove">Approve pairing</button>
+        </div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="view" id="view-settings">
         <header class="top">
@@ -195,6 +274,22 @@
     </main>
   </div>
 
-  <script src="/app.js"></script>
+  <div id="approvalOverlay" class="approval-overlay" hidden>
+    <div class="approval-box" role="alertdialog" aria-labelledby="approvalTitle">
+      <p class="eyebrow">APPROVAL REQUIRED</p>
+      <h2 id="approvalTitle"></h2>
+      <p class="muted" id="approvalMeta"></p>
+      <pre id="approvalArgs"></pre>
+      <div class="approval-actions">
+        <button type="button" id="approvalDeny" class="danger">Deny</button>
+        <button type="button" id="approvalAllow">Allow once</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/live.js?v=6"></script>
+  <script src="/app.js?v=9"></script>
+  <script src="/tools.js?v=3"></script>
+  <script src="/auth.js?v=1"></script>
 </body>
 </html>

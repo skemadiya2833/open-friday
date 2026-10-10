@@ -1,19 +1,2 @@
-mss
-pillow
-httpx
-pyautogui
-pyperclip
-python-dotenv
-google-generativeai
-numpy
-fastapi
-uvicorn[standard]
-pydantic
-pyyaml
-chromadb
-apscheduler
-pystray
-faster-whisper
-pyttsx3
-edge-tts
-python-multipart
+﻿# Convenience entry point. The pinned, tested set lives in requirements/ (see README, Install).
+-r requirements/core.lock.txt

@@ -1,0 +1,162 @@
+{
+  "generated_at": "2026-10-10T15:25:23",
+  "base": "http://127.0.0.1:8799",
+  "cases": [
+    {
+      "name": "unauth_GET_tools",
+      "method": "GET",
+      "url": "http://127.0.0.1:8799/api/tools",
+      "request_headers": {
+        "Host": "127.0.0.1:8799",
+        "Origin": "http://127.0.0.1:8799"
+      },
+      "response": {
+        "ok": false,
+        "status": 401,
+        "body": "{\"detail\":\"authentication required\"}",
+        "reason": "Unauthorized"
+      },
+      "pass": true
+    },
+    {
+      "name": "unauth_POST_chat",
+      "method": "POST",
+      "url": "http://127.0.0.1:8799/api/chat",
+      "request_headers": {
+        "Host": "127.0.0.1:8799",
+        "Origin": "http://127.0.0.1:8799",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "ok": false,
+        "status": 401,
+        "body": "{\"detail\":\"authentication required\"}",
+        "reason": "Unauthorized"
+      },
+      "pass": true
+    },
+    {
+      "name": "unauth_POST_approval_grant",
+      "method": "POST",
+      "url": "http://127.0.0.1:8799/api/approvals/x/approve",
+      "request_headers": {
+        "Host": "127.0.0.1:8799",
+        "Origin": "http://127.0.0.1:8799",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "ok": false,
+        "status": 401,
+        "body": "{\"detail\":\"authentication required\"}",
+        "reason": "Unauthorized"
+      },
+      "pass": true
+    },
+    {
+      "name": "forged_Origin_pair",
+      "method": "POST",
+      "url": "http://127.0.0.1:8799/api/auth/pair/request",
+      "request_headers": {
+        "Host": "127.0.0.1:8799",
+        "Origin": "http://evil.example",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "ok": false,
+        "status": 403,
+        "body": "{\"detail\":\"cross-origin request blocked\"}",
+        "reason": "Forbidden"
+      },
+      "pass": true
+    },
+    {
+      "name": "forged_Host_tools",
+      "method": "GET",
+      "url": "http://127.0.0.1:8799/api/tools",
+      "request_headers": {
+        "Host": "evil.example",
+        "Origin": "http://evil.example"
+      },
+      "response": {
+        "ok": false,
+        "status": 403,
+        "body": "{\"detail\":\"host not allowed\"}",
+        "reason": "Forbidden"
+      },
+      "pass": true
+    },
+    {
+      "name": "forged_Host_loopback_mismatch",
+      "method": "GET",
+      "url": "http://127.0.0.1:8799/api/health",
+      "request_headers": {
+        "Host": "192.168.1.1"
+      },
+      "response": {
+        "ok": false,
+        "status": 403,
+        "body": "{\"detail\":\"host not allowed\"}",
+        "reason": "Forbidden"
+      },
+      "pass": true
+    },
+    {
+      "name": "unauth_SSE_chat_stream",
+      "method": "POST",
+      "url": "http://127.0.0.1:8799/api/chat/stream",
+      "request_headers": {
+        "Host": "127.0.0.1:8799",
+        "Origin": "http://127.0.0.1:8799",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+      },
+      "response": {
+        "ok": false,
+        "status": 401,
+        "body": "{\"detail\":\"authentication required\"}",
+        "reason": "Unauthorized"
+      },
+      "pass": true
+    },
+    {
+      "name": "unauth_runs_sse",
+      "method": "GET",
+      "url": "http://127.0.0.1:8799/api/runs/fake/events",
+      "request_headers": {
+        "Host": "127.0.0.1:8799",
+        "Origin": "http://127.0.0.1:8799"
+      },
+      "response": {
+        "ok": false,
+        "status": 401,
+        "body": "{\"detail\":\"authentication required\"}",
+        "reason": "Unauthorized"
+      },
+      "pass": true
+    },
+    {
+      "name": "unauth_websocket",
+      "url": "ws://127.0.0.1:8799/ws",
+      "response": {
+        "ok": false,
+        "error": "InvalidStatus: server rejected WebSocket connection: HTTP 403"
+      },
+      "pass": true
+    }
+  ],
+  "summary": {
+    "passed": 9,
+    "failed": 0,
+    "expect_deny": [
+      "forged_Host_loopback_mismatch",
+      "forged_Host_tools",
+      "forged_Origin_pair",
+      "unauth_GET_tools",
+      "unauth_POST_approval_grant",
+      "unauth_POST_chat",
+      "unauth_SSE_chat_stream",
+      "unauth_runs_sse",
+      "unauth_websocket"
+    ]
+  }
+}

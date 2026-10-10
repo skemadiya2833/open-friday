@@ -1,0 +1,98 @@
+{
+ "note": "SYNTHETIC speech (Windows SAPI David). Not a measure of accuracy on the owner's voice.",
+ "clips": [
+  {
+   "id": "c01",
+   "text": "hey jarvis",
+   "max_wake_score": 0.998,
+   "fired": true,
+   "ms_per_80ms_frame": 1.2
+  },
+  {
+   "id": "c02",
+   "text": "open notepad and type hello world",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.24
+  },
+  {
+   "id": "c03",
+   "text": "what is the weather like today",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.23
+  },
+  {
+   "id": "c04",
+   "text": "set a timer for ten minutes",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.24
+  },
+  {
+   "id": "c05",
+   "text": "take a screenshot and tell me what you see",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.25
+  },
+  {
+   "id": "c06",
+   "text": "turn the volume down",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.22
+  },
+  {
+   "id": "c07",
+   "text": "open the calculator and compute twelve times fourteen",
+   "max_wake_score": 0.001,
+   "fired": false,
+   "ms_per_80ms_frame": 1.31
+  },
+  {
+   "id": "c08",
+   "text": "search the web for local speech recognition models",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.33
+  },
+  {
+   "id": "c09",
+   "text": "what is on my schedule tomorrow",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.29
+  },
+  {
+   "id": "c10",
+   "text": "stop",
+   "max_wake_score": 0.0,
+   "fired": false,
+   "ms_per_80ms_frame": 1.27
+  }
+ ],
+ "wake_model": "hey_jarvis",
+ "wake_threshold": 0.5,
+ "noise_max_wake_score": 0.18,
+ "endpointing": {
+  "clips_in": 5,
+  "utterances_out": 5,
+  "utterance_seconds": [
+   3.14,
+   2.4,
+   2.72,
+   3.3,
+   2.24
+  ],
+  "expected_seconds": [
+   2.98,
+   2.21,
+   2.55,
+   3.12,
+   2.09
+  ],
+  "vad_ms_per_32ms_frame": 0.122,
+  "false_utterances_in_noise": 0
+ }
+}

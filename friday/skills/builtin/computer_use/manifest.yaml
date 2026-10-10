@@ -13,8 +13,7 @@ triggers:
   - control my desktop
   - press enter
   - win search
-tools:
-  - start_computer_use
+tools: []   # start_computer_use was a text-only hint that could disagree with the router; removed.
 priority: 80
 requires_vision: true
 enabled: true

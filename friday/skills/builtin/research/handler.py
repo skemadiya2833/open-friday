@@ -11,6 +11,13 @@ class SkillHandler(Skill):
         name="Research",
         description="Web research",
         tools=["web_search", "memory_search"],
+        system_overlay=(
+            "You look things up for the owner. Call web_search ONCE with a precise query. "
+            "The observation is the actual results — titles and snippets. Then output FINAL: "
+            "as a short briefing of what you found (what happened, who, when). "
+            "Never search the same query twice. Never mention tabs or Google. "
+            "If results are empty, say so in FINAL:; do not keep searching."
+        ),
     )
 
     def run(self, ctx: SkillContext) -> SkillResult:

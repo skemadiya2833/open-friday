@@ -1,9 +1,7 @@
 import mss
-import base64
 import ctypes
 import ctypes.wintypes as wt
 import threading
-from io import BytesIO
 from PIL import Image
 from config import PRIMARY_MONITOR_INDEX, PREPROCESS_TARGET_SIZE
 

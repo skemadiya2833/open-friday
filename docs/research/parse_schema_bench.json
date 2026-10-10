@@ -1,0 +1,79 @@
+{
+  "generated_at": "2026-10-10T15:27:17",
+  "before_schema": {
+    "use_schema": false,
+    "n": 5,
+    "parse_ok": 1,
+    "parse_fail_rate": 0.8,
+    "rows": [
+      {
+        "i": 0,
+        "ok": false,
+        "elapsed_s": 7.58,
+        "preview": "{\"message\": \"\", \"observation\": \"\", \"last_action_result\": null, \"completion_evidence\": null, \"needs_knowledge\": false, \"knowledge_query\": null, \"steps\": [{\"actio"
+      },
+      {
+        "i": 1,
+        "ok": true,
+        "elapsed_s": 2.98,
+        "preview": "{\"tool\": \"web_search\", \"args\": {\"query\": \"rust\"}}"
+      },
+      {
+        "i": 2,
+        "ok": false,
+        "elapsed_s": 3.37,
+        "preview": "TYPE at (100, 200)"
+      },
+      {
+        "i": 3,
+        "ok": false,
+        "elapsed_s": 3.41,
+        "preview": "{\"message\": \"\", \"observation\": \"\", \"last_action_result\": null, \"completion_evidence\": \"visible\", \"needs_knowledge\": false, \"knowledge_query\": null, \"steps\": [{\""
+      },
+      {
+        "i": 4,
+        "ok": false,
+        "elapsed_s": 2.86,
+        "preview": "{\"message\": \"\", \"observation\": \"\", \"last_action_result\": null, \"completion_evidence\": null, \"needs_knowledge\": false, \"knowledge_query\": null, \"steps\": [{\"actio"
+      }
+    ]
+  },
+  "after_schema": {
+    "use_schema": true,
+    "n": 5,
+    "parse_ok": 5,
+    "parse_fail_rate": 0.0,
+    "rows": [
+      {
+        "i": 0,
+        "ok": true,
+        "elapsed_s": 3.31,
+        "preview": "{\"action\":\"WAIT\",\"description\":\"pause\"}"
+      },
+      {
+        "i": 1,
+        "ok": true,
+        "elapsed_s": 3.18,
+        "preview": "{\"tool\":\"web_search\",\"args\":{\"query\":\"rust\"}}"
+      },
+      {
+        "i": 2,
+        "ok": true,
+        "elapsed_s": 2.86,
+        "preview": "{\"action\":\"TYPE\",\"text\":\"hello\",\"x\":100,\"y\":200}"
+      },
+      {
+        "i": 3,
+        "ok": true,
+        "elapsed_s": 3.03,
+        "preview": "{\n  \"action\": \"COMPLETE\",\n  \"completion_evidence\": \"Task finished successfully.\"\n}"
+      },
+      {
+        "i": 4,
+        "ok": true,
+        "elapsed_s": 2.72,
+        "preview": "{\"action\":\"HOTKEY\",\"keys\":[\"ctrl\",\"s\"],\"description\":\"save\"}"
+      }
+    ]
+  }
+}

@@ -50,9 +50,6 @@ def _edge_tts(text: str, out: Path) -> bool:
             asyncio.run(_run(voice, raw))
             if not (raw.exists() and raw.stat().st_size > 44):
                 raise RuntimeError("empty audio")
-            # Slightly slower delivery (~10%) via ffmpeg time-stretch.
-            if _slow_audio(raw, out, tempo=0.90):
-                return True
             raw.replace(out)
             return out.exists() and out.stat().st_size > 44
         except Exception as exc:
@@ -64,29 +61,6 @@ def _edge_tts(text: str, out: Path) -> bool:
     if last_err:
         print(f"[TTS] edge-tts exhausted: {last_err}")
     return False
-
-
-def _slow_audio(src: Path, dest: Path, *, tempo: float = 0.90) -> bool:
-    """Time-stretch speech a bit (atempo range 0.5–2.0)."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        return False
-    tempo = max(0.5, min(2.0, float(tempo)))
-    try:
-        subprocess.run(
-            [
-                ffmpeg, "-y", "-loglevel", "error",
-                "-i", str(src),
-                "-filter:a", f"atempo={tempo}",
-                str(dest),
-            ],
-            check=True,
-            timeout=60,
-        )
-        return dest.exists() and dest.stat().st_size > 44
-    except Exception as exc:
-        print(f"[TTS] atempo slowdown failed: {exc}")
-        return False
 
 
 def _piper_tts(text: str, out: Path) -> bool:
@@ -124,7 +98,7 @@ def _pyttsx3_tts(text: str, out: Path) -> bool:
                     break
         except Exception:
             pass
-        engine.setProperty("rate", 155)
+        engine.setProperty("rate", 195)
         engine.save_to_file(text, str(wav.resolve()))
         engine.runAndWait()
         if wav.exists() and wav.stat().st_size > 44:
