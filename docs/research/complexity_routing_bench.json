@@ -1,0 +1,221 @@
+{
+  "mode": "blend_prior_fast_brain_bench",
+  "generated_at": "2026-10-11T22:25:55",
+  "always_9b": {
+    "avg_latency_s": 3.363,
+    "avg_correctness": 1.0,
+    "avg_persona": 1.0
+  },
+  "routed": {
+    "n": 20,
+    "avg_latency_s": 3.134,
+    "avg_correctness": 0.975,
+    "avg_persona": 1.0,
+    "n_fast": 18,
+    "n_main": 2,
+    "rows": [
+      {
+        "id": 1,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 7.52,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "I can handle your emails, organize your files, or draft that report you've been avoiding. Just tell me what needs doing before the coffee gets cold."
+      },
+      {
+        "id": 2,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.77,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "I run entirely on your machine, processing everything through the local models installed on your PC rather than sending anything to the cloud. This means your files, conversations, and personal inform"
+      },
+      {
+        "id": 3,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.69,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "You can call me Friday. I prefer \"boss\" when we're getting things done, though I'll take \"owner\" if you want to sound a bit more formal."
+      },
+      {
+        "id": 4,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.87,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "A passkey is a digital credential combining a public key and a secret key that replaces passwords. It's stored on your device and verified via biometrics or PIN, making it harder to steal. This means "
+      },
+      {
+        "id": 5,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.52,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Got it, boss. I'll set a timer for twenty minutes to remind you to stretch."
+      },
+      {
+        "id": 6,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.81,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "I can read, write, search, and organize files directly from your system. I don't have access to external cloud storage or third-party apps unless you explicitly grant that permission. Just tell me wha"
+      },
+      {
+        "id": 7,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.6,
+        "correctness": 0.5,
+        "persona": 1.0,
+        "reply": "I hear you, boss. The situation sounds critical, so tell me exactly what's broken and what we need to do to fix it immediately."
+      },
+      {
+        "id": 8,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.97,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "I can't just open shells on your system without permission; that would be a security breach and I'd be in trouble with you.\n\nHowever, if you need a new terminal session to work on something specific, "
+      },
+      {
+        "id": 9,
+        "role": "main",
+        "complexity_score": 0.21,
+        "tier": "simple",
+        "elapsed_s": 3.11,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Remote desktops are fragile; a single misconfiguration can expose your entire network. They bypass local firewalls and often lack the same hardening as physical machines. Treat them like high-value ta"
+      },
+      {
+        "id": 10,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.65,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Waiting for the model is like waiting for a snail to finish a marathon; it's technically moving forward, but you're convinced it's stuck in mud."
+      },
+      {
+        "id": 11,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 3.02,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "The WebAuthn RP ID is a unique string identifying the website or application initiating the authentication request, ensuring browsers know exactly which service needs to be verified."
+      },
+      {
+        "id": 12,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 3.02,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Ask for a reminder when you need a gentle nudge to check something later without interrupting your current flow. Use desktop control when you need immediate, hands-on assistance like opening files or "
+      },
+      {
+        "id": 13,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.92,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "I'd check your calendar for open slots, verify the specific software you need, and confirm any required permissions before booking the time. Once that's clear, I'll send out the confirmation with the "
+      },
+      {
+        "id": 14,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.75,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "The file handle is still locked by a background process, boss. I'm retrying with a fresh session now. Let me know if it opens."
+      },
+      {
+        "id": 15,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 2.75,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Hello, boss. Ready to tackle that project or need a quick data dump? Just let me know where your focus is today."
+      },
+      {
+        "id": 16,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 3.03,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Boss, forty tabs is basically a digital fire hazard waiting to happen. I'm pretty sure your browser is just trying to tell you that you're running on fumes and caffeine right now. Time to close a few "
+      },
+      {
+        "id": 17,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 3.0,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "Structured JSON tool calls make it easy for your code to parse responses reliably without guessing at formats. They also let you validate inputs automatically before sending them off, which saves time"
+      },
+      {
+        "id": 18,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 3.05,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "No, another phone can't use Friday without pairing because the service is tied to your specific device ID. The system is designed to prevent unauthorized access, so even if you're on the same network,"
+      },
+      {
+        "id": 19,
+        "role": "main",
+        "complexity_score": 0.21,
+        "tier": "simple",
+        "elapsed_s": 3.55,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "My humor is dry and situational, reserved for moments when a witty observation fits naturally without forcing a laugh or breaking the flow of work. I'll keep things light if it helps you relax, but I "
+      },
+      {
+        "id": 20,
+        "role": "fast",
+        "complexity_score": 0.06,
+        "tier": "trivial",
+        "elapsed_s": 3.07,
+        "correctness": 1.0,
+        "persona": 1.0,
+        "reply": "I've checked the logs; Ollama isn't actually down, just running slower than usual due to a high memory spike. Try restarting the service with `ollama serve` to clear the cache and free up RAM. If it s"
+      }
+    ]
+  },
+  "recommend_enable_by_default": false,
+  "keep_9b_default": true
+}

@@ -58,6 +58,9 @@ class SkillHandler(Skill):
         def _tok(t: str) -> None:
             ctx.emit("skill_token", {"text": t})
 
+        from friday.models.complexity import resolve_routed_chat_model
+
+        model_tag, route_meta = resolve_routed_chat_model(ctx.message)
         use_deep = deep_mode_enabled(ctx.message) and not ctx.voice_mode
         if use_deep:
             result = run_deep_chat(msgs, on_token=_tok)
@@ -70,6 +73,7 @@ class SkillHandler(Skill):
                 num_predict=160 if ctx.voice_mode else CHAT_NUM_PREDICT,
                 num_ctx=CHAT_NUM_CTX,
                 on_token=_tok,
+                model=model_tag,
             )
         if result.get("routing") == "FALLBACK_TO_CLOUD":
             why = str(result.get("reason") or "unknown error")
@@ -91,7 +95,7 @@ class SkillHandler(Skill):
                 is_error=False,
                 is_security=False,
             )
-        meta = {}
+        meta = dict(route_meta)
         if isinstance(result.get("metadata"), dict):
             meta.update(result["metadata"])
         return SkillResult(reply=reply, skill_id="chat", metadata=meta)
