@@ -178,9 +178,13 @@ See [`.env.example`](.env.example). Important keys:
 
 ---
 
+## Credits and references
+
+Third-party projects Friday builds on (code adapted, runtime tools, formats, or design ideas) are listed in [`docs/REFERENCES.md`](docs/REFERENCES.md). Adapted OpenJarvis files also appear in [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
+
 ## Contributing
 
-Friday needs contributors — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Friday needs contributors — see [CONTRIBUTING.md](CONTRIBUTING.md). Before any push: `python scripts/pre_push_secrets_check.py` (includes third-party notice consistency).
 
 Maintainer: **Sunil Kemadiya**, CEO at [Devoids - IT Solutions](https://devoids.in)  
 Contact: [skemadiya@gmail.com](mailto:skemadiya@gmail.com)
