@@ -437,6 +437,29 @@ select:focus, input:focus, textarea:focus {
   box-shadow: 0 0 24px rgba(255,106,43,0.06);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
 }
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: color-mix(in srgb, #0b0d10 82%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-gate.hidden { display: none; }
+.auth-gate-card {
+  max-width: 28rem;
+  width: 100%;
+  background: var(--panel, #141820);
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  border-radius: 12px;
+  padding: 1.25rem 1.4rem;
+  color: var(--text, #e8eaed);
+}
+.auth-gate-card h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+.auth-gate-card .muted { opacity: 0.75; line-height: 1.45; }
+
 .bubble .feedback {
   margin-top: 8px;
   display: flex;

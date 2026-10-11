@@ -54,7 +54,8 @@
     try {
       const st = await (await fetch("/api/auth/status")).json();
       if (line) {
-        line.textContent = `Mode ${st.mode} · RP ${st.rp_id} · ${st.authenticated ? "signed in (" + (st.role || "?") + ")" : "signed out"} · ${st.device_count} device(s). Phone needs FRIDAY_PUBLIC_HOST — see docs/PHONE_SETUP.md.`;
+        const gate = st.passkeys_required ? "passkeys required" : "no login on this PC";
+        line.textContent = `Mode ${st.mode} (${gate}) · RP ${st.rp_id} · ${st.authenticated ? "signed in (" + (st.role || "?") + ")" : "signed out"} · ${st.device_count} device(s). Phone: set FRIDAY_AUTH=remote + FRIDAY_PUBLIC_HOST — docs/PHONE_SETUP.md.`;
       }
       if (st.authenticated && st.role === "admin") {
         await refreshDevices();
@@ -147,6 +148,8 @@
     }
     alert("Registered: " + out.label + " (" + out.role + ")");
     refreshStatus();
+    window.hideAuthGate?.();
+    location.reload();
   }
 
   async function login() {
@@ -169,10 +172,18 @@
       return;
     }
     refreshStatus();
+    window.hideAuthGate?.();
+    location.reload();
   }
 
-  $("#btnAuthBootstrap")?.addEventListener("click", () => bootstrapPc().catch((e) => alert(e.message)));
-  $("#btnAuthLogin")?.addEventListener("click", () => login().catch((e) => alert(e.message)));
+  window.FridayAuth = {
+    bootstrapPc: () => bootstrapPc().catch((e) => alert(e.message)),
+    login: () => login().catch((e) => alert(e.message)),
+    refreshStatus,
+  };
+
+  $("#btnAuthBootstrap")?.addEventListener("click", () => window.FridayAuth.bootstrapPc());
+  $("#btnAuthLogin")?.addEventListener("click", () => window.FridayAuth.login());
   $("#btnAuthRefresh")?.addEventListener("click", () => refreshStatus());
   $("#btnPairApprove")?.addEventListener("click", async () => {
     const pending_id = $("#pairPendingId")?.value?.trim();

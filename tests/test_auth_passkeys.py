@@ -67,13 +67,32 @@ def test_cloned_counter_rejected_by_store_update_logic(auth_env):
     assert int(d["sign_count"]) == 5
 
 
-def test_unauthenticated_api_rejected_when_auth_on(auth_env):
+def test_local_mode_does_not_require_login(auth_env):
     with TestClient(app, base_url="http://127.0.0.1:8787") as c:
         r = c.get("/api/tools", headers={"host": "127.0.0.1:8787"})
-        assert r.status_code == 401
+        assert r.status_code == 200
         r = c.get("/api/auth/status", headers={"host": "127.0.0.1:8787"})
         assert r.status_code == 200
-        assert r.json()["mode"] == "local"
+        body = r.json()
+        assert body["mode"] == "local"
+        assert body["authenticated"] is True
+        assert body["passkeys_required"] is False
+
+
+def test_remote_mode_rejects_unauthenticated(auth_env, monkeypatch):
+    monkeypatch.setenv("FRIDAY_AUTH", "remote")
+    monkeypatch.setenv("FRIDAY_PUBLIC_HOST", "friday.example.com")
+    monkeypatch.setenv("FRIDAY_ORIGIN", "https://friday.example.com")
+    reset_auth_config()
+    with TestClient(app, base_url="https://friday.example.com") as c:
+        r = c.get(
+            "/api/tools",
+            headers={"host": "friday.example.com", "Origin": "https://friday.example.com"},
+        )
+        # 401 = auth required; 403 = host not on the process allow-list (guard built at import).
+        assert r.status_code in (401, 403)
+    monkeypatch.setenv("FRIDAY_AUTH", "local")
+    reset_auth_config()
 
 
 def test_forged_origin_still_blocked(auth_env):

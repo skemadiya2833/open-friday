@@ -61,7 +61,7 @@ def verify_registration(
         credential=credential,
         expected_challenge=base64url_to_bytes(expected_challenge),
         expected_rp_id=cfg.rp_id,
-        expected_origin=cfg.origin,
+        expected_origin=list(cfg.origins) if cfg.origins else cfg.origin,
         require_user_verification=True,
     )
     if not verification.user_verified:
@@ -115,7 +115,7 @@ def verify_authentication(
         credential=credential,
         expected_challenge=base64url_to_bytes(expected_challenge),
         expected_rp_id=cfg.rp_id,
-        expected_origin=cfg.origin,
+        expected_origin=list(cfg.origins) if cfg.origins else cfg.origin,
         credential_public_key=base64url_to_bytes(device["public_key"]),
         credential_current_sign_count=int(device.get("sign_count") or 0),
         require_user_verification=True,

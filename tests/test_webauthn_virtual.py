@@ -308,6 +308,7 @@ def test_wrong_origin_and_rp_id_rejected(auth_server, monkeypatch, tmp_path):
                 rp_id="localhost",
                 rp_name="Friday",
                 origin="http://evil.example",
+                origins=("http://evil.example",),
                 public_host="",
                 bind_loopback_only=True,
                 session_ttl_s=60,

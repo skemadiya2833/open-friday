@@ -299,8 +299,16 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     if history:
         last_a = next((t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
         if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
-            return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
-                          reason="deterministic: reminder follow-up", source="policy")
+            from friday.tasks import reminders as _RM2
+
+            # Mic often re-hears Friday's own ask; only continue if the user gave a time.
+            echo = bool(re.search(
+                r"when should I remind|say something like|sure,? boss",
+                msg, re.I,
+            ))
+            if not echo and (_RM2.parse_when(msg) or _RM2.INTENT.search(msg)):
+                return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
+                              reason="deterministic: reminder follow-up", source="policy")
 
     # Today's agenda phrases → tasks skill without waiting on the classifier.
     if re.search(

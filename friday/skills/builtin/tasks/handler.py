@@ -43,19 +43,38 @@ class SkillHandler(Skill):
 
         # Reminders, timers and recurring jobs: schedule immediately, no approval round-trip, no JSON dump.
         if RM.is_reminder_request(msg) or pending:
+            # Voice echo of our own "when?" prompt must not re-ask forever.
+            if pending and RM.ASKED_WHEN.search(msg):
+                return SkillResult(
+                    reply="Still waiting on a time — for example, in 20 minutes or tomorrow at 9.",
+                    skill_id="tasks",
+                    metadata={"echo_suppressed": True},
+                )
             text = msg
             if pending and not RM.is_reminder_request(msg):
-                prev = next((t.get("content") or "" for t in reversed(ctx.history or []) if t.get("role") == "user"), "")
+                prev = next(
+                    (t.get("content") or "" for t in reversed(ctx.history or [])
+                     if t.get("role") == "user" and not RM.ASKED_WHEN.search(t.get("content") or "")),
+                    "",
+                )
                 text = f"{prev} {msg}".strip()
             made = RM.schedule_from_text(text)
             if made:
                 ctx.emit("reminder_set", {"title": made["title"], "when": made["when"], "job_id": made["job"]["id"]})
                 return SkillResult(reply=made["reply"], skill_id="tasks", metadata={"reminder": made["job"]})
             if RM.is_reminder_request(msg) or pending:
-                return SkillResult(
-                    reply="Sure, boss. When should I remind you? Say something like \"in 20 minutes\", \"tomorrow at 9\" or \"every weekday at 8\".",
-                    skill_id="tasks",
+                # Alternate wording so the next mic echo does not match ASKED_WHEN again.
+                asked_already = any(
+                    RM.ASKED_WHEN.search(t.get("content") or "")
+                    for t in (ctx.history or [])[-4:]
+                    if t.get("role") == "assistant"
                 )
+                reply = (
+                    "Still waiting on a time — for example, in 20 minutes or tomorrow at 9."
+                    if asked_already
+                    else "Sure, boss. When should I remind you? Say something like \"in 20 minutes\", \"tomorrow at 9\" or \"every weekday at 8\"."
+                )
+                return SkillResult(reply=reply, skill_id="tasks")
         if re.search(r"\b(reminders?|alarms?|scheduled)\b", msg, re.I) and re.search(r"\b(what|which|show|list|any)\b", msg, re.I):
             import datetime as _dt
 

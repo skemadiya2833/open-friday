@@ -1,6 +1,11 @@
 """Auth / WebAuthn configuration.
 
-Remote LAN access stays OFF until FRIDAY_PUBLIC_HOST (registrable domain) is set.
+Modes:
+  off    — no auth (tests)
+  local  — this PC only (loopback); no passkey login wall
+  remote — phone / LAN via public hostname; passkeys required
+
+Remote stays OFF until FRIDAY_PUBLIC_HOST (registrable domain) is set.
 RP ID must be that hostname — never an IP and never .local (Chromium rejects both).
 """
 
@@ -20,7 +25,8 @@ class AuthConfig:
     mode: str                       # off | local | remote
     rp_id: str                      # localhost | friday.example.com
     rp_name: str
-    origin: str                     # https://localhost:8788 or https://friday…
+    origin: str                     # primary origin (cookie / docs)
+    origins: tuple[str, ...]        # all accepted WebAuthn origins
     public_host: str                # empty until owner configures DNS+cert
     bind_loopback_only: bool
     session_ttl_s: int
@@ -56,18 +62,25 @@ def get_auth_config() -> AuthConfig:
 
     if mode == "remote" and public and _valid_rp_id(public):
         rp_id = public.lower()
-        origin = _env("FRIDAY_ORIGIN") or f"https://{rp_id}"
+        origin = (_env("FRIDAY_ORIGIN") or f"https://{rp_id}").rstrip("/")
+        origins = (origin,)
         bind_loopback = False
     elif mode == "off":
         rp_id = "localhost"
         origin = f"http://127.0.0.1:{http_port}"
+        origins = (origin, f"http://localhost:{http_port}")
         bind_loopback = True
     else:
-        # local: PC-only passkeys on localhost. Never advertise a LAN IP as RP ID.
+        # local: this PC, loopback bind, no login wall. Passkey ceremony still
+        # available to pre-register devices before switching to remote.
         mode = "local"
         rp_id = "localhost"
-        # Localhost is a secure context over http in Chromium.
-        origin = _env("FRIDAY_ORIGIN") or f"http://localhost:{http_port}"
+        origin = (_env("FRIDAY_ORIGIN") or f"http://localhost:{http_port}").rstrip("/")
+        origins = tuple(dict.fromkeys([
+            origin,
+            f"http://localhost:{http_port}",
+            f"http://127.0.0.1:{http_port}",
+        ]))
         bind_loopback = True
         public = ""
 
@@ -75,7 +88,8 @@ def get_auth_config() -> AuthConfig:
         mode=mode,
         rp_id=rp_id,
         rp_name=_env("FRIDAY_RP_NAME", "Friday"),
-        origin=origin.rstrip("/"),
+        origin=origin,
+        origins=origins,
         public_host=public.lower(),
         bind_loopback_only=bind_loopback,
         session_ttl_s=int(_env("FRIDAY_SESSION_TTL", "86400") or "86400"),

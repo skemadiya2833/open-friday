@@ -67,8 +67,8 @@ def validate_config(env: dict[str, str] | None = None) -> list[Issue]:
     public = e.get("FRIDAY_PUBLIC_HOST", "").strip()
     if auth_mode == "off":
         out.append(Issue("warn", "FRIDAY_AUTH",
-                         "authentication is disabled (FRIDAY_AUTH=off). Safe only for local tests; "
-                         "default is local (passkeys on loopback)."))
+                         "authentication is fully off (FRIDAY_AUTH=off). Prefer local (PC, no login) "
+                         "or remote (passkeys + hostname)."))
     if auth_mode == "remote" and not public:
         out.append(Issue("error", "FRIDAY_PUBLIC_HOST",
                          "FRIDAY_AUTH=remote requires a registrable hostname (not an IP). See docs/PHONE_SETUP.md."))

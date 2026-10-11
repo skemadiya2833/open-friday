@@ -46,8 +46,9 @@ def _session_from_request(request: Request) -> dict[str, Any] | None:
 
 def require_session(request: Request, *, min_role: Role = Role.CHAT) -> dict[str, Any]:
     cfg = get_auth_config()
-    if cfg.mode == "off":
-        return {"id": "dev", "device_id": "dev", "role": Role.ADMIN.value}
+    # local / off: owner is on the PC — no passkey wall.
+    if cfg.mode in ("off", "local"):
+        return {"id": "local", "device_id": "local", "role": Role.ADMIN.value}
     sess = _session_from_request(request)
     if not sess:
         raise HTTPException(401, "authentication required")
@@ -58,7 +59,7 @@ def require_session(request: Request, *, min_role: Role = Role.CHAT) -> dict[str
 
 def require_stepup(request: Request) -> dict[str, Any]:
     sess = require_session(request, min_role=Role.ADMIN)
-    if get_auth_config().mode == "off":
+    if get_auth_config().mode in ("off", "local"):
         return sess
     if not get_store().stepup_ok(sess["id"]):
         raise HTTPException(403, "step-up passkey verification required")
@@ -100,9 +101,10 @@ def auth_status(request: Request) -> dict[str, Any]:
         "origin": cfg.origin,
         "public_host": cfg.public_host,
         "bind_loopback_only": cfg.bind_loopback_only,
-        "authenticated": bool(sess) or cfg.mode == "off",
-        "role": (sess or {}).get("role") if sess else ("admin" if cfg.mode == "off" else None),
+        "authenticated": bool(sess) or cfg.mode in ("off", "local"),
+        "role": (sess or {}).get("role") if sess else ("admin" if cfg.mode in ("off", "local") else None),
         "device_count": len(get_store().list_devices()),
+        "passkeys_required": cfg.mode == "remote",
     }
 
 

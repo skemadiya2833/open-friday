@@ -95,7 +95,7 @@ def test_approval_roundtrip_over_http(client):
 
 
 def test_token_is_script_fallback_for_api(monkeypatch):
-    """FRIDAY_API_TOKEN is optional for scripts; UI static stays public; API needs session or token when auth on."""
+    """When FRIDAY_API_TOKEN is set, local mode still accepts bearer for scripts."""
     from friday.auth.config import reset_auth_config
     from friday.server.security import RequestGuard, default_allowed_hosts
 
@@ -109,9 +109,30 @@ def test_token_is_script_fallback_for_api(monkeypatch):
     c = TestClient(RequestGuard(inner, allowed_hosts=default_allowed_hosts(), token="s3cret"),
                    base_url="http://127.0.0.1:1")
     assert c.get("/").status_code == 200  # static public
+    # local + token configured: must send bearer (or a session)
     assert c.get("/api/tools").status_code == 401
     assert c.get("/api/tools", headers={"Authorization": "Bearer wrong"}).status_code == 401
     assert c.get("/api/tools", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+    monkeypatch.setenv("FRIDAY_AUTH", "off")
+    reset_auth_config()
+
+
+def test_remote_requires_session_without_token(monkeypatch):
+    from friday.auth.config import reset_auth_config
+    from friday.server.security import RequestGuard, default_allowed_hosts
+
+    monkeypatch.setenv("FRIDAY_AUTH", "remote")
+    monkeypatch.setenv("FRIDAY_PUBLIC_HOST", "friday.example.com")
+    reset_auth_config()
+
+    async def inner(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    hosts = default_allowed_hosts(["friday.example.com"])
+    c = TestClient(RequestGuard(inner, allowed_hosts=hosts, token=None),
+                   base_url="https://friday.example.com")
+    assert c.get("/api/tools", headers={"host": "friday.example.com"}).status_code == 401
     monkeypatch.setenv("FRIDAY_AUTH", "off")
     reset_auth_config()
 

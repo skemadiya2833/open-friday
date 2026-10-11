@@ -3,8 +3,9 @@
 Controls (pure ASGI, applied to HTTP and WebSocket):
 1. Host allow-list — exact configured hosts (no RFC1918 relaxation when auth/remote is on).
 2. Origin check — must match this server's origin or an explicit extra origin.
-3. Session cookie (passkey login) or optional FRIDAY_API_TOKEN for scripts.
-4. Role gate for API classes (chat / tools / desktop / admin).
+3. Passkey session required only when FRIDAY_AUTH=remote; local/off skip the login wall.
+   Optional FRIDAY_API_TOKEN remains a script bearer when configured.
+4. Role gate for API classes (chat / tools / desktop / admin) under remote sessions.
 """
 
 from __future__ import annotations
@@ -227,12 +228,15 @@ class RequestGuard:
 
         min_role = _min_role_for(path, method)
         if min_role is not None:
-            if auth_mode != "off":
+            # Passkeys are required only for remote (phone / public hostname).
+            # local = this PC on loopback, no login wall; off = tests / explicit open.
+            if auth_mode == "remote":
                 if not (self._session_ok(scope, min_role) or self._token_ok(scope)):
                     return await self._deny(scope, receive, send, 401, "authentication required")
-            elif self.token and not self._token_ok(scope):
-                # Auth off but token configured: scripts must send bearer for API routes.
-                return await self._deny(scope, receive, send, 401, "missing or invalid token")
+            elif auth_mode in ("off", "local") and self.token and not self._session_ok(scope, min_role):
+                # Optional script bearer when configured (even on local).
+                if not self._token_ok(scope):
+                    return await self._deny(scope, receive, send, 401, "missing or invalid token")
 
         await self.app(scope, receive, send)
 

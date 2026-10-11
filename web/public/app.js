@@ -73,14 +73,85 @@ function syncSpeakToggles() {
   });
 }
 
-async function apiFetch(url, opts) {
+async function apiFetch(url, opts = {}) {
   try {
-    const res = await fetch(`${API}${url}`, opts);
+    const res = await fetch(`${API}${url}`, {
+      credentials: "same-origin",
+      ...opts,
+      headers: { ...(opts.headers || {}) },
+    });
+    if (res.status === 401 && !String(url).startsWith("/api/auth/")) {
+      showAuthGate("Sign in required — API returned 401. Register this PC or Sign in on the Devices page.");
+    }
     return res;
   } catch (err) {
     const msg = "Friday server is offline. Start it with: python main.py --server";
     pushActivity(msg, { live: false });
     throw new Error(msg);
+  }
+}
+
+function showAuthGate(message) {
+  let gate = document.getElementById("authGate");
+  if (!gate) {
+    gate = document.createElement("div");
+    gate.id = "authGate";
+    gate.className = "auth-gate";
+    gate.innerHTML = `
+      <div class="auth-gate-card">
+        <h2>Authentication required</h2>
+        <p class="muted" id="authGateMsg"></p>
+        <p class="muted">Open <strong>http://localhost:${location.port || "8787"}/</strong> (not 127.0.0.1) so the session cookie sticks.</p>
+        <div class="top-actions" style="margin-top:12px;gap:8px;display:flex;flex-wrap:wrap">
+          <button type="button" id="authGateBootstrap">Register this PC</button>
+          <button type="button" class="ghost" id="authGateLogin">Sign in</button>
+          <button type="button" class="ghost" id="authGateDevices">Open Devices</button>
+        </div>
+      </div>`;
+    document.body.appendChild(gate);
+    gate.querySelector("#authGateBootstrap")?.addEventListener("click", () => {
+      window.FridayAuth?.bootstrapPc?.();
+    });
+    gate.querySelector("#authGateLogin")?.addEventListener("click", () => {
+      window.FridayAuth?.login?.();
+    });
+    gate.querySelector("#authGateDevices")?.addEventListener("click", () => {
+      showView("devices");
+      gate.classList.add("hidden");
+    });
+  }
+  const msg = gate.querySelector("#authGateMsg");
+  if (msg) msg.textContent = message || "";
+  gate.classList.remove("hidden");
+}
+
+function hideAuthGate() {
+  document.getElementById("authGate")?.classList.add("hidden");
+}
+window.hideAuthGate = hideAuthGate;
+window.showAuthGate = showAuthGate;
+
+async function ensureAuthSession() {
+  try {
+    const st = await (await fetch("/api/auth/status", { credentials: "same-origin" })).json();
+    // local / off: use Friday freely on this PC. Passkeys only when remote.
+    if (st.mode !== "remote" || st.authenticated) {
+      hideAuthGate();
+      return true;
+    }
+    if (location.hostname === "127.0.0.1" || location.hostname === "[::1]") {
+      const dest = `http://localhost:${location.port || "8787"}${location.pathname}${location.search}${location.hash}`;
+      location.replace(dest);
+      return false;
+    }
+    if (!st.device_count) {
+      showAuthGate("Remote mode: register a passkey on this PC first, then pair the phone.");
+    } else {
+      showAuthGate("Remote mode: Sign in with your passkey.");
+    }
+    return false;
+  } catch (_) {
+    return true;
   }
 }
 
@@ -238,10 +309,22 @@ function normSpeech(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function looksLikeFridayPrompt(heard) {
+  return /when should i remind|say something like|still waiting on a time|sure boss when/i.test(
+    String(heard || ""),
+  );
+}
+
 function looksLikeEcho(heard) {
   const a = normSpeech(heard);
   if (!a) return true;
-  const refs = [window.FridayLive && FridayLive.lastSpoken && FridayLive.lastSpoken(), fridayReply];
+  if (looksLikeFridayPrompt(a)) return true;
+  const trail = (window.FridayLive && FridayLive._spokenTrail) || [];
+  const refs = [
+    window.FridayLive && FridayLive.lastSpoken && FridayLive.lastSpoken(),
+    fridayReply,
+    ...trail,
+  ];
   for (const r of refs) {
     const b = normSpeech(r);
     if (!b) continue;
@@ -695,17 +778,25 @@ async function startVoiceMode() {
     interimText = interim;
     const shown = `${finalBuffer} ${interim}`.trim();
     if (voiceBusy) {
-      const stopWord = /^(stop|wait|hold on|hang on|enough|no|friday|hey)\b/i.test(shown.trim());
-      const longEnough = shown.trim().split(/\s+/).filter(Boolean).length >= 3 || shown.trim().length >= 14;
-      if ((stopWord || longEnough) && !looksLikeEcho(shown)) {
+      // Realtime barge-in: mic stays live. Drop speaker echo; accept stop words or a clear final utterance.
+      if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) return;
+      const stopWord = /^(stop|wait|hold on|hang on|enough|cancel)\b/i.test(shown.trim());
+      const words = shown.trim().split(/\s+/).filter(Boolean).length;
+      const clearFinal = !interim && finalBuffer && (words >= 3 || shown.trim().length >= 14);
+      if (stopWord || clearFinal) {
         interruptTurn();
         finalBuffer = shown;
-        setListeningLine(shown, { interim: !!interim });
-        scheduleProcess(stopWord ? 80 : 220);
+        setListeningLine(shown, { interim: false });
+        scheduleProcess(stopWord ? 80 : 180);
       }
       return;
     }
     if (shown) {
+      if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) {
+        finalBuffer = "";
+        interimText = "";
+        return;
+      }
       setListeningLine(shown, { interim: !finalBuffer || !!interim });
       setState("listening");
       const quick = window.FridayVoice && FridayVoice.style() === "realtime" && finalBuffer && !interim;
@@ -1078,7 +1169,7 @@ async function refreshSettings() {
           <button type="button" data-voice-style="realtime">Realtime</button>
           <button type="button" data-voice-style="relaxed">Relaxed</button>
         </div>
-        <p class="muted" style="margin:8px 0 0">Realtime answers sooner: shorter pause, speaks sentence by sentence while the reply is written. Relaxed waits longer before sending and speaks after the reply.</p>
+        <p class="muted" style="margin:8px 0 0">Realtime: short pause, early clause streaming, mic barge-in — always Emily (Edge) when the server TTS is up. Relaxed waits longer and speaks after the full reply.</p>
         <label style="margin-top:12px">Speech speed <strong data-voice-speed-label></strong></label>
         <input type="range" min="0.85" max="1.6" step="0.05" data-voice-speed style="width:100%" />
       </div>
@@ -1103,6 +1194,24 @@ async function refreshSettings() {
   }
 }
 
+function pickFemaleBrowserVoice() {
+  try {
+    const voices = window.speechSynthesis?.getVoices?.() || [];
+    if (!voices.length) return null;
+    const rank = (v) => {
+      const n = `${v.name} ${v.lang}`.toLowerCase();
+      let s = 0;
+      if (/en(-|_)?(gb|ie|us|au)/i.test(v.lang)) s += 2;
+      if (/female|zira|hazel|susan|eva|samantha|karen|moira|tessa|fiona|emily|sonia|aria|jenny|natasha|linda/.test(n)) s += 5;
+      if (/male|david|mark|george|james|daniel|ravi|richard/.test(n)) s -= 8;
+      return s;
+    };
+    return voices.slice().sort((a, b) => rank(b) - rank(a))[0] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function speakBrowser(text) {
   return new Promise((resolve) => {
     if (!window.speechSynthesis) {
@@ -1111,10 +1220,33 @@ function speakBrowser(text) {
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text.slice(0, 800));
+    const voice = pickFemaleBrowserVoice();
+    if (voice) {
+      u.voice = voice;
+      u.lang = voice.lang || "en-IE";
+    } else {
+      u.lang = "en-IE";
+    }
     u.rate = 1.18 * (window.FridayVoice ? FridayVoice.speed() : 1.2);
+    u.pitch = 1.05;
     u.onend = () => resolve(true);
     u.onerror = () => resolve(false);
-    window.speechSynthesis.speak(u);
+    // Voices often load async on Chromium.
+    const go = () => {
+      if (!u.voice) {
+        const v = pickFemaleBrowserVoice();
+        if (v) { u.voice = v; u.lang = v.lang || "en-IE"; }
+      }
+      window.speechSynthesis.speak(u);
+    };
+    if (!voice && speechSynthesis.getVoices().length === 0) {
+      let started = false;
+      const once = () => { if (started) return; started = true; go(); };
+      speechSynthesis.addEventListener("voiceschanged", once, { once: true });
+      setTimeout(once, 280);
+      return;
+    }
+    go();
   });
 }
 
@@ -1292,6 +1424,8 @@ async function openReminderFromUrl() {
 (async function init() {
   const link = $("#linkHost");
   if (link) link.textContent = location.hostname || "local";
+  const authed = await ensureAuthSession();
+  if (!authed) return; // redirected to localhost, or waiting on Register / Sign in
   if (micNeedsHttps()) {
     fillHttpsBanner().catch(() => {});
   }

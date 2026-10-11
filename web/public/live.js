@@ -9,7 +9,8 @@
   const K_SPEED = "friday.voiceSpeed"; // 0.8 .. 1.4
   const STYLES = {
     // pauseMs: silence before a spoken turn is sent. fillerMs: how long a reply may take before Friday says a filler.
-    realtime: { pauseMs: 220, fillerMs: 900, streamSpeech: true, label: "Realtime" },
+    // Realtime stays on Emily (Edge). Snappiness comes from short pause + early sentence cuts + TTS warmup — not browser voices.
+    realtime: { pauseMs: 160, fillerMs: 700, streamSpeech: true, label: "Realtime" },
     relaxed: { pauseMs: 800, fillerMs: 2000, streamSpeech: false, label: "Relaxed" },
   };
   const Voice = {
@@ -189,6 +190,10 @@
       cancelAnimationFrame(raf); raf = requestAnimationFrame(drawOrb);
       openMic();
       Live.syncControls();
+      // Warm Edge TTS so the first Emily reply isn't a cold start.
+      if (window.ttsFetchUrl) {
+        window.ttsFetchUrl("Ready.").then((url) => { if (url) try { URL.revokeObjectURL(url); } catch (_) {} }).catch(() => {});
+      }
     },
     close() {
       if (!overlay) return;
@@ -280,28 +285,28 @@
     },
 
     // ---------------------------------------------------------------- sentence-streamed speech
-    /* speaker.push(textChunk) as tokens arrive; speaker.finish() flushes; await speaker.done().
-     * Audio for sentence N+1 is fetched while N plays, so there is no gap and the first words start early. */
+    /* Always Emily via Edge when server TTS works. Realtime feels fast from early clause cuts,
+     * N+1 prefetch while N plays, and TTS warmup on mic open — never from a male browser voice. */
     speaker({ onFirst } = {}) {
       let pending = "", chain = Promise.resolve(), aborted = false, first = true, spokenReal = 0;
-      const fetches = [];
+      const trail = [];
       const sp = {
         spoken() { return spokenReal; },
         say(text, { filler = false } = {}) {
           const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
           if (!clean || aborted) return;
           if (first) { first = false; onFirst && onFirst(); }
-          const realtime = Voice.style() === "realtime";
-          const pre = !realtime && window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
-          fetches.push(pre);
+          const pre = window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
           chain = chain.then(async () => {
             if (aborted) return;
             Live.state("speaking");
-            if (!filler) { Live.friday(clean); spokenReal++; Live._lastSpoken = clean; }
-            if (realtime) {
-              Live.synthSpeaking(true);
-              await window.speakBrowser(clean);
-              return;
+            if (!filler) {
+              Live.friday(clean);
+              spokenReal++;
+              Live._lastSpoken = clean;
+              trail.push(clean);
+              if (trail.length > 6) trail.shift();
+              Live._spokenTrail = trail.slice();
             }
             const url = await pre;
             if (aborted) return;
@@ -311,14 +316,17 @@
         },
         push(chunk) {
           pending += chunk;
+          const realtime = Voice.style() === "realtime";
           for (;;) {
             const re = /[.!?\u2026]+["')\]]*\s+|\n+|,\s+/g;
             let m, cut = -1;
+            const need = (realtime && spokenReal === 0) ? 6 : 10;
             while ((m = re.exec(pending))) {
               const end = m.index + m[0].length;
-              if (end >= 10 || m[0].includes("\n")) { cut = end; break; }
+              if (end >= need || m[0].includes("\n")) { cut = end; break; }
             }
-            if (cut < 0 && pending.length > 80) { cut = pending.length; }
+            const flushAt = (realtime && spokenReal === 0) ? 36 : 80;
+            if (cut < 0 && pending.length > flushAt) { cut = pending.length; }
             if (cut < 0) break;
             sp.say(pending.slice(0, cut));
             pending = pending.slice(cut);
@@ -329,6 +337,7 @@
         abort() { aborted = true; pending = ""; },
       };
       Live._speaker = sp;
+      Live._spokenTrail = trail;
       return sp;
     },
   };
