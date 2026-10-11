@@ -94,9 +94,10 @@
         <button class="nav-btn" data-view="memory"><span class="nav-code">02</span><span class="nav-text">Memory</span></button>
         <button class="nav-btn" data-view="skills"><span class="nav-code">03</span><span class="nav-text">Skills</span></button>
         <button class="nav-btn" data-view="tasks"><span class="nav-code">04</span><span class="nav-text">Tasks</span></button>
-        <button class="nav-btn" data-view="tools"><span class="nav-code">05</span><span class="nav-text">Tools</span></button>
-        <button class="nav-btn" data-view="devices"><span class="nav-code">06</span><span class="nav-text">Devices</span></button>
-        <button class="nav-btn" data-view="settings"><span class="nav-code">07</span><span class="nav-text">Systems</span></button>
+        <button class="nav-btn" data-view="reports"><span class="nav-code">05</span><span class="nav-text">Reports</span></button>
+        <button class="nav-btn" data-view="tools"><span class="nav-code">06</span><span class="nav-text">Tools</span></button>
+        <button class="nav-btn" data-view="devices"><span class="nav-code">07</span><span class="nav-text">Devices</span></button>
+        <button class="nav-btn" data-view="settings"><span class="nav-code">08</span><span class="nav-text">Systems</span></button>
       </nav>
 
       <div class="rail-foot">
@@ -216,6 +217,35 @@
         <div class="cards" id="taskList"></div>
       </section>
 
+      <!-- RESEARCH REPORTS -->
+      <section class="view" id="view-reports">
+        <header class="top">
+          <div>
+            <p class="eyebrow">INTEL · STRUCTURED</p>
+            <h1>Research Reports</h1>
+          </div>
+          <div class="top-actions">
+            <span class="muted" id="reportElapsed">0s</span>
+            <button class="ghost danger" id="reportCancel" type="button">Cancel</button>
+          </div>
+        </header>
+        <p class="lede">Cited, validated reports. Chat role can view history; running web research needs the tools role.</p>
+        <form class="card-form grid-form" id="reportForm">
+          <input id="reportQuery" placeholder="Research topic…" required />
+          <select id="reportMode">
+            <option value="quick">Quick (≤4 sources)</option>
+            <option value="deep">Deep (≤12 sources)</option>
+            <option value="think">Think (no web)</option>
+          </select>
+          <button type="submit">Run report</button>
+        </form>
+        <p class="muted" id="reportLive">Idle</p>
+        <div class="plan-head"><h2>Live canvas</h2></div>
+        <div id="reportCanvas" class="report-canvas"></div>
+        <div class="plan-head"><h2>History</h2></div>
+        <div id="reportHistory" class="report-history"></div>
+      </section>
+
       <!-- TOOLS & MCP -->
       <section class="view" id="view-tools">
         <header class="top">
@@ -296,5 +326,6 @@
   <script src="/app.js?v=19"></script>
   <script src="/tools.js?v=3"></script>
   <script src="/auth.js?v=4"></script>
+  <script src="/reports.js?v=1"></script>
 </body>
 </html>

@@ -848,3 +848,22 @@ body.live-open { overflow: hidden; }
 .chip { background: var(--cyan-dim); color: var(--cyan); border: 1px solid var(--line); padding: 5px 12px; cursor: pointer; font-family: var(--mono); font-size: 0.75rem; }
 .chip.on { background: var(--cyan); color: #04141c; }
 .tag { display: inline-block; border: 1px solid var(--line); padding: 0 7px; font-family: var(--mono); font-size: 0.68rem; color: var(--accent-2); margin-right: 6px; }
+
+/* ---------------------------------------------------------------- research reports */
+.report-canvas { display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow: auto; padding-bottom: 24px; }
+.report-card { border: 1px solid var(--line); background: var(--panel); padding: 12px 14px; border-radius: var(--radius); }
+.report-card.skeleton .sk-line { height: 12px; background: var(--cyan-dim); margin: 8px 0; border-radius: 2px; }
+.report-card.skeleton .sk-line.short { width: 40%; }
+.report-head h2 { font-family: var(--display); font-size: 1.1rem; margin: 0 0 4px; letter-spacing: 0.08em; }
+.report-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.report-link { color: var(--cyan); text-decoration: underline; word-break: break-all; }
+.report-chart { width: 100%; max-width: 360px; height: 160px; background: rgba(0,0,0,0.25); }
+.report-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.report-table th, .report-table td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+.claim-row { margin: 6px 0; }
+.report-history { display: flex; flex-direction: column; gap: 6px; }
+.report-hist { text-align: left; }
+.warn { color: var(--warn); }
+@media (max-width: 720px) {
+  .report-canvas { max-height: 45vh; }
+}

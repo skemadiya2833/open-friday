@@ -229,6 +229,7 @@ function showView(name) {
     refreshTasks();
   }
   if (name === "settings") refreshSettings();
+  if (name === "reports" && window.FridayReports) FridayReports.refreshHistory();
 }
 
 document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -622,6 +623,13 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           sessionId = ev.session_id || sessionId;
           if (sessionId) persistSession(sessionId);
           pushActivity("Done", { live: false });
+          const openId =
+            ev.open_report ||
+            (ev.metadata && ev.metadata.open_report) ||
+            (ev.result && ev.result.metadata && ev.result.metadata.open_report);
+          if (openId && window.FridayReports) {
+            FridayReports.open(openId);
+          }
         }
         if (ev.type === "error") {
           liveBody.textContent = ev.message || "Error";
