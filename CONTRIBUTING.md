@@ -24,6 +24,12 @@ npm install
 npm run build   # serves from web/dist via FastAPI
 ```
 
+## Credits and references
+
+See [`docs/REFERENCES.md`](docs/REFERENCES.md) and [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
+Adapted-from headers must stay listed in the notices file — `python scripts/check_third_party_notices.py`
+(also run from `scripts/pre_push_secrets_check.py`).
+
 ## Where to contribute
 
 | Area | Path |
@@ -32,6 +38,7 @@ npm run build   # serves from web/dist via FastAPI
 | Tools | `friday/tools/` |
 | Memory | `friday/memory/` |
 | Computer-use loop | `friday/agent/`, `friday/actions/` |
+| Research reports | `friday/reports/`, `web/public/reports.js` |
 | Control Center UI | `web/public/` (default) or `web/src/` (React) |
 | Voice | `friday/voice/` |
 
