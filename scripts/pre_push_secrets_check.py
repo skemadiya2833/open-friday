@@ -180,7 +180,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     print("[secrets-check] OK")
-    return 0
+
+    # Sibling consistency check: adapted-from headers ↔ THIRD_PARTY_NOTICES.md
+    # (skip when ROOT is a temp fixture that does not ship the notices script)
+    notices_script = ROOT / "scripts" / "check_third_party_notices.py"
+    notices_doc = ROOT / "docs" / "THIRD_PARTY_NOTICES.md"
+    if not notices_script.is_file() or not notices_doc.is_file():
+        return 0
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("check_third_party_notices", notices_script)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return int(mod.main())
 
 
 if __name__ == "__main__":
