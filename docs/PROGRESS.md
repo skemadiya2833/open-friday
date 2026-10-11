@@ -171,3 +171,10 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - V8 PASS: design notes in `docs/design/`. Tag `stage-V8`.
 - Report: `docs/FINAL_REPORT_4.md`. No merge/push.
 
+## Stage W/X (2026-10-11) — Research reports + credits
+- W1–W8 PASS: structured research reports (schema, pipeline, HUD canvas, storage/export, voice TL;DR, tests, SearXNG design). Tags `stage-W1`…`stage-W8`.
+- Bench (mocked): validation survival **0.5** on 10 prompts — `docs/research/research_reports_bench.json`. Live Ollama bench UNVERIFIED.
+- X1 PASS: `docs/REFERENCES.md` + README/CONTRIBUTING links. Tag `stage-X1`.
+- X2 PASS: `scripts/check_third_party_notices.py` (+ pre_push hook). Tag `stage-X2`.
+- Pytest: **405 passed** (1 webauthn fail, hotkey tests deselected). Report: `docs/FINAL_REPORT_5.md`.
+

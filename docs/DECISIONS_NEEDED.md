@@ -131,3 +131,9 @@ Chosen: fixed job id `builtin:morning_briefing`; Settings/env toggle; `schedule_
 ## D-043 (2026-10-11) GPU metrics via nvidia-smi, no new NVML dependency
 Chosen: parse `nvidia-smi`; optional pynvml only if already installed. `nvidia-ml-py` has a py3-none-any wheel but was not added. Alternative: require nvidia-ml-py (rejected: prefer zero new deps).
 
+## D-044 (2026-10-11) Research reports use Friday schema, not A2UI wire format
+Chosen: versioned `report_v1` JSON Schema + vanilla HUD renderer. A2UI/AG-UI are design inspiration only. Alternative: embed an A2UI Lit renderer (rejected: CDN/framework surface).
+
+## D-045 (2026-10-11) Web research run requires tools role
+Chosen: GET history/export allowed for chat; POST `/api/reports/start` and dig require `tools`. Alternative: allow chat role to run web research (rejected: network side effects).
+
