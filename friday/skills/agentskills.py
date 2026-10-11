@@ -175,7 +175,9 @@ def review(folder: Path) -> dict[str, Any]:
         body_lines = len(body.splitlines())
     except Exception:  # noqa: BLE001
         pass
-    return {
+    from friday.skills.skill_security import enrich_review
+
+    report = {
         "name": meta.name, "valid": not meta.errors, "errors": meta.errors,
         "file_count": len(files), "bytes": sum(p.stat().st_size for p in files),
         "executable_files": code, "runs_code": bool(code),
@@ -185,6 +187,7 @@ def review(folder: Path) -> dict[str, Any]:
                  + ([f"SKILL.md body has {body_lines} lines (>{MAX_BODY_LINES_WARN})"] if body_lines > MAX_BODY_LINES_WARN else []),
         "hash": tree_hash(folder),
     }
+    return enrich_review(report, origin="inbox")
 
 
 # ---------------------------------------------------------------- store
