@@ -190,7 +190,11 @@ class TaskScheduler:
         try:
             from friday.tasks import reminders as RM
 
-            if (job.get("skill_id") or "") == "reminder":
+            if (job.get("skill_id") or "") == "morning_briefing":
+                from friday.briefing.morning import run_morning_briefing
+
+                run_morning_briefing()
+            elif (job.get("skill_id") or "") == "reminder":
                 RM.add_notification(job["prompt"], note, job_id=job_id, kind="reminder")
             else:
                 from friday.assistant.orchestrator import handle_message

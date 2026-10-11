@@ -1361,10 +1361,19 @@ async function refreshSettings() {
           <button type="button" data-humor="full">Full</button>
         </div>
         <p class="muted" style="margin:8px 0 0">Stored as FRIDAY_HUMOR for this browser (server default still comes from .env). No quips during errors or security prompts.</p>
+      </div>
+      <div class="setting"><label>Morning briefing</label>
+        <label class="speak-toggle" style="margin-top:8px">
+          <input type="checkbox" id="morningBriefingToggle" />
+          <span>Local daily briefing (plan, reminders, weather, news)</span>
+        </label>
+        <p class="muted" style="margin:8px 0 0">Owner-only built-in job (default 08:00). Agents cannot schedule this. No Gmail/Calendar OAuth.</p>
+        <button type="button" class="btn ghost" id="morningBriefingRun" style="margin-top:8px">Run once now</button>
       </div>`;
     bindVoiceControls();
     syncSpeakToggles();
     bindHumorControls();
+    bindMorningBriefing();
     $("#speakToggleSettings")?.addEventListener("change", (e) => {
       setSpeakEnabled(e.target.checked);
     });
@@ -1373,6 +1382,38 @@ async function refreshSettings() {
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · LOST";
   }
+}
+
+async function bindMorningBriefing() {
+  const toggle = $("#morningBriefingToggle");
+  const runBtn = $("#morningBriefingRun");
+  if (!toggle) return;
+  try {
+    const st = await (await apiFetch("/api/briefing/morning")).json();
+    toggle.checked = !!st.enabled;
+  } catch (_) { /* offline */ }
+  toggle.addEventListener("change", async () => {
+    try {
+      await apiFetch("/api/briefing/morning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: toggle.checked }),
+      });
+    } catch (_) {
+      toggle.checked = !toggle.checked;
+    }
+  });
+  runBtn?.addEventListener("click", async () => {
+    try {
+      const r = await (await apiFetch("/api/briefing/morning/run", { method: "POST" })).json();
+      if (r.script) {
+        addBubble("assistant", r.script);
+        if (speakEnabled()) speak(r.script);
+      }
+    } catch (err) {
+      addBubble("assistant", "Could not run morning briefing.");
+    }
+  });
 }
 
 function pickFemaleBrowserVoice() {

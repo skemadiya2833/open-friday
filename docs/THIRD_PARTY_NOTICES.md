@@ -21,6 +21,7 @@ description of changes. Original copyright notices are preserved.
 | `friday/security/content_scan.py` | `src/openjarvis/security/scanner.py` (+ injection / stripper ideas) | V3 |
 | `friday/security/taint.py` | `src/openjarvis/security/taint.py` (ideas) | V3 |
 | `friday/models/complexity.py` | `src/openjarvis/learning/routing/complexity.py` (+ heuristic select from `router.py`) | V4 |
+| `friday/briefing/morning.py` | `src/openjarvis/tools/digest_collect.py` (sectioned digest pattern; no OAuth connectors) | V5 |
 
 Full Apache-2.0 text: see the `LICENSE` file in the OpenJarvis repository at the commit above,
 or <http://www.apache.org/licenses/LICENSE-2.0>.

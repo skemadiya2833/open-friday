@@ -59,6 +59,12 @@ async def lifespan(_app: FastAPI):
         from friday.tasks.scheduler import get_scheduler
 
         get_scheduler()                 # arm saved reminders; late ones are delivered immediately
+        try:
+            from friday.briefing.morning import sync_builtin_job
+
+            sync_builtin_job()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Briefing] sync skipped: {exc}")
     except Exception as exc:  # noqa: BLE001
         print(f"[Tasks] scheduler startup skipped: {exc}")
     yield
@@ -349,10 +355,17 @@ def tasks_list() -> list[dict[str, Any]]:
 @app.post("/api/tasks")
 def tasks_create(body: TaskCreate) -> dict[str, Any]:
     from friday.tasks.scheduler import get_scheduler
+
+    skill = (body.skill_id or "reminder").strip()
+    if skill == "morning_briefing":
+        raise HTTPException(
+            400,
+            "morning_briefing is a built-in owner job — enable it in Settings, not via tasks API",
+        )
     return get_scheduler().add_job(
         prompt=body.prompt,
         title=body.title,
-        skill_id=body.skill_id,
+        skill_id=skill,
         delay_seconds=body.delay_seconds,
         run_at=body.run_at,
         cron=body.cron,
@@ -405,6 +418,33 @@ def plan_delete(item_id: str) -> dict[str, Any]:
     if not remove_item(item_id):
         raise HTTPException(404, "Not found")
     return {"deleted": True}
+
+
+@app.get("/api/briefing/morning")
+def briefing_morning_status() -> dict[str, Any]:
+    from friday.briefing.morning import status
+
+    return status()
+
+
+class BriefingToggle(BaseModel):
+    enabled: bool
+    cron: str | None = None
+    speak: bool | None = None
+
+
+@app.post("/api/briefing/morning")
+def briefing_morning_set(body: BriefingToggle) -> dict[str, Any]:
+    from friday.briefing.morning import set_enabled
+
+    return set_enabled(body.enabled, cron=body.cron, speak=body.speak)
+
+
+@app.post("/api/briefing/morning/run")
+def briefing_morning_run() -> dict[str, Any]:
+    from friday.briefing.morning import run_morning_briefing
+
+    return run_morning_briefing(fetch_world=True)
 
 
 @app.post("/api/agent/cancel")
