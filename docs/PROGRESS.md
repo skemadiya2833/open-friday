@@ -160,3 +160,14 @@ Optimization posture: **keep qwen3.5:9b unified**, thinking off, short chat/plan
 - Direct tools router expansion; schema parse fail 0.8→0.0; fast-brain keep 9b; live backends 15/15 each → keep legacy; Ollama notes 0.30.10.
 - Report: `docs/FINAL_REPORT_3.md`. Tag: `stage-U`.
 
+## Stage V (2026-10-11) — OpenJarvis borrow (Apache-2.0 @ f9e9d5d)
+- V1 PASS: `OPENJARVIS_BORROW_PLAN.md` + `THIRD_PARTY_NOTICES.md` before code. Tag `stage-V1`.
+- V2 PASS: tool loop guard (identical / ping-pong / no-change). Tag `stage-V2`.
+- V3 PASS: SSRF/secrets/injection/taint/file policy → audit JSONL; wired research/memory/files/TTS. Tag `stage-V3`.
+- V4 PASS: `FRIDAY_COMPLEXITY_ROUTING` opt-in; blend bench keeps 9b default. Tag `stage-V4`.
+- V5 PASS: local morning briefing (owner built-in job; no OAuth). Tag `stage-V5`.
+- V6 PASS: local `/api/perf` + health Performance panel (nvidia-smi; no new dep). Tag `stage-V6`.
+- V7 PASS: skill_security trust-tier enrichment on import review. Tag `stage-V7`.
+- V8 PASS: design notes in `docs/design/`. Tag `stage-V8`.
+- Report: `docs/FINAL_REPORT_4.md`. No merge/push.
+

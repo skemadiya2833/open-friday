@@ -122,3 +122,12 @@ Chosen: `FRIDAY_PAIR_APPROVE=physical` by default; document RDP lock-out and sup
 ## D-040 (2026-10-10) Non-loopback bind without remote auth is an error
 Chosen: `validate_config` errors (refuses start) when `FRIDAY_HOST` is a LAN IP and `FRIDAY_AUTH!=remote`. Alternative: warn-only (rejected: silent exposure).
 
+## D-041 (2026-10-11) Complexity routing stays opt-in; 9b default
+Chosen: `FRIDAY_COMPLEXITY_ROUTING=false` by default. Blend of prior 4b/9b persona bench: routed correctness 0.975 vs always-9b 1.0. Alternative: enable routing by default (rejected: quality regression on held-out set).
+
+## D-042 (2026-10-11) Morning briefing is owner built-in only
+Chosen: fixed job id `builtin:morning_briefing`; Settings/env toggle; `schedule_task` and tasks API refuse `morning_briefing`. Alternative: let the model schedule digests (rejected: violates reminder-only agent schedules).
+
+## D-043 (2026-10-11) GPU metrics via nvidia-smi, no new NVML dependency
+Chosen: parse `nvidia-smi`; optional pynvml only if already installed. `nvidia-ml-py` has a py3-none-any wheel but was not added. Alternative: require nvidia-ml-py (rejected: prefer zero new deps).
+
