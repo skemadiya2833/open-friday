@@ -215,11 +215,41 @@ def health_report(*, probe_ollama: bool = True) -> dict[str, Any]:
             rep["ok"] = False
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from friday.perf import snapshot
+
+        rep["performance"] = snapshot()
+    except Exception as exc:  # noqa: BLE001
+        rep["performance"] = {"error": str(exc)}
     return rep
 
 
 HEALTH_HTML = """<!doctype html><meta charset=utf-8><title>Friday health</title>
-<style>body{font:14px system-ui;margin:2rem;max-width:60rem}pre{background:#111;color:#ddd;padding:1rem;overflow:auto}
-.ok{color:#2a2}.bad{color:#c22}</style><h1>Friday health <span id=s></span></h1><pre id=o>loading...</pre>
-<script>fetch('/api/health/detail').then(r=>r.json()).then(j=>{s.textContent=j.ok?'OK':'PROBLEM';s.className=j.ok?'ok':'bad';
-o.textContent=JSON.stringify(j,null,2)}).catch(e=>{o.textContent=String(e)})</script>"""
+<style>body{font:14px system-ui;margin:2rem;max-width:60rem;background:#0b0f14;color:#e8eef5}
+pre{background:#111827;color:#ddd;padding:1rem;overflow:auto;border-radius:8px}
+.ok{color:#3ddc97}.bad{color:#ff6b6b}h2{margin-top:2rem;font-weight:600}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #243044;padding:6px 8px;text-align:left}
+.muted{color:#8aa0b8}</style>
+<h1>Friday health <span id=s></span></h1>
+<p class=muted>Local diagnostics — no network telemetry.</p>
+<pre id=o>loading...</pre>
+<h2>Performance</h2>
+<div id=perf class=muted>loading…</div>
+<script>
+Promise.all([
+  fetch('/api/health/detail').then(r=>r.json()),
+  fetch('/api/perf').then(r=>r.json()).catch(()=>({}))
+]).then(([j,p])=>{
+  s.textContent=j.ok?'OK':'PROBLEM';s.className=j.ok?'ok':'bad';
+  o.textContent=JSON.stringify(j,null,2);
+  const g=p.gpu_now||(j.performance&&j.performance.gpu_now)||{};
+  const rows=(p.recent||(j.performance&&j.performance.recent)||[]).slice(0,12);
+  let html=`<p>GPU: <strong>${g.name||'—'}</strong> · VRAM ${g.vram_used_mb??'—'} / ${g.vram_total_mb??'—'} MB · power ${g.power_w??'—'} W · util ${g.util_pct??'—'}% <span class=muted>(${g.source||'?'})</span></p>`;
+  html+='<table><thead><tr><th>kind</th><th>model</th><th>TTFT ms</th><th>tok/s</th><th>tokens</th></tr></thead><tbody>';
+  for (const r of rows){
+    html+=`<tr><td>${r.kind||''}</td><td>${r.model||''}</td><td>${r.ttft_ms??'—'}</td><td>${r.tokens_per_s??'—'}</td><td>${r.tokens??0}</td></tr>`;
+  }
+  html+='</tbody></table>';
+  perf.innerHTML=html;
+}).catch(e=>{o.textContent=String(e)});
+</script>"""

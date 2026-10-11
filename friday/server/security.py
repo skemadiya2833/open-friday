@@ -23,6 +23,7 @@ _PUBLIC_PREFIXES = (
     "/api/auth/register/",
     "/api/auth/login/",
     "/api/health",
+    "/api/perf",
     "/health",
     "/favicon",
 )

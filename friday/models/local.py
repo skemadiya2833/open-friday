@@ -104,6 +104,13 @@ def _stream_chat(
     accumulated = ""
     native_thinking = ""
     reasoning_shown = 0
+    _perf_ctx = None
+    try:
+        from friday.perf import finish_request, note_token, start_request
+
+        _perf_ctx = start_request("chat", model=str(model or MODEL_NAME))
+    except Exception:
+        _perf_ctx = None
 
     def _push_reasoning() -> None:
         nonlocal reasoning_shown
@@ -151,6 +158,9 @@ def _stream_chat(
                             native_thinking += thinking_tok
                         if content_tok:
                             accumulated += content_tok
+                            if _perf_ctx is not None:
+                                # Approximate token count by whitespace chunks from the stream.
+                                note_token(_perf_ctx, max(1, len(content_tok.split())))
                             if on_token:
                                 on_token(content_tok)
                             if reasoning_mode:
@@ -161,6 +171,11 @@ def _stream_chat(
             finally:
                 if ctrl is not None:
                     ctrl.unregister_http_client(client)
+                if _perf_ctx is not None:
+                    try:
+                        finish_request(_perf_ctx)
+                    except Exception:
+                        pass
     except httpx.ConnectError as exc:
         from friday.models.ollama_boot import ensure_ollama
 

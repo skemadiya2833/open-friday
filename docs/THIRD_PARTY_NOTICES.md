@@ -22,6 +22,8 @@ description of changes. Original copyright notices are preserved.
 | `friday/security/taint.py` | `src/openjarvis/security/taint.py` (ideas) | V3 |
 | `friday/models/complexity.py` | `src/openjarvis/learning/routing/complexity.py` (+ heuristic select from `router.py`) | V4 |
 | `friday/briefing/morning.py` | `src/openjarvis/tools/digest_collect.py` (sectioned digest pattern; no OAuth connectors) | V5 |
+| `friday/perf.py` | `src/openjarvis/telemetry/gpu_monitor.py` (+ energy/phase ideas); **no** analytics clients | V6 |
+| `friday/skills/skill_security.py` | `src/openjarvis/skills/security.py` (+ importer trust ideas) | V7 |
 
 Full Apache-2.0 text: see the `LICENSE` file in the OpenJarvis repository at the commit above,
 or <http://www.apache.org/licenses/LICENSE-2.0>.

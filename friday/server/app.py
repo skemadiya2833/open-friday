@@ -185,6 +185,13 @@ def health_detail() -> dict[str, Any]:
     return health_report()
 
 
+@app.get("/api/perf")
+def perf_snapshot() -> dict[str, Any]:
+    from friday.perf import snapshot
+
+    return snapshot()
+
+
 @app.get("/health", response_class=HTMLResponse)
 def health_page() -> str:
     from friday.diagnostics import HEALTH_HTML
