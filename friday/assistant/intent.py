@@ -340,6 +340,17 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Open latest research report on screen.
+    if re.search(r"\bopen (the |my )?(research )?report\b", msg, re.I):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: open report",
+            source="policy",
+        )
+
     # Web lookup (news, google, "what's the weather") is research — not desktop control.
     if _RESEARCH.search(msg) and not _DESKTOP_TARGET.search(msg):
         return Intent(
