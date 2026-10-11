@@ -105,6 +105,8 @@ def _min_role_for(path: str, method: str) -> str | None:
         return "desktop-control"
     if path.startswith("/api/tools") or path.startswith("/api/mcp") or path.startswith("/api/approvals"):
         return "tools"
+    if path.startswith("/api/reports/start") or path.endswith("/dig") and path.startswith("/api/reports/"):
+        return "tools"
     if method not in _SAFE_METHODS and path.startswith("/api/"):
         return "chat"
     if path.startswith("/api/"):

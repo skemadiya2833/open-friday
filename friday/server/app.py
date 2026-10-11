@@ -25,6 +25,7 @@ from friday.server.routes_skillmd import router as skillmd_router
 from friday.server.routes_tools import router as tools_router
 from friday.server.routes_auth import router as auth_router
 from friday.server.routes_feedback import router as feedback_router
+from friday.server.routes_reports import router as reports_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
 ensure_data_dirs()
@@ -112,6 +113,7 @@ app.include_router(runs_router)
 app.include_router(reminders_router)
 app.include_router(auth_router)
 app.include_router(feedback_router)
+app.include_router(reports_router)
 
 _ws_clients: list[WebSocket] = []
 
