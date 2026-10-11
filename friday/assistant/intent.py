@@ -42,7 +42,17 @@ _QUESTION = re.compile(
 )
 _IMPERATIVE = re.compile(
     r"\b(open|launch|start|click|type|write|save|close|delete|install|download|"
-    r"create|rename|move|copy|paste|run|execute|press|drag|scroll)\b",
+    r"create|rename|move|copy|paste|run|execute|press|drag|scroll|"
+    r"show|display|put|bring up|pull up)\b",
+    re.I,
+)
+# "Put my system specs on screen" — must act (Notepad), never chat/observe hallucination.
+_SHOW_ON_SCREEN = re.compile(
+    r"\b(show|display|put|bring up|pull up|open)\b.{"
+    r"0,80}\b(on (my |the )?(screen|desktop|monitor|display)|in (a |my )?notepad)\b|"
+    r"\b(system specs?|system info(?:rmation)?|hardware (?:info|specs?)|pc specs?|"
+    r"computer specs?|device specs?)\b.{"
+    r"0,40}\b(on (my |the )?(screen|desktop)|in notepad)\b",
     re.I,
 )
 
@@ -201,7 +211,11 @@ def apply_policy(intent: Intent, message: str) -> Intent:
 
     # 2) Act requires imperative language OR high confidence + imperative objective.
     if intent.mode == "act" or intent.skill_id == "computer_use":
-        has_imperative = bool(_IMPERATIVE.search(msg) or _IMPERATIVE.search(intent.objective))
+        has_imperative = bool(
+            _IMPERATIVE.search(msg)
+            or _IMPERATIVE.search(intent.objective)
+            or _SHOW_ON_SCREEN.search(msg)
+        )
         if not has_imperative:
             # Downgrade: question without action verbs → look if screen-related else talk
             if re.search(r"\b(screen|desktop|monitor|display|window|open apps?)\b", msg, re.I):
@@ -334,6 +348,20 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             confidence=0.93,
             objective=msg,
             reason="deterministic: web lookup",
+            source="policy",
+        )
+
+    # Put/show something on the screen (specs, info) → desktop act, not chat.
+    if _SHOW_ON_SCREEN.search(msg) or (
+        re.search(r"\b(system specs?|system info(?:rmation)?|hardware (?:info|specs?)|pc specs?)\b", msg, re.I)
+        and re.search(r"\b(screen|desktop|notepad|display|monitor)\b", msg, re.I)
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.94,
+            objective=msg,
+            reason="deterministic: show on screen",
             source="policy",
         )
 

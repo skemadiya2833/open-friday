@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=7" />
+  <link rel="stylesheet" href="/styles.css?v=10" />
 </head>
 <body>
   <div class="hud-bg" aria-hidden="true">
@@ -59,11 +59,13 @@
     <div class="live-pace" role="group" aria-label="Voice pacing">
       <button type="button" data-voice-style="realtime">Realtime</button>
       <button type="button" data-voice-style="relaxed">Relaxed</button>
-      <span class="live-speed">Speed <strong data-voice-speed-label></strong>
-        <input type="range" min="0.85" max="1.6" step="0.05" data-voice-speed /></span>
+      <span class="live-duplex" role="group" aria-label="Mic while Friday talks">
+        <button type="button" data-voice-duplex="hold" title="Speaker-safe: mic off while she talks">Hold</button>
+        <button type="button" data-voice-duplex="interrupt" title="Barge-in (echo risk with open speakers)">Interrupt</button>
+      </span>
     </div>
     <div class="live-state" id="liveState">LISTENING</div>
-    <canvas id="liveOrb" title="Click to interrupt"></canvas>
+    <canvas id="liveOrb" title="Hold mode — mic muted while Friday talks. Click to stop her."></canvas>
     <div class="live-caps">
       <div class="cap cap-user" id="capUser"></div>
       <div class="cap cap-friday faded" id="capFriday"></div>
@@ -287,9 +289,12 @@
     </div>
   </div>
 
-  <script src="/live.js?v=9"></script>
-  <script src="/app.js?v=14"></script>
+  <div id="fridayDialog" class="fd-overlay" hidden></div>
+
+  <script src="/dialog.js?v=1"></script>
+  <script src="/live.js?v=12"></script>
+  <script src="/app.js?v=19"></script>
   <script src="/tools.js?v=3"></script>
-  <script src="/auth.js?v=3"></script>
+  <script src="/auth.js?v=4"></script>
 </body>
 </html>

@@ -79,6 +79,20 @@ _STATUS = re.compile(
     r"cpu(?: and)?(?:/?| )ram|resource(?:s)?(?: usage)?)\s*\??\s*$",
     re.I,
 )
+_SHOW_SPECS_ON_SCREEN = re.compile(
+    r"\b(?:show|display|put|bring up|pull up|open)\b.{"
+    r"0,100}\b(?:system specs?|system info(?:rmation)?|hardware (?:info|specs?)|"
+    r"pc specs?|computer specs?|device specs?|my specs)\b|"
+    r"\b(?:system specs?|system info(?:rmation)?|hardware (?:info|specs?)|"
+    r"pc specs?|computer specs?)\b.{"
+    r"0,60}\b(?:on (?:my |the )?(?:screen|desktop|monitor|display)|in (?:a |my )?notepad)\b",
+    re.I,
+)
+_SHOW_TEXT_ON_SCREEN = re.compile(
+    r"^\s*(?:please\s+)?(?:show|display|put|write)\b.{"
+    r"0,40}\b(?:on (?:my |the )?(?:screen|desktop)|in (?:a |my )?notepad)\b",
+    re.I,
+)
 _SCREENSHOT = re.compile(
     r"^\s*(?:please\s+)?(?:screenshot(?: and describe)?|describe (?:my |the )?(?:screen|desktop)|"
     r"what(?:'s| is) on (?:my |the )?screen)\s*\??\s*$",
@@ -174,6 +188,49 @@ def _system_status() -> str:
             capture_output=True, text=True, timeout=8,
         )
         return out.stdout.strip() or "status unavailable"
+
+
+def _collect_system_specs() -> str:
+    """Real hardware/OS lines for on-screen display (not LLM invention)."""
+    ps = r"""
+$cs = Get-CimInstance Win32_ComputerSystem
+$os = Get-CimInstance Win32_OperatingSystem
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1
+$ramGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
+@"
+Friday — System specs
+=====================
+Computer : $($cs.Name)
+Manufacturer : $($cs.Manufacturer)
+Model : $($cs.Model)
+CPU : $($cpu.Name)
+Cores / threads : $($cpu.NumberOfCores) / $($cpu.NumberOfLogicalProcessors)
+RAM : ${ramGB} GB
+GPU : $($gpu.Name)
+OS : $($os.Caption) ($($os.Version)) build $($os.BuildNumber)
+User : $env:USERNAME
+"@
+"""
+    out = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps],
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    text = (out.stdout or "").strip()
+    if text:
+        return text
+    # Minimal fallback
+    status = _system_status()
+    return f"Friday — System specs\n=====================\n{status}\nUser : {os.environ.get('USERNAME', '?')}"
+
+
+def _open_text_on_screen(text: str, *, stem: str = "friday-note") -> Path:
+    path = Path(tempfile.gettempdir()) / f"{stem}-{int(time.time())}.txt"
+    path.write_text(text.rstrip() + "\n", encoding="utf-8")
+    subprocess.Popen(["notepad.exe", str(path)], close_fds=True)
+    return path
 
 
 def _screenshot_describe(*, describe: bool = True) -> str:
@@ -304,6 +361,48 @@ def try_direct(objective: str, *, workspace: str | None = None,
 
     if _STATUS.match(obj):
         return DirectResult(True, True, _system_status(), "system_status")
+
+    if _SHOW_SPECS_ON_SCREEN.search(obj):
+        try:
+            specs = _collect_system_specs()
+            path = _open_text_on_screen(specs, stem="friday-system-specs")
+            return DirectResult(
+                True,
+                True,
+                f"Opened Notepad with your system specs ({path.name}).",
+                "show_specs_on_screen",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return DirectResult(True, False, f"Couldn't put specs on screen: {exc}", "show_specs_on_screen")
+
+    # Generic "put/show X on screen" → Notepad with the requested text (no LLM).
+    if _SHOW_TEXT_ON_SCREEN.search(obj) and not re.search(
+        r"\b(screenshot|what(?:'s| is) on|describe)\b", obj, re.I
+    ):
+        body = re.sub(
+            r"^\s*(?:please\s+)?(?:show|display|put|write)\s+",
+            "",
+            obj,
+            count=1,
+            flags=re.I,
+        )
+        body = re.sub(
+            r"\s+(?:on (?:my |the )?(?:screen|desktop|monitor|display)|in (?:a |my )?notepad)\s*\.?$",
+            "",
+            body,
+            flags=re.I,
+        ).strip(" :\"'")
+        if len(body) >= 2:
+            try:
+                path = _open_text_on_screen(body, stem="friday-on-screen")
+                return DirectResult(
+                    True,
+                    True,
+                    f"Opened Notepad with that on screen ({path.name}).",
+                    "show_text_on_screen",
+                )
+            except Exception as exc:  # noqa: BLE001
+                return DirectResult(True, False, f"Couldn't open Notepad: {exc}", "show_text_on_screen")
 
     if _SCREENSHOT.match(obj):
         try:

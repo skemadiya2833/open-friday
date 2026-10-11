@@ -9,6 +9,9 @@ let audioChunks = [];
 let currentAudio = null;
 let voiceMode = false;
 let voiceBusy = false; // processing / speaking — don't re-trigger
+let micSuspended = false; // Hold mode: recognition stopped so speakers can't re-enter
+let listenCooldownUntil = 0;
+let uiState = "idle";
 let recognition = null;
 let pauseTimer = null;
 let interimText = "";
@@ -17,12 +20,23 @@ let speakWasForced = false;
 let turnEpoch = 0;
 let chatAbort = null;
 let fridayReply = "";
+let releaseMicTimer = null;
 
 const $ = (sel) => document.querySelector(sel);
 const orb = $("#orb");
 const statusLabel = $("#statusLabel");
 
-function setState(state) {
+function voiceHoldMode() {
+  return !(window.FridayVoice && FridayVoice.duplex && FridayVoice.duplex() === "interrupt");
+}
+
+function setState(state, { force = false } = {}) {
+  // During a turn, never flash back to listening/idle (yellow↔blue flicker).
+  if (!force && voiceMode && voiceBusy && (state === "listening" || state === "idle")) return;
+  if (!force && state === uiState) return;
+  // Once speaking, stay green until the turn ends (ignore stray "thinking" from stream status).
+  if (!force && uiState === "speaking" && state === "thinking") return;
+  uiState = state;
   window.FridayLive && FridayLive.state(state);
   if (orb) orb.dataset.state = state;
   if (statusLabel) statusLabel.textContent = state;
@@ -32,12 +46,61 @@ function setState(state) {
       idle: "STANDBY",
       thinking: "COMPUTE",
       listening: "AUDIO IN",
+      speaking: "AUDIO OUT",
       acting: "AGENCY",
     };
     core.textContent = map[state] || String(state).toUpperCase();
   }
   const voiceEl = $("#voiceState");
   if (voiceEl) voiceEl.textContent = voiceMode ? "ENGAGED" : "READY";
+}
+
+function suspendMic() {
+  micSuspended = true;
+  clearPauseTimer();
+  if (releaseMicTimer) {
+    clearTimeout(releaseMicTimer);
+    releaseMicTimer = null;
+  }
+  finalBuffer = "";
+  interimText = "";
+  setListeningLine("");
+  try { recognition?.stop(); } catch (_) {}
+}
+
+function armMicNow() {
+  micSuspended = false;
+  listenCooldownUntil = 0;
+  finalBuffer = "";
+  interimText = "";
+  setState("listening", { force: true });
+  // Chrome often needs a beat after stop() before start() sticks.
+  const tryStart = (n) => {
+    if (!voiceMode || micSuspended || voiceBusy) return;
+    try {
+      recognition?.start();
+    } catch (_) {
+      if (n > 0) setTimeout(() => tryStart(n - 1), 120);
+    }
+  };
+  tryStart(4);
+  pushActivity("Listening", { live: false });
+}
+
+function releaseMicAfter(cooldownMs) {
+  micSuspended = true; // stay deaf through cool-down
+  listenCooldownUntil = Date.now() + Math.max(0, cooldownMs);
+  if (releaseMicTimer) clearTimeout(releaseMicTimer);
+  releaseMicTimer = setTimeout(() => {
+    releaseMicTimer = null;
+    if (!voiceMode) return;
+    // Still in a turn — retry shortly instead of leaving the mic dead forever.
+    if (voiceBusy) {
+      releaseMicAfter(300);
+      return;
+    }
+    armMicNow();
+  }, Math.max(0, cooldownMs));
 }
 
 function tickClock() {
@@ -319,6 +382,9 @@ function looksLikeEcho(heard) {
   const a = normSpeech(heard);
   if (!a) return true;
   if (looksLikeFridayPrompt(a)) return true;
+  // Short user replies ("yes", "ok", "boss") often appear inside Friday's last line —
+  // only treat as echo when the heard phrase is substantial.
+  if (a.length < 12 && a.split(" ").filter(Boolean).length < 3) return false;
   const trail = (window.FridayLive && FridayLive._spokenTrail) || [];
   const refs = [
     window.FridayLive && FridayLive.lastSpoken && FridayLive.lastSpoken(),
@@ -327,14 +393,15 @@ function looksLikeEcho(heard) {
   ];
   for (const r of refs) {
     const b = normSpeech(r);
-    if (!b) continue;
-    if (b.includes(a) || a.includes(b.slice(0, Math.min(48, b.length)))) return true;
+    if (!b || b.length < 12) continue;
+    if (b.includes(a) && a.length >= 16) return true;
+    if (a.includes(b.slice(0, Math.min(48, b.length))) && b.length >= 24) return true;
     const aw = a.split(" ").filter((w) => w.length > 2);
     const bw = new Set(b.split(" ").filter((w) => w.length > 2));
-    if (!aw.length) continue;
+    if (aw.length < 3) continue;
     let n = 0;
     for (const w of aw) if (bw.has(w)) n++;
-    if (n / aw.length >= 0.65) return true;
+    if (n / aw.length >= 0.75) return true;
   }
   return false;
 }
@@ -345,18 +412,67 @@ function interruptTurn() {
   window.FridayLive && FridayLive.interrupt();
   stopSpeech();
   voiceBusy = false;
-  setState(voiceMode ? "listening" : "idle");
+  micSuspended = false;
+  listenCooldownUntil = 0;
+  if (releaseMicTimer) {
+    clearTimeout(releaseMicTimer);
+    releaseMicTimer = null;
+  }
+  finalBuffer = "";
+  interimText = "";
+  setState(voiceMode ? "listening" : "idle", { force: true });
   if (voiceMode) resumeRecognition();
   pushActivity("Interrupted · listening", { live: false });
 }
 
+window.onFridayLiveInterrupt = () => {
+  if (voiceBusy || voiceMode) interruptTurn();
+};
+
+/** Voice pace commands — say "speak slower / faster / normally" instead of a slider. */
+function handleVoicePaceCommand(text) {
+  const t = String(text || "").trim().toLowerCase();
+  if (!window.FridayVoice || !FridayVoice.setPace) return null;
+  let pace = null;
+  if (/\b(speak|talk|read)\s+(slower|more slowly)\b|\bslow\s+down\b|\bslower\b/.test(t) && t.split(/\s+/).length <= 8) {
+    pace = "slow";
+  } else if (/\b(speak|talk|read)\s+(faster|quicker|more quickly)\b|\bspeed\s+up\b|\bfaster\b/.test(t) && t.split(/\s+/).length <= 8) {
+    pace = "fast";
+  } else if (/\b(speak|talk)\s+(normally|normal|natural)\b|\bnormal\s+speed\b|\breset\s+(speech|voice)\s+speed\b/.test(t)) {
+    pace = "normal";
+  }
+  if (!pace) return null;
+  FridayVoice.setPace(pace);
+  const label = pace === "slow" ? "slower" : pace === "fast" ? "faster" : "normal";
+  return `Got it — I'll speak at a ${label} pace.`;
+}
+
 async function sendMessage(text, { fromVoice = false } = {}) {
   if (!text.trim() || voiceBusy) return;
+  const paceReply = handleVoicePaceCommand(text);
+  if (paceReply) {
+    addBubble("user", text);
+    $("#input").value = "";
+    setListeningLine("");
+    addBubble("assistant", paceReply);
+    if (fromVoice || voiceMode) {
+      voiceBusy = true;
+      if (voiceHoldMode()) suspendMic();
+      setState("speaking", { force: true });
+      try {
+        await speak(paceReply);
+      } finally {
+        voiceBusy = false;
+        if (voiceMode) releaseMicAfter(750);
+        else setState("idle", { force: true });
+      }
+    }
+    return;
+  }
   await ensureSession();
   addBubble("user", text);
   $("#input").value = "";
   setListeningLine("");
-  setState("thinking");
   clearActivity();
   pushActivity(fromVoice ? "Processing speech…" : "Thinking…");
   const skillOverride = $("#skillOverride").value || null;
@@ -365,11 +481,20 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   const epoch = ++turnEpoch;
   chatAbort = new AbortController();
 
-  if (useVoice) voiceBusy = true;
+  if (useVoice) {
+    voiceBusy = true;
+    // Hold (default): mute mic for the whole turn so speaker audio can't re-trigger.
+    if (voiceHoldMode()) suspendMic();
+    setState("thinking", { force: true });
+  } else {
+    setState("thinking", { force: true });
+  }
 
-  // live voice: sentence-pipelined speech. Mic stays live so the owner can interrupt.
+  // live voice: sentence-pipelined speech. Hold = mic muted; Interrupt = barge-in allowed.
   const vcfg = window.FridayVoice ? FridayVoice.cfg() : { streamSpeech: true };
-  const speaker = useVoice && speakEnabled() && window.FridayLive ? FridayLive.speaker() : null;
+  const speaker = useVoice && speakEnabled() && window.FridayLive
+    ? FridayLive.speaker({ onFirst: () => setState("speaking", { force: true }) })
+    : null;
   const filler = useVoice && window.FridayLive ? FridayLive.fillers(speaker) : null;
   filler && filler.start();
 
@@ -434,7 +559,12 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           liveMeta.textContent = `skill:${ev.skill_id}`;
           if (ev.skill_id === "computer_use") setState("acting");
         }
-        if (ev.type === "status" && ev.status) setState(ev.status);
+        if (ev.type === "status" && ev.status) {
+          // Don't let stream status yank us back to listening mid-turn.
+          if (!(useVoice && voiceBusy && (ev.status === "listening" || ev.status === "idle"))) {
+            setState(ev.status);
+          }
+        }
         if (ev.type === "observation") {
           const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
           pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
@@ -540,11 +670,16 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   } finally {
     filler && filler.stop();
     if (epoch !== turnEpoch) return;
-    setState(voiceMode ? "listening" : "idle");
     voiceBusy = false;
     finalBuffer = "";
     interimText = "";
-    if (voiceMode) resumeRecognition();
+    if (voiceMode) {
+      // Echo-tail re-arm, then force-listen. Shorter than before so Hold can't feel "deaf".
+      const cool = voiceHoldMode() ? 450 : 250;
+      releaseMicAfter(cool);
+    } else {
+      setState("idle", { force: true });
+    }
   }
 }
 
@@ -575,7 +710,17 @@ $("#btnNewChat").addEventListener("click", async () => {
 });
 
 async function clearThisChat() {
-  if (!confirm("Clear this conversation? Friday will forget the messages in it (saved memories stay).")) return;
+  const ok = await (window.FridayDialog
+    ? FridayDialog.confirm({
+        eyebrow: "COMMS",
+        title: "Clear this conversation?",
+        body: "Friday will forget the messages in this chat. Saved memories stay intact.",
+        tone: "warn",
+        confirmLabel: "Clear chat",
+        cancelLabel: "Keep it",
+      })
+    : Promise.resolve(window.confirm("Clear this conversation?")));
+  if (!ok) return;
   try {
     if (sessionId) await apiFetch(`/api/sessions/${sessionId}/clear`, { method: "POST" });
   } catch (_) {}
@@ -644,16 +789,27 @@ function pauseRecognition() {
 }
 
 function resumeRecognition() {
-  if (!voiceMode || !recognition) return;
+  if (!voiceMode || !recognition || micSuspended || voiceBusy) return;
   try {
     recognition.start();
   } catch (_) {
-    // Already started is fine.
+    // Already started / still stopping — retry once.
+    setTimeout(() => {
+      if (!voiceMode || !recognition || micSuspended || voiceBusy) return;
+      try { recognition.start(); } catch (_) {}
+    }, 150);
   }
 }
 
 function stopVoiceMode() {
   voiceMode = false;
+  voiceBusy = false;
+  micSuspended = false;
+  listenCooldownUntil = 0;
+  if (releaseMicTimer) {
+    clearTimeout(releaseMicTimer);
+    releaseMicTimer = null;
+  }
   clearPauseTimer();
   pauseRecognition();
   recognition = null;
@@ -662,7 +818,7 @@ function stopVoiceMode() {
   window.FridayLive && FridayLive.close();
   stopSpeech();
   setListeningLine("");
-  setState("idle");
+  setState("idle", { force: true });
   pushActivity("Voice mode off", { live: false });
   if (speakWasForced) {
     setSpeakEnabled(false);
@@ -747,10 +903,19 @@ async function startVoiceMode() {
   }
 
   voiceMode = true;
+  voiceBusy = false;
+  micSuspended = false;
+  listenCooldownUntil = 0;
+  if (releaseMicTimer) {
+    clearTimeout(releaseMicTimer);
+    releaseMicTimer = null;
+  }
+  finalBuffer = "";
+  interimText = "";
   $("#btnMic").classList.add("hot");
   $("#composer").classList.add("voice-on");
   window.FridayLive && FridayLive.open();
-  setState("listening");
+  setState("listening", { force: true });
   pushActivity("Voice on · speak, pause to send");
   setListeningLine("…", { interim: true });
 
@@ -766,6 +931,8 @@ async function startVoiceMode() {
   recognition.lang = "en-US";
 
   recognition.onresult = (event) => {
+    // Hold mode / cool-down: ignore everything — speaker bleed must not open a turn.
+    if (micSuspended || Date.now() < listenCooldownUntil) return;
     let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const piece = event.results[i][0].transcript;
@@ -778,16 +945,17 @@ async function startVoiceMode() {
     interimText = interim;
     const shown = `${finalBuffer} ${interim}`.trim();
     if (voiceBusy) {
-      // Realtime barge-in: mic stays live. Drop speaker echo; accept stop words or a clear final utterance.
+      // Interrupt mode only: mic is still live. Hold mode never reaches here (mic suspended).
+      if (voiceHoldMode()) return;
       if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) return;
       const stopWord = /^(stop|wait|hold on|hang on|enough|cancel)\b/i.test(shown.trim());
-      const words = shown.trim().split(/\s+/).filter(Boolean).length;
-      const clearFinal = !interim && finalBuffer && (words >= 3 || shown.trim().length >= 14);
-      if (stopWord || clearFinal) {
+      const longEnough = !interim && finalBuffer
+        && (shown.trim().split(/\s+/).filter(Boolean).length >= 4 || shown.trim().length >= 18);
+      if (stopWord || longEnough) {
         interruptTurn();
         finalBuffer = shown;
         setListeningLine(shown, { interim: false });
-        scheduleProcess(stopWord ? 80 : 180);
+        scheduleProcess(stopWord ? 80 : 220);
       }
       return;
     }
@@ -798,7 +966,8 @@ async function startVoiceMode() {
         return;
       }
       setListeningLine(shown, { interim: !finalBuffer || !!interim });
-      setState("listening");
+      // Stay on listening visually — don't poke setState every interim (flicker source).
+      if (uiState !== "listening") setState("listening");
       const quick = window.FridayVoice && FridayVoice.style() === "realtime" && finalBuffer && !interim;
       scheduleProcess(quick ? 140 : undefined);
     }
@@ -815,10 +984,10 @@ async function startVoiceMode() {
   };
 
   recognition.onend = () => {
-    // Keep the mic live during replies so the owner can interrupt.
-    if (voiceMode) {
-      try { recognition.start(); } catch (_) {}
-    }
+    // Hold: stay stopped while suspended. Interrupt: keep recognition alive for barge-in.
+    if (!voiceMode || micSuspended) return;
+    if (voiceBusy && voiceHoldMode()) return;
+    try { recognition.start(); } catch (_) {}
   };
 
   try {
@@ -997,7 +1166,17 @@ $("#btnMemSearch").addEventListener("click", async () => {
 });
 
 $("#btnForgetAll")?.addEventListener("click", async () => {
-  if (!confirm("Forget everything Friday remembers? Notes, learned facts, chat snippets, plan items and reminders in Memory Core will be deleted.")) return;
+  const ok = await (window.FridayDialog
+    ? FridayDialog.confirm({
+        eyebrow: "MEMORY CORE",
+        title: "Forget everything?",
+        body: "Notes, learned facts, chat snippets, plan items, and reminders in Memory Core will be permanently deleted.",
+        tone: "danger",
+        confirmLabel: "Forget all",
+        cancelLabel: "Keep memories",
+      })
+    : Promise.resolve(window.confirm("Forget everything Friday remembers?")));
+  if (!ok) return;
   try {
     await apiFetch("/api/memory/forget-all", { method: "POST" });
   } catch (_) {}
@@ -1126,8 +1305,8 @@ $("#taskForm").addEventListener("submit", async (e) => {
 function bindVoiceControls() {
   document.querySelectorAll("#settingsGrid [data-voice-style]").forEach((b) =>
     b.addEventListener("click", () => window.FridayVoice && FridayVoice.setStyle(b.dataset.voiceStyle)));
-  document.querySelectorAll("#settingsGrid input[data-voice-speed]").forEach((i) =>
-    i.addEventListener("input", () => window.FridayVoice && FridayVoice.setSpeed(i.value)));
+  document.querySelectorAll("#settingsGrid [data-voice-duplex]").forEach((b) =>
+    b.addEventListener("click", () => window.FridayVoice && FridayVoice.setDuplex(b.dataset.voiceDuplex)));
   window.FridayLive && FridayLive.syncControls();
 }
 
@@ -1169,9 +1348,11 @@ async function refreshSettings() {
           <button type="button" data-voice-style="realtime">Realtime</button>
           <button type="button" data-voice-style="relaxed">Relaxed</button>
         </div>
-        <p class="muted" style="margin:8px 0 0">Realtime: short pause, early clause streaming, mic barge-in — always Emily (Edge) when the server TTS is up. Relaxed waits longer and speaks after the full reply.</p>
-        <label style="margin-top:12px">Speech speed <strong data-voice-speed-label></strong></label>
-        <input type="range" min="0.85" max="1.6" step="0.05" data-voice-speed style="width:100%" />
+        <div class="seg" style="margin-top:8px">
+          <button type="button" data-voice-duplex="hold">Hold</button>
+          <button type="button" data-voice-duplex="interrupt">Interrupt</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">Hold (default) is speaker-safe half-duplex: mic muted while Friday talks + echo tail — industry fix for monitor speakers + desk mic. Say “speak slower / faster / normally” to change pace (no slider). Voice: Edge Ava neural.</p>
       </div>
       <div class="setting"><label>Humor</label>
         <div class="seg" id="humorSeg">
@@ -1201,12 +1382,17 @@ function pickFemaleBrowserVoice() {
     const rank = (v) => {
       const n = `${v.name} ${v.lang}`.toLowerCase();
       let s = 0;
-      if (/en(-|_)?(gb|ie|us|au)/i.test(v.lang)) s += 2;
-      if (/female|zira|hazel|susan|eva|samantha|karen|moira|tessa|fiona|emily|sonia|aria|jenny|natasha|linda/.test(n)) s += 5;
-      if (/male|david|mark|george|james|daniel|ravi|richard/.test(n)) s -= 8;
+      if (/en(-|_)?ie/i.test(v.lang) || /irish|moira/.test(n)) s += 6;
+      if (/en(-|_)?(gb|uk)/i.test(v.lang) || /hazel|susan|sonia|libby/.test(n)) s += 4;
+      if (/en(-|_)?us/i.test(v.lang)) s += 2;
+      if (/zira|hazel|susan|eva|samantha|karen|moira|tessa|fiona|jenny|aria|natasha|linda|female/.test(n)) s += 8;
+      if (/microsoft.*(zira|hazel)/.test(n)) s += 4;
+      if (/male|david|mark|george|james|daniel|ravi|richard|guy|tony|christopher/.test(n)) s -= 12;
       return s;
     };
-    return voices.slice().sort((a, b) => rank(b) - rank(a))[0] || null;
+    const sorted = voices.slice().sort((a, b) => rank(b) - rank(a));
+    // Never fall through to a clearly male top hit — skip those.
+    return sorted.find((v) => rank(v) > 0) || sorted[0] || null;
   } catch (_) {
     return null;
   }
@@ -1227,8 +1413,11 @@ function speakBrowser(text) {
     } else {
       u.lang = "en-IE";
     }
-    u.rate = 1.18 * (window.FridayVoice ? FridayVoice.speed() : 1.2);
-    u.pitch = 1.05;
+    // Natural rate only — speeding browser TTS is what sounded robotic.
+    u.rate = window.FridayVoice && FridayVoice.pace() === "fast" ? 1.08
+      : window.FridayVoice && FridayVoice.pace() === "slow" ? 0.92
+      : 1.0;
+    u.pitch = 1.0;
     u.onend = () => resolve(true);
     u.onerror = () => resolve(false);
     // Voices often load async on Chromium.
@@ -1255,10 +1444,11 @@ async function ttsFetchUrl(text) {
   const clean = String(text || "").replace(/\*\*/g, "").trim();
   if (!clean) return null;
   try {
+    const rate = window.FridayVoice && FridayVoice.edgeRate ? FridayVoice.edgeRate() : "+0%";
     const res = await apiFetch("/api/voice/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: clean.slice(0, 500) }),
+      body: JSON.stringify({ text: clean.slice(0, 500), rate }),
     });
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
     const blob = await res.blob();
@@ -1274,7 +1464,8 @@ function playUrl(url) {
     const audio = new Audio(url);
     currentAudio = audio;
     audio.preservesPitch = true;
-    audio.playbackRate = window.FridayVoice ? FridayVoice.speed() : 1;
+    // Always 1× — rate is baked into Edge synthesis so it stays natural.
+    audio.playbackRate = 1;
     window.FridayLive && FridayLive.attachAudio(audio);
     const fin = () => {
       URL.revokeObjectURL(url);
@@ -1424,6 +1615,13 @@ async function openReminderFromUrl() {
 (async function init() {
   const link = $("#linkHost");
   if (link) link.textContent = location.hostname || "local";
+  // Warm speechSynthesis voice list early (Realtime female picker needs it).
+  try {
+    if (window.speechSynthesis) {
+      speechSynthesis.getVoices();
+      speechSynthesis.addEventListener("voiceschanged", () => speechSynthesis.getVoices(), { once: true });
+    }
+  } catch (_) {}
   const authed = await ensureAuthSession();
   if (!authed) return; // redirected to localhost, or waiting on Register / Sign in
   if (micNeedsHttps()) {

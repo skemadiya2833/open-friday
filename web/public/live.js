@@ -6,13 +6,15 @@
 
   // ------------------------------------------------------------------ settings
   const K_STYLE = "friday.voiceStyle"; // "realtime" | "relaxed"
-  const K_SPEED = "friday.voiceSpeed"; // 0.8 .. 1.4
+  const K_PACE = "friday.voicePace"; // "slow" | "normal" | "fast" — Edge rate, not warped playback
+  const K_DUPLEX = "friday.voiceDuplex"; // "hold" | "interrupt"
   const STYLES = {
-    // pauseMs: silence before a spoken turn is sent. fillerMs: how long a reply may take before Friday says a filler.
-    // Realtime stays on Emily (Edge). Snappiness comes from short pause + early sentence cuts + TTS warmup — not browser voices.
-    realtime: { pauseMs: 160, fillerMs: 700, streamSpeech: true, label: "Realtime" },
-    relaxed: { pauseMs: 800, fillerMs: 2000, streamSpeech: false, label: "Relaxed" },
+    // Monitor speakers + desk mic: industry default is half-duplex (Hold) + echo tail.
+    // Realtime streams Edge neural sentence-by-sentence; Relaxed speaks after the full reply.
+    realtime: { pauseMs: 160, fillerMs: 650, streamSpeech: true, label: "Realtime" },
+    relaxed: { pauseMs: 700, fillerMs: 1800, streamSpeech: false, label: "Relaxed" },
   };
+  const PACE_RATE = { slow: "-18%", normal: "+0%", fast: "+18%" };
   const Voice = {
     styles: STYLES,
     style() {
@@ -24,16 +26,33 @@
       localStorage.setItem(K_STYLE, s);
       window.FridayLive && FridayLive.syncControls();
     },
-    cfg() { return STYLES[Voice.style()]; },
-    pauseMs() { return Voice.cfg().pauseMs; },
-    speed() {
-      const v = parseFloat(localStorage.getItem(K_SPEED) || "1.2");
-      return isFinite(v) ? Math.min(1.6, Math.max(0.85, v)) : 1.2;
+    // hold (default): mic gated while Friday talks — required for speaker+mic desks.
+    duplex() {
+      const d = localStorage.getItem(K_DUPLEX);
+      return d === "interrupt" ? "interrupt" : "hold";
     },
-    setSpeed(v) {
-      localStorage.setItem(K_SPEED, String(Math.min(1.6, Math.max(0.85, Number(v) || 1.2))));
+    setDuplex(d) {
+      if (d !== "hold" && d !== "interrupt") return;
+      localStorage.setItem(K_DUPLEX, d);
       window.FridayLive && FridayLive.syncControls();
     },
+    isHold() { return Voice.duplex() === "hold"; },
+    cfg() { return STYLES[Voice.style()]; },
+    pauseMs() { return Voice.cfg().pauseMs; },
+    // Natural 1× playback; pace adjusts Edge synthesis rate (say "speak slower/faster").
+    pace() {
+      const p = localStorage.getItem(K_PACE);
+      return p === "slow" || p === "fast" ? p : "normal";
+    },
+    setPace(p) {
+      if (p !== "slow" && p !== "normal" && p !== "fast") return;
+      localStorage.setItem(K_PACE, p);
+      window.FridayLive && FridayLive.syncControls();
+    },
+    edgeRate() { return PACE_RATE[Voice.pace()] || "+0%"; },
+    // Compat for older call sites — always natural playback (no chipmunk slider).
+    speed() { return 1; },
+    setSpeed() { /* slider removed — use setPace / voice commands */ },
   };
 
   // ------------------------------------------------------------------ audio levels
@@ -66,10 +85,12 @@
     try {
       const c = ctx();
       if (!c || !navigator.mediaDevices) return;
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       micAnalyser = c.createAnalyser();
       micAnalyser.fftSize = 512;
-      micAnalyser.smoothingTimeConstant = 0.55;
+      micAnalyser.smoothingTimeConstant = 0.22; // snappier orb reaction to speech
       c.createMediaStreamSource(micStream).connect(micAnalyser); // analysis only: never routed to the speakers
     } catch (_) { micAnalyser = null; }
   }
@@ -124,13 +145,14 @@
       for (let i = 0; i < NB; i++) target[i] = amp * (0.5 + 0.5 * Math.sin(i * 0.35 - t * (state === "acting" ? 5 : 3)));
     }
     let sum = 0;
-    const a = 1 - Math.exp(-dt * 30), d = 1 - Math.exp(-dt * 7);  // fast attack, softer release
+    // Faster attack/release so the orb tracks speech instead of lagging a beat behind.
+    const a = 1 - Math.exp(-dt * 48), d = 1 - Math.exp(-dt * 14);
     for (let i = 0; i < NB; i++) {
       bars[i] += (target[i] - bars[i]) * (target[i] > bars[i] ? a : d);
       sum += bars[i];
     }
-    level += (sum / NB - level) * (1 - Math.exp(-dt * 14));
-    kick += (level - kick) * (1 - Math.exp(-dt * 5));
+    level += (sum / NB - level) * (1 - Math.exp(-dt * 22));
+    kick += (level - kick) * (1 - Math.exp(-dt * 10));
     const [c1, c2] = COLORS[state] || COLORS.idle;
     g.clearRect(0, 0, W, H);
 
@@ -190,10 +212,8 @@
       cancelAnimationFrame(raf); raf = requestAnimationFrame(drawOrb);
       openMic();
       Live.syncControls();
-      // Warm Edge TTS so the first Emily reply isn't a cold start.
-      if (window.ttsFetchUrl) {
-        window.ttsFetchUrl("Ready.").then((url) => { if (url) try { URL.revokeObjectURL(url); } catch (_) {} }).catch(() => {});
-      }
+      // Prefetch browser voices so Realtime picks a female voice on first utterance.
+      try { window.speechSynthesis && speechSynthesis.getVoices(); } catch (_) {}
     },
     close() {
       if (!overlay) return;
@@ -208,7 +228,9 @@
     lastSpoken() { return Live._lastSpoken || ""; },
     state(s) {
       const m = { thinking: "thinking", acting: "acting", listening: "listening", idle: open ? "listening" : "idle", speaking: "speaking", running: "acting" };
-      state = m[s] || state;
+      const next = m[s] || state;
+      if (next === state) return; // avoid yellow/blue thrash from redundant updates
+      state = next;
       const el = $("#liveState");
       if (el) el.textContent = LABELS[state] || state.toUpperCase();
       if (overlay) overlay.dataset.state = state;
@@ -243,10 +265,17 @@
     },
     synthSpeaking(on) { speakingSynth = !!on; },
     syncControls() {
-      const st = Voice.style(), sp = Voice.speed();
+      const st = Voice.style(), dx = Voice.duplex(), pace = Voice.pace();
       document.querySelectorAll("[data-voice-style]").forEach((b) => b.classList.toggle("on", b.dataset.voiceStyle === st));
-      document.querySelectorAll("input[data-voice-speed]").forEach((i) => { if (Number(i.value) !== sp) i.value = sp; });
-      document.querySelectorAll("[data-voice-speed-label]").forEach((l) => { l.textContent = sp.toFixed(2) + "×"; });
+      document.querySelectorAll("[data-voice-duplex]").forEach((b) => b.classList.toggle("on", b.dataset.voiceDuplex === dx));
+      document.querySelectorAll("[data-voice-pace]").forEach((b) => b.classList.toggle("on", b.dataset.voicePace === pace));
+      document.querySelectorAll("[data-voice-speed-wrap]").forEach((el) => { el.hidden = true; });
+      const orb = $("#liveOrb");
+      if (orb) {
+        orb.title = Voice.isHold()
+          ? "Speaker-safe Hold — mic muted while Friday talks. Click to stop her."
+          : "Interrupt — speak to barge in (echo risk with open speakers). Click to stop.";
+      }
     },
     nudge(amt) {
       const v = Math.max(0.15, Math.min(1, Number(amt) || 0.45));
@@ -285,8 +314,8 @@
     },
 
     // ---------------------------------------------------------------- sentence-streamed speech
-    /* Always Emily via Edge when server TTS works. Realtime feels fast from early clause cuts,
-     * N+1 prefetch while N plays, and TTS warmup on mic open — never from a male browser voice. */
+    /* Always Edge neural (natural human voice). Realtime: stream clauses + prefetch N+1.
+     * Browser TTS is last-resort only — it sounds robotic on open speakers. */
     speaker({ onFirst } = {}) {
       let pending = "", chain = Promise.resolve(), aborted = false, first = true, spokenReal = 0;
       const trail = [];
@@ -296,6 +325,7 @@
           const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
           if (!clean || aborted) return;
           if (first) { first = false; onFirst && onFirst(); }
+          const realtime = Voice.style() === "realtime";
           const pre = window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
           chain = chain.then(async () => {
             if (aborted) return;
@@ -308,6 +338,7 @@
               if (trail.length > 6) trail.shift();
               Live._spokenTrail = trail.slice();
             }
+            // Always prefer neural Edge — browser TTS is the robotic voice on speaker setups.
             const url = await pre;
             if (aborted) return;
             if (url) await window.playUrl(url);
@@ -325,7 +356,7 @@
               const end = m.index + m[0].length;
               if (end >= need || m[0].includes("\n")) { cut = end; break; }
             }
-            const flushAt = (realtime && spokenReal === 0) ? 36 : 80;
+            const flushAt = (realtime && spokenReal === 0) ? 32 : 72;
             if (cut < 0 && pending.length > flushAt) { cut = pending.length; }
             if (cut < 0) break;
             sp.say(pending.slice(0, cut));
@@ -333,7 +364,8 @@
           }
         },
         finish() { if (pending.trim()) sp.say(pending); pending = ""; },
-        done() { return chain.then(() => { if (open) Live.state("listening"); }); },
+        // App owns listening after echo-tail cool-down (half-duplex re-arm).
+        done() { return chain.then(() => {}); },
         abort() { aborted = true; pending = ""; },
       };
       Live._speaker = sp;
@@ -347,9 +379,13 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     $("#liveClose")?.addEventListener("click", () => document.getElementById("btnMic")?.click());
-    $("#liveOrb")?.addEventListener("click", () => Live.interrupt());
+    $("#liveOrb")?.addEventListener("click", () => {
+      Live.interrupt();
+      if (typeof window.onFridayLiveInterrupt === "function") window.onFridayLiveInterrupt();
+    });
     document.querySelectorAll("[data-voice-style]").forEach((b) => b.addEventListener("click", () => Voice.setStyle(b.dataset.voiceStyle)));
-    document.querySelectorAll("input[data-voice-speed]").forEach((i) => i.addEventListener("input", () => Voice.setSpeed(i.value)));
+    document.querySelectorAll("[data-voice-duplex]").forEach((b) => b.addEventListener("click", () => Voice.setDuplex(b.dataset.voiceDuplex)));
+    document.querySelectorAll("[data-voice-pace]").forEach((b) => b.addEventListener("click", () => Voice.setPace(b.dataset.voicePace)));
     Live.syncControls();
   });
 })();

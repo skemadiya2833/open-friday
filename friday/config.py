@@ -217,7 +217,7 @@ SKILLS_DIR = os.getenv(
 )
 MAX_TOOL_STEPS = int(os.getenv("MAX_TOOL_STEPS", "8"))
 VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "large-v3-turbo")   # provisional; accuracy on owner's voice UNVERIFIED
-VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "en-IE-EmilyNeural")
+VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "en-US-AvaNeural")
 VOICE_ENABLED = _env_bool("VOICE_ENABLED", "true")
 SHELL_TOOLS_ENABLED = _env_bool("SHELL_TOOLS_ENABLED", "false")
 

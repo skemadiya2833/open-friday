@@ -3,6 +3,19 @@
   "use strict";
   const $ = (s) => document.querySelector(s);
 
+  async function dlgAlert(opts) {
+    if (window.FridayDialog) return FridayDialog.alert(opts);
+    window.alert(typeof opts === "string" ? opts : (opts.body || opts.title || ""));
+  }
+  async function dlgConfirm(opts) {
+    if (window.FridayDialog) return FridayDialog.confirm(opts);
+    return window.confirm(typeof opts === "string" ? opts : (opts.body || opts.title || ""));
+  }
+  async function dlgNotice(opts) {
+    if (window.FridayDialog) return FridayDialog.notice(opts);
+    window.alert((opts.body || "") + (opts.code ? "\n\n" + opts.code : ""));
+  }
+
   function b64urlToBuf(s) {
     const pad = "=".repeat((4 - (s.length % 4)) % 4);
     const b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
@@ -84,10 +97,25 @@
         rev.textContent = "Revoke";
         rev.onclick = async () => {
           await fetch("/api/auth/stepup/options", { method: "POST" }).catch(() => {});
-          if (!confirm("Revoke requires a fresh passkey. Continue after step-up?")) return;
-          // Step-up is manual via Sign in for now if needed.
+          const ok = await dlgConfirm({
+            eyebrow: "DEVICES",
+            title: `Revoke “${d.label}”?`,
+            body: "This needs a fresh passkey step-up. The device will lose access until re-enrolled.",
+            tone: "danger",
+            confirmLabel: "Revoke device",
+            cancelLabel: "Cancel",
+          });
+          if (!ok) return;
           const r = await fetch("/api/auth/devices/" + d.id, { method: "DELETE" });
-          if (!r.ok) alert((await r.json()).detail || "revoke failed — complete step-up first");
+          if (!r.ok) {
+            const detail = (await r.json().catch(() => ({}))).detail || "Revoke failed — complete step-up first.";
+            await dlgAlert({
+              eyebrow: "DEVICES",
+              title: "Couldn’t revoke",
+              body: String(detail),
+              tone: "danger",
+            });
+          }
           refreshStatus();
         };
         el.querySelector(".actions").append(rev);
@@ -121,13 +149,23 @@
 
   async function bootstrapPc() {
     if (!window.PublicKeyCredential) {
-      alert("This browser has no WebAuthn.");
+      await dlgAlert({
+        eyebrow: "PASSKEYS",
+        title: "WebAuthn unavailable",
+        body: "This browser doesn’t support passkeys. Try a current Chrome, Edge, or Safari build.",
+        tone: "warn",
+      });
       return;
     }
     const optRes = await fetch("/api/auth/register/options", { method: "POST" });
     const body = await optRes.json();
     if (!optRes.ok) {
-      alert(body.detail || "options failed");
+      await dlgAlert({
+        eyebrow: "PASSKEYS",
+        title: "Couldn’t start registration",
+        body: String(body.detail || "Options request failed."),
+        tone: "danger",
+      });
       return;
     }
     const challenge = body.options.challenge;
@@ -143,10 +181,21 @@
     });
     const out = await ver.json();
     if (!ver.ok) {
-      alert(out.detail || "register failed");
+      await dlgAlert({
+        eyebrow: "PASSKEYS",
+        title: "Registration failed",
+        body: String(out.detail || "Verify step failed."),
+        tone: "danger",
+      });
       return;
     }
-    alert("Registered: " + out.label + " (" + out.role + ")");
+    await dlgNotice({
+      eyebrow: "PASSKEYS",
+      title: "Device registered",
+      body: `${out.label} is on the roster as ${out.role}. Reloading secure session.`,
+      tone: "ok",
+      okLabel: "Continue",
+    });
     refreshStatus();
     window.hideAuthGate?.();
     location.reload();
@@ -156,7 +205,12 @@
     const optRes = await fetch("/api/auth/login/options", { method: "POST" });
     const body = await optRes.json();
     if (!optRes.ok) {
-      alert(body.detail || "login options failed");
+      await dlgAlert({
+        eyebrow: "PASSKEYS",
+        title: "Couldn’t start sign-in",
+        body: String(body.detail || "Login options failed."),
+        tone: "danger",
+      });
       return;
     }
     const challenge = body.options.challenge;
@@ -168,7 +222,12 @@
     });
     const out = await ver.json();
     if (!ver.ok) {
-      alert(out.detail || "login failed");
+      await dlgAlert({
+        eyebrow: "PASSKEYS",
+        title: "Sign-in failed",
+        body: String(out.detail || "Verify step failed."),
+        tone: "danger",
+      });
       return;
     }
     refreshStatus();
@@ -177,8 +236,12 @@
   }
 
   window.FridayAuth = {
-    bootstrapPc: () => bootstrapPc().catch((e) => alert(e.message)),
-    login: () => login().catch((e) => alert(e.message)),
+    bootstrapPc: () =>
+      bootstrapPc().catch((e) =>
+        dlgAlert({ eyebrow: "PASSKEYS", title: "Registration error", body: e.message || String(e), tone: "danger" })),
+    login: () =>
+      login().catch((e) =>
+        dlgAlert({ eyebrow: "PASSKEYS", title: "Sign-in error", body: e.message || String(e), tone: "danger" })),
     refreshStatus,
   };
 
@@ -195,10 +258,22 @@
     });
     const out = await r.json();
     if (!r.ok) {
-      alert(out.detail || "approve failed — press a physical key, then retry");
+      await dlgAlert({
+        eyebrow: "PAIRING",
+        title: "Approve failed",
+        body: String(out.detail || "Press a physical key, then retry."),
+        tone: "danger",
+      });
       return;
     }
-    alert("Enrollment token created (5 min). Enter it on the phone to finish passkey registration.\n" + out.enrollment_token);
+    await dlgNotice({
+      eyebrow: "PAIRING",
+      title: "Enrollment token ready",
+      body: "Valid for 5 minutes. Enter this on the phone to finish passkey registration.",
+      tone: "ok",
+      code: out.enrollment_token,
+      okLabel: "Done",
+    });
     refreshStatus();
   });
 

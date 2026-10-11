@@ -40,6 +40,23 @@ class SkillHandler(Skill):
                 metadata={"refused": True},
             )
 
+        # Tools-first: open Notepad / specs / etc. without the vision loop (voice-friendly).
+        from friday.agent.direct_tools import try_direct
+
+        direct = try_direct(ctx.message.strip())
+        if direct.handled:
+            ctx.emit("activity", {"step": "direct", "message": direct.message})
+            ctx.emit("status", {"status": "idle"})
+            return SkillResult(
+                reply=direct.message if direct.ok else f"That didn't work: {direct.message}",
+                skill_id="computer_use",
+                metadata={
+                    "status": "completed" if direct.ok else "failed",
+                    "direct": direct.tool,
+                    "ok": direct.ok,
+                },
+            )
+
         from friday.agent.runs import RunBusyError, get_run_manager
         from friday.models.manager import get_model_manager
 

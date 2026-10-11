@@ -152,6 +152,7 @@ class TaskCreate(BaseModel):
 
 class TTSRequest(BaseModel):
     text: str
+    rate: str | None = None  # Edge rate e.g. +0%, -20%, +15% — natural default +0%
 
 
 class PlanAddRequest(BaseModel):
@@ -466,7 +467,7 @@ def voice_speak(body: TTSRequest):
     from friday.voice.tts import synthesize_bytes
     from fastapi.responses import Response
 
-    data, mime = synthesize_bytes(body.text)
+    data, mime = synthesize_bytes(body.text, rate=body.rate)
     if mime.startswith("text"):
         raise HTTPException(
             503,

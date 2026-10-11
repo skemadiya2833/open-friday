@@ -39,6 +39,17 @@ def test_status_pattern():
     assert r.handled and r.tool == "system_status"
 
 
+def test_show_specs_on_screen(monkeypatch, tmp_path):
+    opened = []
+    monkeypatch.setattr(DT, "_collect_system_specs", lambda: "Friday — System specs\nCPU : test")
+    monkeypatch.setattr(DT.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(DT.subprocess, "Popen", lambda *a, **k: opened.append(a) or type("P", (), {})())
+    r = DT.try_direct("put my system specs on screen")
+    assert r.handled and r.ok and r.tool == "show_specs_on_screen"
+    assert opened and "notepad.exe" in opened[0][0]
+    assert list(tmp_path.glob("friday-system-specs-*.txt"))
+
+
 def test_router_prefers_direct_before_gui(tmp_path, monkeypatch):
     monkeypatch.setattr(DT.webbrowser, "open", lambda u: True)
     routed = RT.route("open https://example.com", workspace=str(tmp_path))

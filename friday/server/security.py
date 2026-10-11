@@ -26,7 +26,7 @@ _PUBLIC_PREFIXES = (
     "/health",
     "/favicon",
 )
-_PUBLIC_EXACT = {"/", "/index.html", "/app.js", "/styles.css", "/live.js", "/tools.js"}
+_PUBLIC_EXACT = {"/", "/index.html", "/app.js", "/styles.css", "/live.js", "/tools.js", "/dialog.js", "/auth.js"}
 _STATIC_SUFFIXES = (".js", ".css", ".map", ".svg", ".png", ".ico", ".woff2", ".html")
 
 

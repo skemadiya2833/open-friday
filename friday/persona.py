@@ -47,8 +47,8 @@ PERSONA_AGENT = (
     "When finished, summarize what was done and verified."
 )
 
-# Closest free neural match for a calm female Irish-leaning voice (Edge TTS).
-DEFAULT_EDGE_VOICE = "en-IE-EmilyNeural"
+# Natural conversational female neural voice (Edge TTS). Ava reads more human than Emily at 1×.
+DEFAULT_EDGE_VOICE = "en-US-AvaNeural"
 
 
 def owner_name() -> str:
