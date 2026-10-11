@@ -15,7 +15,7 @@ description of changes. Original copyright notices are preserved.
 
 | Friday file | OpenJarvis source | Stage |
 |-------------|-------------------|-------|
-| *(filled as stages land)* | | |
+| `friday/agent/tool_loop_guard.py` | `src/openjarvis/agents/loop_guard.py` | V2 |
 
 Full Apache-2.0 text: see the `LICENSE` file in the OpenJarvis repository at the commit above,
 or <http://www.apache.org/licenses/LICENSE-2.0>.

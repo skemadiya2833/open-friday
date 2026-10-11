@@ -155,6 +155,19 @@ class ToolRegistry:
                              risk=spec.risk.value, caller=caller, run_id=run_id, detail="owner approval not granted")
                 return ToolResult.error(f"Not approved ({who}). The owner did not allow {name}.", denied=True)
 
+        # Tool-call loop guard (OpenJarvis-inspired): identical / ping-pong / no-change.
+        from friday.agent.tool_loop_guard import get_tool_loop_guard
+
+        guard = get_tool_loop_guard(run_id)
+        pre = guard.check_call(name, args)
+        if pre.warned:
+            audit.record(tool=name, args=args, outcome="loop_warn", approver="tool_loop_guard",
+                         risk=spec.risk.value, caller=caller, run_id=run_id, detail=pre.reason)
+        if pre.blocked:
+            audit.record(tool=name, args=args, outcome="loop_blocked", approver="tool_loop_guard",
+                         risk=spec.risk.value, caller=caller, run_id=run_id, detail=pre.reason)
+            return ToolResult.error(f"Loop guard: {pre.reason}")
+
         t0 = time.perf_counter()
         try:
             raw = spec.handler(args)
@@ -163,6 +176,14 @@ class ToolRegistry:
         except Exception as exc:  # noqa: BLE001 - tools must not crash the caller
             result = ToolResult.error(f"Tool error ({name}): {exc}")
             outcome = "error"
+        post = guard.record_result(name, _summarize(result))
+        if post.warned:
+            audit.record(tool=name, args=args, outcome="loop_warn", approver="tool_loop_guard",
+                         risk=spec.risk.value, caller=caller, run_id=run_id, detail=post.reason)
+        if post.blocked:
+            audit.record(tool=name, args=args, outcome="loop_blocked", approver="tool_loop_guard",
+                         risk=spec.risk.value, caller=caller, run_id=run_id, detail=post.reason)
+            return ToolResult.error(f"Loop guard: {post.reason}")
         dur = (time.perf_counter() - t0) * 1000.0
         audit.record(tool=name, args=args, outcome=outcome, approver=approver, risk=spec.risk.value,
                      duration_ms=dur, result_summary=_summarize(result), caller=caller, run_id=run_id)
