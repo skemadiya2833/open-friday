@@ -82,12 +82,17 @@ def _ddg_url(href: str) -> str:
 def _get(url: str, timeout: float = 12.0) -> str:
     import httpx
 
+    from friday.security.ssrf import assert_url_safe
+
+    assert_url_safe(url, resolve=True)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Friday) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
     with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
         r = client.get(url)
+        # Re-check final URL after redirects (SSRF via open redirect).
+        assert_url_safe(str(r.url), resolve=True)
         r.raise_for_status()
         return r.text
 
@@ -146,6 +151,9 @@ def fetch_web_results(query: str, *, limit: int = 8) -> list[dict[str, str]]:
 
 
 def format_results(query: str, rows: list[dict[str, str]]) -> str:
+    from friday.security.content_scan import apply_injection
+    from friday.security.taint import fence_untrusted
+
     if not rows:
         return (
             f"No web results came back for '{query}'. "
@@ -153,13 +161,19 @@ def format_results(query: str, rows: list[dict[str, str]]) -> str:
         )
     lines = [f"Search results for '{query}':"]
     for i, row in enumerate(rows, 1):
-        lines.append(f"{i}. {row.get('title') or '(untitled)'}")
-        if row.get("snippet"):
-            lines.append(f"   {row['snippet']}")
+        title = row.get("title") or "(untitled)"
+        snippet = row.get("snippet") or ""
+        inj = apply_injection(f"{title}\n{snippet}", audit_tool="research_fetch_scan")
+        if inj.blocked:
+            lines.append(f"{i}. [blocked untrusted page content]")
+            continue
+        lines.append(f"{i}. {title}")
+        if snippet:
+            lines.append(f"   {snippet}")
         if row.get("url"):
             lines.append(f"   {row['url']}")
-    lines.append("Brief the user from these facts. Do not search again.")
-    return "\n".join(lines)
+    body = "\n".join(lines)
+    return fence_untrusted(body, source=f"web_search:{query}") + "\nBrief the user from these facts. Do not search again."
 
 
 def perform_knowledge_search(query: str, *, open_browser: bool = False) -> KnowledgeNote:

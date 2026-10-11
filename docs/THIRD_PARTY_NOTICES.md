@@ -16,6 +16,10 @@ description of changes. Original copyright notices are preserved.
 | Friday file | OpenJarvis source | Stage |
 |-------------|-------------------|-------|
 | `friday/agent/tool_loop_guard.py` | `src/openjarvis/agents/loop_guard.py` | V2 |
+| `friday/security/ssrf.py` | `src/openjarvis/security/ssrf.py` | V3 |
+| `friday/security/file_policy.py` | `src/openjarvis/security/file_policy.py` | V3 |
+| `friday/security/content_scan.py` | `src/openjarvis/security/scanner.py` (+ injection / stripper ideas) | V3 |
+| `friday/security/taint.py` | `src/openjarvis/security/taint.py` (ideas) | V3 |
 
 Full Apache-2.0 text: see the `LICENSE` file in the OpenJarvis repository at the commit above,
 or <http://www.apache.org/licenses/LICENSE-2.0>.

@@ -185,6 +185,23 @@ class VectorMemory:
         text = text.strip()
         if not text:
             raise ValueError("Empty memory text")
+        try:
+            from friday.security.content_scan import apply_secrets
+            from friday.security.file_policy import is_sensitive_file
+
+            src = str((metadata or {}).get("path") or (metadata or {}).get("source") or "")
+            if src and is_sensitive_file(src):
+                raise ValueError(f"Refusing to store sensitive file content: {src}")
+            scanned = apply_secrets(text, audit_tool="memory_write_scan")
+            if scanned.blocked:
+                raise ValueError("Refusing to store blocked secret/PII content")
+            text = scanned.text.strip()
+            if not text:
+                raise ValueError("Empty memory text after redaction")
+        except ValueError:
+            raise
+        except Exception:
+            pass
         cid = doc_id or str(uuid.uuid4())
         meta = dict(metadata or {})
         meta.setdefault("created_at", time.time())

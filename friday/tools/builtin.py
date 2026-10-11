@@ -57,25 +57,39 @@ def _memory_delete(args: dict[str, Any]) -> ToolResult:
 
 
 def _read_file(args: dict[str, Any]) -> ToolResult:
+    from friday.security.content_scan import apply_secrets
+    from friday.security.file_policy import is_sensitive_file
     from friday.tools.registry import _safe_workspace_path
 
     path = _safe_workspace_path(str(args["path"]))
+    if is_sensitive_file(path):
+        return ToolResult.error(f"Sensitive file blocked by policy: {path.name}", denied=True)
     if not path.is_file():
         return ToolResult.error(f"File not found: {path.name}")
     data = path.read_text(encoding="utf-8", errors="replace")
-    res = ToolResult.text_result(data[:8000])
+    scanned = apply_secrets(data[:8000], audit_tool="read_file_scan")
+    if scanned.blocked:
+        return ToolResult.error("File content blocked (secrets/PII policy).", denied=True)
+    res = ToolResult.text_result(scanned.text)
     res.metadata.update(size=len(data), truncated=len(data) > 8000)
     return res
 
 
 def _write_file(args: dict[str, Any]) -> ToolResult:
+    from friday.security.content_scan import apply_secrets
+    from friday.security.file_policy import is_sensitive_file
     from friday.tools.registry import _safe_workspace_path
 
     path = _safe_workspace_path(str(args["path"]))
+    if is_sensitive_file(path):
+        return ToolResult.error(f"Sensitive file blocked by policy: {path.name}", denied=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     content = str(args.get("content", ""))
-    path.write_text(content, encoding="utf-8")
-    return ToolResult.text_result(f"Wrote {len(content)} chars to {path.name}", chars=len(content))
+    scanned = apply_secrets(content, audit_tool="write_file_scan")
+    if scanned.blocked:
+        return ToolResult.error("Write blocked (secrets/PII policy).", denied=True)
+    path.write_text(scanned.text, encoding="utf-8")
+    return ToolResult.text_result(f"Wrote {len(scanned.text)} chars to {path.name}", chars=len(scanned.text))
 
 
 def _list_files(args: dict[str, Any]) -> ToolResult:

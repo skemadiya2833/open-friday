@@ -138,6 +138,17 @@ def synthesize_to_file(text: str, out_path: str | Path, rate: str | None = None)
     if not clean:
         out.write_bytes(b"")
         return out
+    # Scan before speech (not post-hoc) — never speak raw secrets.
+    try:
+        from friday.security.content_scan import scan_speech
+
+        spoken = scan_speech(clean)
+        if spoken.blocked:
+            clean = "I can't say that out loud — it looked like a secret."
+        else:
+            clean = spoken.text.strip() or clean
+    except Exception:
+        pass
 
     mp3 = out.with_suffix(".mp3")
     if _edge_tts(clean, mp3, rate=rate):
