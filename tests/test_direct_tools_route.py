@@ -40,14 +40,28 @@ def test_status_pattern():
 
 
 def test_show_specs_on_screen(monkeypatch, tmp_path):
-    opened = []
-    monkeypatch.setattr(DT, "_collect_system_specs", lambda: "Friday — System specs\nCPU : test")
+    opened_urls = []
+    pops = []
+    monkeypatch.setattr(DT, "_collect_system_specs", lambda: "Friday — System specs\nCPU : test-cpu")
     monkeypatch.setattr(DT.tempfile, "gettempdir", lambda: str(tmp_path))
-    monkeypatch.setattr(DT.subprocess, "Popen", lambda *a, **k: opened.append(a) or type("P", (), {})())
+    monkeypatch.setattr(DT.webbrowser, "open", lambda u: opened_urls.append(u) or True)
+    monkeypatch.setattr(DT.subprocess, "Popen", lambda *a, **k: pops.append(a) or type("P", (), {})())
     r = DT.try_direct("put my system specs on screen")
     assert r.handled and r.ok and r.tool == "show_specs_on_screen"
-    assert opened and "notepad.exe" in opened[0][0]
-    assert list(tmp_path.glob("friday-system-specs-*.txt"))
+    assert opened_urls and opened_urls[0].startswith("file:")
+    assert list(tmp_path.glob("friday-system-specs-*.html"))
+    assert any("powershell" in str(a[0]).lower() for a in pops)
+
+
+def test_show_system_resources_phrase(monkeypatch, tmp_path):
+    """Voice-mangled 'resources on the system … put on screen' must not fall through to vision."""
+    monkeypatch.setattr(DT, "_collect_system_specs", lambda: "Friday — System specs\nRAM : 32 GB")
+    monkeypatch.setattr(DT.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(DT.webbrowser, "open", lambda u: True)
+    monkeypatch.setattr(DT.subprocess, "Popen", lambda *a, **k: type("P", (), {})())
+    msg = "Can you bring up my resources that are on the system and put on screen"
+    r = DT.try_direct(msg)
+    assert r.handled and r.ok and r.tool == "show_specs_on_screen"
 
 
 def test_router_prefers_direct_before_gui(tmp_path, monkeypatch):

@@ -13,6 +13,15 @@ def test_put_system_specs_on_screen_is_act():
     assert "show on screen" in got.reason
 
 
+def test_bring_up_system_resources_is_act():
+    got = I._deterministic_intent(
+        "Can you bring up my resources that are on the system and put on screen"
+    )
+    assert got is not None
+    assert got.mode == "act"
+    assert got.skill_id == "computer_use"
+
+
 def test_policy_does_not_veto_show_on_screen():
     raw = I.Intent(
         mode="act",

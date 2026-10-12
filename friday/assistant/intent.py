@@ -46,13 +46,15 @@ _IMPERATIVE = re.compile(
     r"show|display|put|bring up|pull up)\b",
     re.I,
 )
-# "Put my system specs on screen" — must act (Notepad), never chat/observe hallucination.
+# "Put my system specs / resources on screen" — act (direct tools → HTML), never chat hallucination.
 _SHOW_ON_SCREEN = re.compile(
-    r"\b(show|display|put|bring up|pull up|open)\b.{"
-    r"0,80}\b(on (my |the )?(screen|desktop|monitor|display)|in (a |my )?notepad)\b|"
-    r"\b(system specs?|system info(?:rmation)?|hardware (?:info|specs?)|pc specs?|"
-    r"computer specs?|device specs?)\b.{"
-    r"0,40}\b(on (my |the )?(screen|desktop)|in notepad)\b",
+    r"\b(show|display|put|bring up|pull up|open|list)\b.{"
+    r"0,100}\b(on (my |the )?(screen|desktop|monitor|display)|in (a |my )?notepad|"
+    r"system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?|resources?)|"
+    r"pc specs?|computer specs?|resources?.{0,40}on (the )?system)\b|"
+    r"\b(system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?)|pc specs?|"
+    r"computer specs?|device specs?|resources?.{0,40}on (the )?system)\b.{"
+    r"0,60}\b(on (my |the )?(screen|desktop)|in notepad|html|browser)\b",
     re.I,
 )
 
@@ -362,10 +364,15 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
-    # Put/show something on the screen (specs, info) → desktop act, not chat.
+    # Put/show specs/resources on screen → computer_use (tools-first HTML/PowerShell, not vision).
     if _SHOW_ON_SCREEN.search(msg) or (
-        re.search(r"\b(system specs?|system info(?:rmation)?|hardware (?:info|specs?)|pc specs?)\b", msg, re.I)
-        and re.search(r"\b(screen|desktop|notepad|display|monitor)\b", msg, re.I)
+        re.search(
+            r"\b(system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?|resources?)|"
+            r"pc specs?|resources?.{0,40}on (the )?system)\b",
+            msg,
+            re.I,
+        )
+        and re.search(r"\b(screen|desktop|notepad|display|monitor|html|browser|show|list|bring)\b", msg, re.I)
     ):
         return Intent(
             mode="act",

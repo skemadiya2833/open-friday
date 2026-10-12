@@ -79,13 +79,18 @@ _STATUS = re.compile(
     r"cpu(?: and)?(?:/?| )ram|resource(?:s)?(?: usage)?)\s*\??\s*$",
     re.I,
 )
+# "Resources on the system", "system specs", "hardware info" — never vision-type into Cursor.
+_SPECS_TOPIC = (
+    r"(?:system\s+specs?|system\s+info(?:rmation)?|hardware\s+(?:info|specs?|resources?)|"
+    r"pc\s+specs?|computer\s+specs?|device\s+specs?|my\s+specs|"
+    r"(?:my\s+)?system\s+resources?|resources?.{0,40}on\s+(?:the\s+)?system|"
+    r"machine\s+(?:specs?|info))"
+)
 _SHOW_SPECS_ON_SCREEN = re.compile(
-    r"\b(?:show|display|put|bring up|pull up|open)\b.{"
-    r"0,100}\b(?:system specs?|system info(?:rmation)?|hardware (?:info|specs?)|"
-    r"pc specs?|computer specs?|device specs?|my specs)\b|"
-    r"\b(?:system specs?|system info(?:rmation)?|hardware (?:info|specs?)|"
-    r"pc specs?|computer specs?)\b.{"
-    r"0,60}\b(?:on (?:my |the )?(?:screen|desktop|monitor|display)|in (?:a |my )?notepad)\b",
+    rf"\b(?:show|display|put|bring up|pull up|open|list)\b.{{0,120}}{_SPECS_TOPIC}\b|"
+    rf"\b{_SPECS_TOPIC}\b.{{0,80}}\b(?:on (?:my |the )?(?:screen|desktop|monitor|display)|"
+    r"in (?:a |my )?notepad|in (?:a |the )?browser|as html|html)\b|"
+    rf"^\s*(?:please\s+)?{_SPECS_TOPIC}\s*\??\s*$",
     re.I,
 )
 _SHOW_TEXT_ON_SCREEN = re.compile(
@@ -191,13 +196,20 @@ def _system_status() -> str:
 
 
 def _collect_system_specs() -> str:
-    """Real hardware/OS lines for on-screen display (not LLM invention)."""
+    """Real hardware/OS lines via PowerShell (not LLM invention)."""
     ps = r"""
+$ErrorActionPreference = 'SilentlyContinue'
 $cs = Get-CimInstance Win32_ComputerSystem
 $os = Get-CimInstance Win32_OperatingSystem
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-$gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1
+$gpus = @(Get-CimInstance Win32_VideoController | Where-Object { $_.Name })
+$disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
+  $free = [math]::Round($_.FreeSpace/1GB,1); $tot = [math]::Round($_.Size/1GB,1)
+  "$($_.DeviceID) ${free} GB free / ${tot} GB"
+})
 $ramGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
+$gpuLines = ($gpus | ForEach-Object { $_.Name }) -join '; '
+$diskLines = $disks -join '; '
 @"
 Friday — System specs
 =====================
@@ -207,23 +219,138 @@ Model : $($cs.Model)
 CPU : $($cpu.Name)
 Cores / threads : $($cpu.NumberOfCores) / $($cpu.NumberOfLogicalProcessors)
 RAM : ${ramGB} GB
-GPU : $($gpu.Name)
+GPU : $gpuLines
+Disks : $diskLines
 OS : $($os.Caption) ($($os.Version)) build $($os.BuildNumber)
 User : $env:USERNAME
+Collected : $(Get-Date -Format o)
 "@
 """
     out = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps],
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=25,
     )
     text = (out.stdout or "").strip()
     if text:
+        # Merge Friday hardware inventory when available (GPU VRAM etc.).
+        try:
+            from friday.diagnostics.hardware import inventory_summary_for_panel
+
+            inv = inventory_summary_for_panel() or {}
+            extra = []
+            if inv.get("gpu"):
+                extra.append(f"Friday GPU panel : {inv.get('gpu')}")
+            if inv.get("vram"):
+                extra.append(f"VRAM : {inv.get('vram')}")
+            if inv.get("npu"):
+                extra.append(f"NPU : {inv.get('npu')}")
+            if extra:
+                text = text.rstrip() + "\n" + "\n".join(extra)
+        except Exception:  # noqa: BLE001
+            pass
         return text
-    # Minimal fallback
     status = _system_status()
     return f"Friday — System specs\n=====================\n{status}\nUser : {os.environ.get('USERNAME', '?')}"
+
+
+def _specs_to_rows(text: str) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        if ":" not in line or line.startswith("=") or line.startswith("Friday"):
+            continue
+        k, _, v = line.partition(":")
+        k, v = k.strip(), v.strip()
+        if k and v:
+            rows.append((k, v))
+    return rows
+
+
+def _html_escape(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _open_specs_html(text: str, *, stem: str = "friday-system-specs") -> Path:
+    """Write a self-contained HTML report and open it in the default browser."""
+    rows = _specs_to_rows(text)
+    body_rows = "\n".join(
+        f"<tr><th>{_html_escape(k)}</th><td>{_html_escape(v)}</td></tr>" for k, v in rows
+    ) or f"<tr><td colspan='2'><pre>{_html_escape(text)}</pre></td></tr>"
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Friday — System specs</title>
+<style>
+  :root {{ color-scheme: dark; --bg:#0b1220; --card:#121a2b; --line:#1e2a44;
+           --text:#e8eef9; --muted:#8fa3c4; --accent:#3ecbff; }}
+  * {{ box-sizing: border-box; }}
+  body {{ margin:0; font-family: "Segoe UI", system-ui, sans-serif; background:
+         radial-gradient(1200px 600px at 10% -10%, #1a2744, var(--bg));
+         color: var(--text); min-height: 100vh; padding: 2.5rem 1.25rem; }}
+  main {{ max-width: 720px; margin: 0 auto; border: 1px solid var(--line);
+         background: var(--card); padding: 1.5rem 1.75rem; }}
+  h1 {{ margin: 0 0 .35rem; font-weight: 600; letter-spacing: .04em; font-size: 1.35rem; }}
+  .eyebrow {{ color: var(--accent); font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; }}
+  p.note {{ color: var(--muted); font-size: .85rem; margin: .75rem 0 1.25rem; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  th, td {{ text-align: left; padding: .55rem .4rem; border-bottom: 1px solid var(--line);
+            vertical-align: top; font-size: .95rem; }}
+  th {{ width: 38%; color: var(--muted); font-weight: 500; }}
+  footer {{ margin-top: 1.25rem; color: var(--muted); font-size: .75rem; }}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Friday · local inventory</div>
+  <h1>System resources</h1>
+  <p class="note">Collected with PowerShell / WMI on this PC — not model-generated.</p>
+  <table>{body_rows}</table>
+  <footer>File: {stem}.html · Safe to close this tab</footer>
+</main>
+</body>
+</html>
+"""
+    path = Path(tempfile.gettempdir()) / f"{stem}-{int(time.time())}.html"
+    path.write_text(html, encoding="utf-8")
+    webbrowser.open(path.as_uri())
+    return path
+
+
+def _open_powershell_specs_window(text: str) -> None:
+    """Open a visible PowerShell window that prints the same measured specs."""
+    script = Path(tempfile.gettempdir()) / f"friday-specs-{int(time.time())}.ps1"
+    # Write body as a separate UTF-8 text file the script prints (no quoting hazards).
+    body = Path(tempfile.gettempdir()) / f"friday-specs-{int(time.time())}.txt"
+    body.write_text(text.rstrip() + "\n", encoding="utf-8")
+    script.write_text(
+        "Write-Host ''\n"
+        "Write-Host 'Friday — measured system specs' -ForegroundColor Cyan\n"
+        "Write-Host ('=' * 40)\n"
+        f"Get-Content -LiteralPath '{body}' -Encoding UTF8 | Write-Host\n"
+        "Write-Host ''\n"
+        "Write-Host 'Press Enter to close…' -ForegroundColor DarkGray\n"
+        "Read-Host | Out-Null\n",
+        encoding="utf-8",
+    )
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+        ],
+        close_fds=True,
+    )
 
 
 def _open_text_on_screen(text: str, *, stem: str = "friday-note") -> Path:
@@ -365,11 +492,17 @@ def try_direct(objective: str, *, workspace: str | None = None,
     if _SHOW_SPECS_ON_SCREEN.search(obj):
         try:
             specs = _collect_system_specs()
-            path = _open_text_on_screen(specs, stem="friday-system-specs")
+            html_path = _open_specs_html(specs, stem="friday-system-specs")
+            # Visible PowerShell listing (measured data only) + HTML in the browser.
+            try:
+                _open_powershell_specs_window(specs)
+            except Exception:  # noqa: BLE001
+                pass
             return DirectResult(
                 True,
                 True,
-                f"Opened Notepad with your system specs ({path.name}).",
+                f"Collected real system specs via PowerShell and opened them as HTML "
+                f"({html_path.name}) plus a PowerShell window. No desktop clicking.",
                 "show_specs_on_screen",
             )
         except Exception as exc:  # noqa: BLE001
