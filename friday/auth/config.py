@@ -56,8 +56,7 @@ def get_auth_config() -> AuthConfig:
     if mode not in ("off", "local", "remote"):
         mode = "local"
     public = _env("FRIDAY_PUBLIC_HOST")
-    tls_port = int(_env("FRIDAY_TLS_PORT", _env("FRIDAY_PORT", "8787")) or "8787")
-    # Prefer HTTPS origin when TLS port is the phone/mic path; local PC uses https on TLS port or http on 8787.
+    # Local PC uses http on FRIDAY_PORT; remote mode sets HTTPS origin via FRIDAY_ORIGIN / public host.
     http_port = int(_env("FRIDAY_PORT", "8787") or "8787")
 
     if mode == "remote" and public and _valid_rp_id(public):

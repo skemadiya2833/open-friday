@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -105,7 +104,7 @@ def main() -> int:
 
             websocket.create_connection(
                 ws_row["url"],
-                header=[f"Origin: http://evil.example", f"Host: {host}"],
+                header=["Origin: http://evil.example", f"Host: {host}"],
                 timeout=3,
             )
             ws_row["response"] = {"ok": True, "status": "connected_unexpected"}

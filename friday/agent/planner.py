@@ -15,7 +15,6 @@ from friday.config import (
 )
 from friday.models.cloud import cloud_api_configured, query_cloud_model
 from friday.models.local import query_model_vision
-from friday.models.parser import ACTION_DELIMITER
 from friday.types import ActionStep, Decision, VisionPayload
 
 

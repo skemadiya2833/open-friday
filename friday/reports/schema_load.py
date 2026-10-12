@@ -20,7 +20,6 @@ def load_schema() -> dict:
 def validate_report_schema(doc: dict[str, Any]) -> list[str]:
     """Return list of schema errors (empty = ok)."""
     try:
-        import jsonschema
         from jsonschema import Draft202012Validator
     except ImportError:
         return _light_validate(doc)

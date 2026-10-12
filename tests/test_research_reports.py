@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-import pytest
 
 from friday.reports.schema_load import load_schema, validate_report_schema
 from friday.reports.validate import evidence_in_source, validate_mechanics, value_in_snippet

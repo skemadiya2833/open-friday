@@ -6,7 +6,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -310,7 +309,7 @@ def write_npu_research_md(*, web_notes: str | None = None) -> Path:
 def run_all_experiments(*, include_heavy_whisper: bool = True) -> dict[str, str]:
     """Run inventory + experiments; returns paths written."""
     out: dict[str, str] = {}
-    inv = collect_inventory(write_json=True)
+    collect_inventory(write_json=True)
     out["inventory.json"] = str(hw_data_dir() / "inventory.json")
 
     from friday.runtime.resource_policy import measure_residency

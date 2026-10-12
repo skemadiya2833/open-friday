@@ -12,11 +12,13 @@ from friday.security.taint import fence_untrusted
 
 def test_secret_redact_default():
     text = 'api_key = "sk-abcdefghijklmnopqrstuvwxyz0123456789"'
-    # also openai pattern
-    text2 = "token sk-abcdefghijklmnopqrstuvwxyz0123456789"
-    r = apply_secrets(text2, mode=Mode.REDACT)
+    r = apply_secrets(text, mode=Mode.REDACT)
     assert r.hit and "REDACTED" in r.text
     assert "sk-abcdef" not in r.text
+    # also openai-ish bare token form
+    text2 = "token sk-abcdefghijklmnopqrstuvwxyz0123456789"
+    r2 = apply_secrets(text2, mode=Mode.REDACT)
+    assert r2.hit and "REDACTED" in r2.text
 
 
 def test_injection_warn_on_pairing_coerce():

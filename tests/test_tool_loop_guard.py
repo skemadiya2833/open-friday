@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from friday.agent.tool_loop_guard import LoopGuardConfig, ToolLoopGuard, reset_tool_loop_guard
-from friday.tools.registry import ToolRegistry, get_registry
+from friday.tools.registry import ToolRegistry
 from friday.tools.types import ToolRisk, ToolResult, ToolSpec
 
 

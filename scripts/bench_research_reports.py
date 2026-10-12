@@ -45,7 +45,6 @@ def main() -> int:
     import friday.models.local as local
     import friday.knowledge.search as search
     from friday.reports.pipeline import run_research_report
-    from friday.reports.validate import validate_mechanics
 
     def fake_fetch(query, *, limit=8):
         return [{
@@ -125,9 +124,7 @@ def main() -> int:
         doc = run_research_report(p, mode=mode, save=False)
         # re-validate to count pre-drop if available via trace
         elapsed = round(time.monotonic() - t0, 2)
-        raw_claims = len(doc.get("claims") or [])
         # Reconstruct survival: pipeline already dropped; use issues from a second pass
-        # Inject one known-good + count surviving
         surviving = len([c for c in (doc.get("claims") or []) if c.get("supported", True)])
         # For mocked path we know 1 of 2 claims survives before drop → after drop 1
         rows.append({

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 
-import pytest
 
 from friday.agent.behavior import (
     deep_mode_enabled,

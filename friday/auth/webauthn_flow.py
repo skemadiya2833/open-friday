@@ -22,7 +22,7 @@ from webauthn.helpers.structs import (
 )
 
 from friday.auth.config import AuthConfig, get_auth_config
-from friday.auth.store import AuthStore, get_store
+from friday.auth.store import get_store
 
 
 def registration_options(*, user_handle: str, user_name: str, cfg: AuthConfig | None = None) -> dict[str, Any]:

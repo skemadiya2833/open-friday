@@ -184,7 +184,7 @@ def _meeting_prep_stubs(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _suggested_focus_block(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Suggest a focus window when the calendar shows a gap (soft language)."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     if not events:
         return {

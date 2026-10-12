@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from friday.briefing._builtin_job import settings_io, sync_job

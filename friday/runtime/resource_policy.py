@@ -55,7 +55,6 @@ def preferred_ollama_device_for(job: JobClass) -> str:
 
 def keep_alive_for_role(role: str) -> int | str:
     """Per-role ``keep_alive`` for Ollama API payloads."""
-    roles = get_model_roles()
     if role == "coder":
         raw = os.getenv("FRIDAY_CODER_KEEP_ALIVE", "0")
     elif role == "embed":

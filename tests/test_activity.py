@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-import pytest
 
 from friday.activity.aw import ActivityWatchClient, approve_rules, suggest_categorization_rules
 from friday.activity import local_logger

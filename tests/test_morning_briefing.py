@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from friday.briefing.morning import (
     BUILTIN_JOB_ID,
-    collect_local_digest,
     compose_spoken_briefing,
     is_enabled,
     set_enabled,

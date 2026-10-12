@@ -55,7 +55,7 @@ def ops_summary() -> dict[str, Any]:
         active = get_run_manager().active()
         out["counts"]["active_runs"] = len(active)
         out["subsystems"]["runs"] = [r.id for r in active[:8]]
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["active_runs"] = None
 
     try:
@@ -64,7 +64,7 @@ def ops_summary() -> dict[str, Any]:
         jobs = get_scheduler().list_jobs()
         out["counts"]["scheduled_tasks"] = len(jobs)
         out["counts"]["tasks_enabled"] = sum(1 for j in jobs if j.get("enabled"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["scheduled_tasks"] = None
 
     try:
@@ -73,7 +73,7 @@ def ops_summary() -> dict[str, Any]:
         st = get_memory().stats()
         out["counts"]["memory_docs"] = sum(st.values()) if isinstance(st, dict) else None
         out["subsystems"]["memory_collections"] = st
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["memory_docs"] = None
 
     try:
@@ -82,7 +82,7 @@ def ops_summary() -> dict[str, Any]:
         skills = SkillRegistry().list()
         out["counts"]["skills_total"] = len(skills)
         out["counts"]["skills_enabled"] = sum(1 for s in skills if s.enabled)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["skills_total"] = None
 
     try:
@@ -91,14 +91,14 @@ def ops_summary() -> dict[str, Any]:
         md = get_store().list_all()
         out["counts"]["skillmd_installed"] = sum(1 for m in md if m.state == "installed")
         out["counts"]["skillmd_quarantine"] = sum(1 for m in md if m.state == "quarantine")
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["skillmd_installed"] = None
 
     try:
         from friday.reports.store import list_reports
 
         out["counts"]["reports"] = len(list_reports(limit=200))
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["reports"] = None
 
     try:
@@ -106,7 +106,7 @@ def ops_summary() -> dict[str, Any]:
 
         pending = get_approval_service().list_pending()
         out["counts"]["approvals_pending"] = len(pending)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         out["counts"]["approvals_pending"] = None
 
     try:
