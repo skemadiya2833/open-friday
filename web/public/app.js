@@ -36,6 +36,7 @@ function setState(state, { force = false } = {}) {
   if (!force && state === uiState) return;
   // Once speaking, stay green until the turn ends (ignore stray "thinking" from stream status).
   if (!force && uiState === "speaking" && state === "thinking") return;
+  const prev = uiState;
   uiState = state;
   window.FridayLive && FridayLive.state(state);
   if (orb) orb.dataset.state = state;
@@ -53,6 +54,7 @@ function setState(state, { force = false } = {}) {
   }
   const voiceEl = $("#voiceState");
   if (voiceEl) voiceEl.textContent = voiceMode ? "ENGAGED" : "READY";
+  document.dispatchEvent(new CustomEvent("friday:state", { detail: { state, prev } }));
 }
 
 function suspendMic() {
@@ -218,6 +220,53 @@ async function ensureAuthSession() {
   }
 }
 
+async function refreshCalendar() {
+  const status = $("#calendarStatus");
+  const list = $("#calendarAgenda");
+  if (!status || !list) return;
+  try {
+    const res = await apiFetch("/api/calendar/agenda?range=today");
+    if (!res.ok) {
+      const msg = res.status === 400
+        ? "Calendar not configured — add iCal URL in docs/design/calendar.md."
+        : "Could not load agenda.";
+      status.textContent = msg;
+      list.replaceChildren();
+      return;
+    }
+    const data = await res.json();
+    const events = data.events || data.items || [];
+    status.textContent = events.length
+      ? `${events.length} event(s) today`
+      : "No events today (or calendar empty).";
+    list.replaceChildren();
+    events.slice(0, 12).forEach((ev) => {
+      const li = document.createElement("li");
+      const when = document.createElement("span");
+      when.className = "cal-time";
+      const start = ev.start || ev.dtstart || ev.when || "";
+      if (typeof start === "string") {
+        try {
+          when.textContent = new Date(start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        } catch (_) {
+          when.textContent = start.slice(11, 16) || start.slice(0, 16);
+        }
+      } else {
+        when.textContent = "—";
+      }
+      const title = document.createElement("span");
+      title.textContent = ev.summary || ev.title || "(untitled)";
+      li.appendChild(when);
+      li.appendChild(title);
+      list.appendChild(li);
+    });
+    window.FridayMotion && FridayMotion.refreshStaggerForView($("#view-tasks"));
+  } catch (_) {
+    status.textContent = "Calendar offline.";
+    list.replaceChildren();
+  }
+}
+
 function showView(name) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
@@ -227,6 +276,7 @@ function showView(name) {
   if (name === "tasks") {
     refreshPlan();
     refreshTasks();
+    refreshCalendar();
   }
   if (name === "settings") refreshSettings();
   if (name === "reports" && window.FridayReports) FridayReports.refreshHistory();
@@ -623,6 +673,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           sessionId = ev.session_id || sessionId;
           if (sessionId) persistSession(sessionId);
           pushActivity("Done", { live: false });
+          document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "complete" } }));
           const openId =
             ev.open_report ||
             (ev.metadata && ev.metadata.open_report) ||
@@ -634,6 +685,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         if (ev.type === "error") {
           liveBody.textContent = ev.message || "Error";
           pushActivity(`Error · ${ev.message || "failed"}`, { live: false });
+          document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "error" } }));
         }
       }
     }
@@ -749,6 +801,8 @@ function setAgentStopVisible(on) {
   if (!btn) return;
   btn.classList.toggle("hidden", !on);
   btn.classList.toggle("hot", !!on);
+  document.dispatchEvent(new CustomEvent("friday:agent", { detail: { running: !!on } }));
+  window.FridayMotion && FridayMotion.setWorkload(!!on || uiState === "thinking" || uiState === "acting");
 }
 
 $("#btnStopAgent")?.addEventListener("click", async () => {
@@ -827,6 +881,7 @@ function stopVoiceMode() {
   stopSpeech();
   setListeningLine("");
   setState("idle", { force: true });
+  document.dispatchEvent(new CustomEvent("friday:voice", { detail: { on: false } }));
   pushActivity("Voice mode off", { live: false });
   if (speakWasForced) {
     setSpeakEnabled(false);
@@ -924,6 +979,7 @@ async function startVoiceMode() {
   $("#composer").classList.add("voice-on");
   window.FridayLive && FridayLive.open();
   setState("listening", { force: true });
+  document.dispatchEvent(new CustomEvent("friday:voice", { detail: { on: true } }));
   pushActivity("Voice on · speak, pause to send");
   setListeningLine("…", { interim: true });
 
@@ -1335,13 +1391,46 @@ function bindHumorControls() {
   });
 }
 
+function opsSummaryHtml(ops) {
+  if (!ops || !ops.counts) return "";
+  const c = ops.counts;
+  const oll = (ops.subsystems && ops.subsystems.ollama) || {};
+  const ollLabel = oll.up ? `up${oll.version ? " · " + oll.version : ""}` : "down";
+  const drift = (ops.health && ops.health.drift_keys && ops.health.drift_keys.length)
+    ? ops.health.drift_keys.join(", ")
+    : "none";
+  const memCols = (ops.subsystems && ops.subsystems.memory_collections) || {};
+  const memDetail = Object.keys(memCols).length
+    ? Object.entries(memCols).map(([k, v]) => `${k}:${v}`).join(" · ")
+    : "";
+  return `
+      <div class="setting ops-panel"><label>Ops summary</label>
+        <p class="muted" style="margin:4px 0 8px">Local aggregate (${ops.duration_ms || "—"} ms) — no cloud telemetry.</p>
+        <table class="ops-table"><tbody>
+          <tr><td>Sessions</td><td>${c.sessions ?? "—"}</td><td>Active runs</td><td>${c.active_runs ?? "—"}</td></tr>
+          <tr><td>Skills</td><td>${c.skills_enabled ?? "—"} / ${c.skills_total ?? "—"}</td><td>SKILL.md</td><td>${c.skillmd_installed ?? "—"} inst · ${c.skillmd_quarantine ?? "—"} quarantine</td></tr>
+          <tr><td>Memory docs</td><td>${c.memory_docs ?? "—"}${memDetail ? `<br><span class="muted">${escapeHtml(memDetail)}</span>` : ""}</td><td>Reports</td><td>${c.reports ?? "—"}</td></tr>
+          <tr><td>Tasks</td><td>${c.tasks_enabled ?? "—"} / ${c.scheduled_tasks ?? "—"}</td><td>Approvals</td><td>${c.approvals_pending ?? "—"} pending</td></tr>
+          <tr><td>Ollama</td><td colspan="3">${escapeHtml(ollLabel)} · config drift: ${escapeHtml(drift)}</td></tr>
+        </tbody></table>
+        <p class="muted" style="margin:8px 0 0">CLI: <code>python main.py --doctor</code> for GPU/models/ports (never auto-downloads).</p>
+      </div>`;
+}
+
 async function refreshSettings() {
   try {
-    const h = await (await apiFetch("/api/health")).json();
+    const [hRes, opsRes] = await Promise.all([
+      apiFetch("/api/health"),
+      apiFetch("/api/ops/summary").catch(() => null),
+    ]);
+    const h = await hRes.json();
+    let ops = null;
+    if (opsRes && opsRes.ok) ops = await opsRes.json();
     $("#modelPill").textContent = h.chat_model || h.vision_model || "local";
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · SECURE";
     $("#settingsGrid").innerHTML = `
+      ${opsSummaryHtml(ops)}
       <div class="setting"><label>Vision model</label><strong>${escapeHtml(h.vision_model || "—")}</strong></div>
       <div class="setting"><label>Chat model</label><strong>${escapeHtml(h.chat_model || "—")}</strong></div>
       <div class="setting"><label>Embed model</label><strong>${escapeHtml(h.embed_model || "—")}</strong></div>
@@ -1563,6 +1652,7 @@ function rememberShown(id) {
 function showReminderPopup(n, { fromToast = false } = {}) {
   const host = $("#remPopup");
   if (!host || host.querySelector(`[data-nid="${n.id}"]`)) return;
+  document.dispatchEvent(new CustomEvent("friday:reminder", { detail: { id: n.id, kind: n.kind } }));
   const card = document.createElement("div");
   card.className = "rem-card";
   card.dataset.nid = n.id;
@@ -1689,3 +1779,9 @@ async function openReminderFromUrl() {
     Notification.requestPermission().catch(() => {});
   }
 })();
+
+window.FridayApp = {
+  voiceMode: () => voiceMode,
+  voiceBusy: () => voiceBusy,
+  uiState: () => uiState,
+};

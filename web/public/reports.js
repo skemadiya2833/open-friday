@@ -441,6 +441,7 @@
       if (t === "report_final") {
         reportId = data.report_id;
         setLive(data.fallback ? `Fallback · ${data.reason || ""}` : `Done · ${data.claims || 0} claims`);
+        document.dispatchEvent(new CustomEvent("friday:report", { detail: { ready: true, reportId } }));
       }
       if (t === "stream_end" || t === "run_end") {
         es.close();

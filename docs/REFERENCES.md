@@ -18,7 +18,13 @@ Licenses recorded as read from each project’s `LICENSE` (or published docs) at
 | **VLAA-GUI** | research paper / project pages | Unclear | **Ideas only, no code copied** | paper/ideas |
 | **AgentSynth** | research paper / project pages | Unclear | **Ideas only, no code copied** | paper/ideas |
 | **Qwen / Qwen3.5** (Alibaba) | https://github.com/QwenLM | Apache-2.0 (model cards / repos vary by artifact) | **Models** run via Ollama (`qwen3.5:9b`, `qwen3.5:4b`, vision variants) — not redistributed in this repo. | tags as installed locally |
+| **Arwes** | https://github.com/arwes/arwes | MIT (unmaintained) | **Ideas only** — sci-fi HUD framing, motion cadence, restrained glow. No Arwes code or assets; see `docs/design/hud.md`. | ideas only |
 | **Ollama** | https://ollama.com | MIT | **Runtime** for local inference. | 0.30.10 noted in research |
 | **nomic-embed-text** | Nomic AI / Ollama library | Check model card | **Embedding model** via Ollama. | as installed |
+| **Open WebUI** | https://github.com/open-webui/open-webui | BSD-3-Clause (verify LICENSE) | **Ideas only** (Stage 5): admin/metrics panels, env-driven feature toggles. | surveyed 2026-10-12 |
+| **Home Assistant / Assist** | https://github.com/home-assistant/core | Apache-2.0 | **Ideas only** (Stage 5): consolidated ops state, layered context. | surveyed 2026-10-12 |
+| **Leon** | https://github.com/leon-ai/leon | GPL-3.0 (verify LICENSE) | **Ideas only** (Stage 5): skill/status overview — no code copied. | surveyed 2026-10-12 |
+| **OpenClaw** | https://github.com/openclaw/openclaw | Check upstream LICENSE | **Ideas only** (Stage 5): pre-flight before agent runs. | surveyed 2026-10-12 |
+| **OVOS** | https://github.com/OpenVoiceOS/OVOS | Apache-2.0 (typical) | **Ideas only** (Stage 5): readiness messaging patterns. | surveyed 2026-10-12 |
 
-Also see: `docs/THIRD_PARTY_NOTICES.md` (adapted-file inventory), `docs/design/research_reports.md` (W1 study).
+Also see: `docs/THIRD_PARTY_NOTICES.md` (adapted-file inventory), `docs/design/research_reports.md` (W1 study), `docs/ENV_FLAGS.md` (configuration reference), `.internal/stage5/hermes_adoption.md` (Hermes boundary).

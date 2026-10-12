@@ -130,6 +130,7 @@
           $("#approvalMeta").textContent = `Requested by ${current.caller || "unknown"}. Expires automatically.`;
           $("#approvalArgs").textContent = JSON.stringify(current.args, null, 2);
           overlay.hidden = false;
+          document.dispatchEvent(new CustomEvent("friday:approval", { detail: { open: true } }));
         } else if (!pending.length && current) {
           current = null;
           overlay.hidden = true;

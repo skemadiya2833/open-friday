@@ -225,6 +225,7 @@
     },
     isOpen() { return open; },
     isSpeaking() { return state === "speaking"; },
+    stateName() { return state; },
     lastSpoken() { return Live._lastSpoken || ""; },
     state(s) {
       const m = { thinking: "thinking", acting: "acting", listening: "listening", idle: open ? "listening" : "idle", speaking: "speaking", running: "acting" };
