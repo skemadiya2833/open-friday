@@ -205,6 +205,13 @@ def perf_snapshot() -> dict[str, Any]:
     return snapshot()
 
 
+@app.get("/api/ops/summary")
+def ops_summary_route() -> dict[str, Any]:
+    from friday.diagnostics.ops_summary import ops_summary
+
+    return ops_summary()
+
+
 @app.get("/health", response_class=HTMLResponse)
 def health_page() -> str:
     from friday.diagnostics import HEALTH_HTML

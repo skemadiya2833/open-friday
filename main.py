@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Optimize for weak CPUs / limited VRAM",
     )
     parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Run first-run diagnostics (GPU, Ollama, models, ports) and exit",
+    )
+    parser.add_argument(
         "task",
         nargs="?",
         default=None,
@@ -42,6 +47,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.low_end:
         os.environ["LOW_END_MODE"] = "true"
+
+    if args.doctor:
+        from friday.diagnostics.doctor import print_doctor_report, run_doctor
+
+        raise SystemExit(print_doctor_report(run_doctor()))
 
     if args.cli or args.task:
         _run_cli(args.task)

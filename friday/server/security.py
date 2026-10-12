@@ -24,6 +24,7 @@ _PUBLIC_PREFIXES = (
     "/api/auth/login/",
     "/api/health",
     "/api/perf",
+    "/api/ops/summary",
     "/health",
     "/favicon",
 )
