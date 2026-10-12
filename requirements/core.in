@@ -19,3 +19,4 @@ python-multipart
 jsonschema
 mcp==2.3.0
 webauthn>=2.0,<3
+segno>=1.6

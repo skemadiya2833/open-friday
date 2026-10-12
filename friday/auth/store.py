@@ -149,6 +149,7 @@ class AuthStore:
         label: str,
         role: Role = Role.CHAT,
         user_handle: str,
+        auth_kind: str = "passkey",
     ) -> dict[str, Any]:
         did = str(uuid.uuid4())
         rec = {
@@ -159,6 +160,7 @@ class AuthStore:
             "label": label[:64],
             "role": role.value,
             "user_handle": user_handle,
+            "auth_kind": auth_kind if auth_kind in ("passkey", "approved") else "passkey",
             "created": _now(),
             "last_used": _now(),
             "revoked": False,
@@ -166,6 +168,59 @@ class AuthStore:
         self.data.setdefault("devices", {})[did] = rec
         self.save()
         return rec
+
+    def add_approved_device(self, *, label: str, role: Role = Role.CHAT) -> dict[str, Any]:
+        """Owner-approved phone/tablet without a passkey (LAN simple path)."""
+        return self.add_device(
+            credential_id="",
+            public_key="",
+            sign_count=0,
+            label=label,
+            role=role,
+            user_handle=secrets.token_hex(16),
+            auth_kind="approved",
+        )
+
+    def claim_approved_pending(self, pending_id: str, code: str) -> dict[str, Any] | None:
+        """After PC approve: phone presents pending_id+code → consume enrollment, return device fields."""
+        rec = self.data.get("pending", {}).get(pending_id)
+        if not rec or rec.get("status") != "approved":
+            return None
+        if not secrets.compare_digest(str(rec.get("code") or ""), code.strip()):
+            return None
+        token = rec.get("enrollment_token")
+        if not token:
+            return None
+        en = self.consume_enrollment(token)
+        if not en:
+            return None
+        # Mark pending fully used
+        rec["status"] = "claimed"
+        self.save()
+        return {"device_name": en.get("device_name") or rec.get("device_name") or "phone"}
+
+    def create_qr_invite(self, *, device_name: str = "Phone", ttl: float = 300.0) -> dict[str, Any]:
+        """Owner-created invite: already approved; phone redeems via QR URL once."""
+        token = secrets.token_urlsafe(24)
+        rec = {
+            "token": token,
+            "device_name": (device_name or "Phone").strip()[:64] or "Phone",
+            "created": _now(),
+            "expires": _now() + max(60.0, float(ttl)),
+            "used": False,
+            "kind": "qr",
+        }
+        self.data.setdefault("qr_invites", {})[token] = rec
+        self.save()
+        return rec
+
+    def redeem_qr_invite(self, token: str) -> dict[str, Any] | None:
+        inv = self.data.get("qr_invites", {}).get(token)
+        if not inv or inv.get("used") or float(inv.get("expires") or 0) < _now():
+            return None
+        inv["used"] = True
+        self.save()
+        return {"device_name": inv.get("device_name") or "Phone"}
 
     def device_by_credential(self, credential_id: str) -> dict[str, Any] | None:
         for d in self.data.get("devices", {}).values():

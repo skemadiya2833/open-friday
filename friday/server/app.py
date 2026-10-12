@@ -30,7 +30,7 @@ from friday.server.routes_assistant import router as assistant_router
 from friday.server.routes_calendar import router as calendar_router
 from friday.server.routes_activity import router as activity_router
 from friday.server.routes_camera import router as camera_router
-from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
+from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback, set_listen_host
 
 ensure_data_dirs()
 
@@ -109,11 +109,22 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Friday", version="3.1.0", lifespan=lifespan)
 # No CORS: the UI is served same-origin. The guard rejects foreign Host/Origin headers
 # (DNS rebinding / CSRF) and enforces a bearer token for non-loopback binds.
+def _guard_origins() -> list[str]:
+    out = list(EXTRA_ALLOWED_ORIGINS)
+    try:
+        from friday.auth.config import get_auth_config
+
+        out.extend(get_auth_config().origins)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 app.add_middleware(
     RequestGuard,
     allowed_hosts=default_allowed_hosts(EXTRA_ALLOWED_HOSTS),
     token=API_TOKEN or None,
-    extra_origins=EXTRA_ALLOWED_ORIGINS,
+    extra_origins=_guard_origins(),
 )
 app.include_router(tools_router)
 app.include_router(skillmd_router)
@@ -585,38 +596,47 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
     auth = get_auth_config()
     bind = host or SERVER_HOST
     port = port or SERVER_PORT
-    # Until a registrable public host + cert are configured, remote access stays OFF.
+    from friday.server.security import local_ipv4s
+
+    # local/off stay on loopback; lan/remote may bind all interfaces.
     if auth.bind_loopback_only and not is_loopback(bind):
         print(
             f"[Friday] Auth mode={auth.mode}: binding 127.0.0.1 instead of {bind}. "
-            "Set FRIDAY_PUBLIC_HOST (and FRIDAY_AUTH=remote) after DNS+certificate — see docs/PHONE_SETUP.md.",
+            "Use FRIDAY_AUTH=lan for phone on Wi‑Fi, or FRIDAY_AUTH=remote + FRIDAY_PUBLIC_HOST.",
             flush=True,
         )
         bind = "127.0.0.1"
-    if not is_loopback(bind) and auth.mode != "remote":
+    if auth.mode == "lan" and is_loopback(bind):
+        bind = "0.0.0.0"
+        print("[Friday] Auth mode=lan: binding 0.0.0.0 for phone access", flush=True)
+    if not is_loopback(bind) and auth.mode not in ("remote", "lan"):
         print(
-            f"[Friday] WARNING: listening on {bind}:{port} without FRIDAY_AUTH=remote. "
-            "Prefer loopback until passkeys + public host are ready.",
+            f"[Friday] WARNING: listening on {bind}:{port} without FRIDAY_AUTH=lan|remote.",
             flush=True,
         )
-    from friday.server.security import local_ipv4s
+    set_listen_host(bind)
 
     print(f"[Friday] Local  → http://127.0.0.1:{port}/")
     print(f"[Friday] Auth   → mode={auth.mode} rp_id={auth.rp_id} origin={auth.origin}", flush=True)
-    if auth.mode == "remote" and auth.public_host:
+    if auth.mode == "lan":
+        for ip in local_ipv4s():
+            print(f"[Friday] Phone  → http://{ip}:{port}/  (approve device; passkey optional)", flush=True)
+    elif auth.mode == "remote" and auth.public_host:
         print(f"[Friday] Phone  → https://{auth.public_host}/  (passkey required)", flush=True)
     else:
-        print("[Friday] Phone  → disabled until FRIDAY_PUBLIC_HOST is set (docs/PHONE_SETUP.md)", flush=True)
+        print("[Friday] Phone  → set FRIDAY_AUTH=lan in .env for Wi‑Fi access (docs/PHONE_SETUP.md)", flush=True)
     tls_port = SERVER_TLS_PORT
-    if not is_loopback(bind) and auth.mode == "remote":
+    if not is_loopback(bind) and auth.mode in ("remote", "lan"):
         from friday.server.lan import ensure_inbound
 
         ensure_inbound(port)
         try:
             from friday.server.tls import ensure_lan_cert
 
-            # Prefer owner-supplied cert paths when present; else self-signed for the public host name.
-            crt, key = ensure_lan_cert(DATA_DIR, ["127.0.0.1", auth.public_host, *local_ipv4s()])
+            names = ["127.0.0.1", *local_ipv4s()]
+            if auth.public_host:
+                names.insert(0, auth.public_host)
+            crt, key = ensure_lan_cert(DATA_DIR, names)
             ensure_inbound(tls_port)
 
             def _https() -> None:
@@ -635,7 +655,10 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
             import threading
 
             threading.Thread(target=_https, name="FridayHTTPS", daemon=True).start()
-            print(f"[Friday] TLS    → https://{auth.public_host}:{tls_port}/ (or install a real cert)", flush=True)
+            if auth.public_host:
+                print(f"[Friday] TLS    → https://{auth.public_host}:{tls_port}/", flush=True)
+            for ip in local_ipv4s():
+                print(f"[Friday] TLS    → https://{ip}:{tls_port}/  (self-signed; accept warning for mic)", flush=True)
         except Exception as exc:  # noqa: BLE001
             print(f"[Friday] HTTPS unavailable: {exc}", flush=True)
     print("[Friday] Stop   → Ctrl+C", flush=True)

@@ -74,14 +74,14 @@ def validate_config(env: dict[str, str] | None = None) -> list[Issue]:
     if public and (public.replace(".", "").isdigit() or public.endswith(".local")):
         out.append(Issue("error", "FRIDAY_PUBLIC_HOST",
                          f"{public!r} is not a valid WebAuthn RP ID (Chromium rejects IPs and .local)."))
-    if host in ("0.0.0.0", "::") and auth_mode != "remote":
+    if host in ("0.0.0.0", "::") and auth_mode not in ("remote", "lan"):
         out.append(Issue("warn", "FRIDAY_HOST",
-                         "all-interfaces bind ignored until FRIDAY_AUTH=remote and FRIDAY_PUBLIC_HOST are set; "
-                         "server forces loopback. See docs/PHONE_SETUP.md."))
-    # Non-loopback bind without remote auth → refuse to start (not just warn).
-    if host and not _is_loopback(host) and host not in ("0.0.0.0", "::") and auth_mode != "remote":
+                         "all-interfaces bind ignored until FRIDAY_AUTH=lan|remote "
+                         "(or Devices → Show QR). Server forces loopback. See docs/PHONE_SETUP.md."))
+    # Non-loopback bind without lan/remote auth → refuse to start (not just warn).
+    if host and not _is_loopback(host) and host not in ("0.0.0.0", "::") and auth_mode not in ("remote", "lan"):
         out.append(Issue("error", "FRIDAY_HOST",
-                         f"non-loopback bind {host!r} requires FRIDAY_AUTH=remote and FRIDAY_PUBLIC_HOST. "
+                         f"non-loopback bind {host!r} requires FRIDAY_AUTH=lan|remote. "
                          "Default is 127.0.0.1."))
     if e.get("FRIDAY_API_TOKEN", "").strip() and len(e["FRIDAY_API_TOKEN"].strip()) < 16:
         out.append(Issue("warn", "FRIDAY_API_TOKEN", "shorter than 16 characters; use a long random token."))

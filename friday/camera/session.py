@@ -10,14 +10,42 @@ from typing import Any
 
 
 def camera_feature_enabled() -> bool:
+    """Systems UI prefs override ``FRIDAY_CAMERA`` so owners are not stuck on .env."""
+    try:
+        from friday.camera.devices import load_camera_enabled
+
+        picked = load_camera_enabled()
+        if picked is not None:
+            return bool(picked)
+    except Exception:  # noqa: BLE001
+        pass
     return os.getenv("FRIDAY_CAMERA", "off").strip().lower() in ("1", "true", "yes", "on")
 
 
 def camera_index() -> int:
+    """Active capture index: Systems UI prefs override ``FRIDAY_CAMERA_INDEX``."""
+    try:
+        from friday.camera.devices import load_selected_index
+
+        picked = load_selected_index()
+        if picked is not None:
+            return picked
+    except Exception:  # noqa: BLE001
+        pass
     try:
         return max(0, int(os.getenv("FRIDAY_CAMERA_INDEX", "0") or "0"))
     except ValueError:
         return 0
+
+
+def camera_backend() -> str:
+    """Preferred OpenCV backend from Systems UI (msmf | dshow | '')."""
+    try:
+        from friday.camera.devices import load_selected_backend
+
+        return load_selected_backend()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def arm_ttl_seconds() -> float:
@@ -36,6 +64,8 @@ class CameraStatus:
     opencv: bool
     arm_expires_in: float | None
     detail: str = ""
+    index_label: str = ""
+    backend: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +73,8 @@ class CameraStatus:
             "armed": self.armed,
             "live": self.live,
             "index": self.index,
+            "backend": self.backend or "",
+            "index_label": self.index_label or f"Camera {self.index}",
             "opencv": self.opencv,
             "arm_expires_in": self.arm_expires_in,
             "detail": self.detail,
@@ -59,7 +91,10 @@ class CameraSession:
 
     def arm(self, ttl: float | None = None) -> dict[str, Any]:
         if not camera_feature_enabled():
-            return {"ok": False, "error": "FRIDAY_CAMERA is off — set FRIDAY_CAMERA=on in .env"}
+            return {
+                "ok": False,
+                "error": "Camera is off — enable it in Systems → Camera, then Arm.",
+            }
         ttl_s = float(ttl) if ttl is not None else arm_ttl_seconds()
         ttl_s = max(30.0, min(ttl_s, 3600.0))
         with self._lock:
@@ -91,21 +126,26 @@ class CameraSession:
 
         with self._lock:
             remaining = max(0.0, self._armed_until - time.time()) if self._armed_until else 0.0
-            armed = camera_feature_enabled() and remaining > 0
-            detail = ""
-            if not camera_feature_enabled():
-                detail = "disabled (FRIDAY_CAMERA=off)"
+            enabled = camera_feature_enabled()
+            armed = enabled and remaining > 0
+            idx = camera_index()
+            be = camera_backend()
+            label = f"Camera {idx}" + (f" · {be}" if be else "")
+            if not enabled:
+                detail = "disabled — turn on Enable camera in Systems"
             elif not opencv_available():
                 detail = "opencv missing — pip install -r requirements/camera.lock.txt"
             elif not armed:
-                detail = "disarmed — Arm in Settings before using the camera"
+                detail = "disarmed — Arm before using the camera"
             else:
-                detail = f"armed for {int(remaining)}s"
+                detail = f"armed for {int(remaining)}s · {label}"
             return CameraStatus(
-                enabled=camera_feature_enabled(),
+                enabled=enabled,
                 armed=armed,
                 live=self._live,
-                index=camera_index(),
+                index=idx,
+                backend=be,
+                index_label=label,
                 opencv=opencv_available(),
                 arm_expires_in=round(remaining, 1) if armed else None,
                 detail=detail,

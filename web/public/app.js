@@ -12,17 +12,9 @@ function ensureTurnDetector() {
     getEagerness: () => (window.FridayVoice && FridayVoice.eagerness ? FridayVoice.eagerness() : "medium"),
     onHold: (info) => {
       if (!voiceMode || voiceBusy) return;
-      // Stay on listening — never flash thinking while we are still deciding the turn.
+      // Stay on listening — never flash thinking / toast while we are still deciding the turn.
       if (uiState !== "listening") setState("listening");
-      const r = info.reason || "";
-      if (r !== lastHoldReason && (r === "trailing_open" || r === "mic_hot" || r === "interim")) {
-        lastHoldReason = r;
-        if (r === "mic_hot" || r === "interim") {
-          pushActivity("Still listening…", { live: true });
-        } else if (r === "trailing_open") {
-          pushActivity("Go on — I'm still listening", { live: true });
-        }
-      }
+      lastHoldReason = info.reason || "";
     },
     onCommit: (info) => {
       lastHoldReason = "";
@@ -32,7 +24,6 @@ function ensureTurnDetector() {
       finalBuffer = "";
       interimText = "";
       if (turnDetector) turnDetector.reset();
-      pushActivity(`Turn ready · ${info.reason || "ok"}`, { live: false });
       setListeningLine(text, { interim: false });
       sendMessage(text, { fromVoice: true });
     },
@@ -127,6 +118,18 @@ function suspendMic() {
   try { recognition?.stop(); } catch (_) {}
 }
 
+/** Chrome SpeechRecognition often ends after silence/errors; restart with retries. */
+function kickRecognition(retries = 6) {
+  if (!voiceMode || !recognition || micSuspended) return;
+  if (voiceBusy && voiceHoldMode()) return;
+  try {
+    recognition.start();
+  } catch (_) {
+    if (retries <= 0) return;
+    setTimeout(() => kickRecognition(retries - 1), 140);
+  }
+}
+
 function armMicNow() {
   micSuspended = false;
   listenCooldownUntil = 0;
@@ -134,15 +137,7 @@ function armMicNow() {
   interimText = "";
   setState("listening", { force: true });
   // Chrome often needs a beat after stop() before start() sticks.
-  const tryStart = (n) => {
-    if (!voiceMode || micSuspended || voiceBusy) return;
-    try {
-      recognition?.start();
-    } catch (_) {
-      if (n > 0) setTimeout(() => tryStart(n - 1), 120);
-    }
-  };
-  tryStart(4);
+  kickRecognition(6);
   pushActivity("Listening", { live: false });
 }
 
@@ -253,25 +248,39 @@ function hideAuthGate() {
 window.hideAuthGate = hideAuthGate;
 window.showAuthGate = showAuthGate;
 
+function isLocalBrowserHost() {
+  const h = (location.hostname || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
+}
+
 async function ensureAuthSession() {
+  // This PC's browser is always trusted — never show an auth wall here.
+  if (isLocalBrowserHost()) {
+    hideAuthGate();
+    return true;
+  }
   try {
     const st = await (await fetch("/api/auth/status", { credentials: "same-origin" })).json();
-    // local / off: use Friday freely on this PC. Passkeys only when remote.
-    if (st.mode !== "remote" || st.authenticated) {
+    if (st.authenticated || st.loopback) {
       hideAuthGate();
       return true;
     }
-    if (location.hostname === "127.0.0.1" || location.hostname === "[::1]") {
-      const dest = `http://localhost:${location.port || "8787"}${location.pathname}${location.search}${location.hash}`;
-      location.replace(dest);
+    if (st.mode === "lan") {
+      showAuthGate(
+        "Scan the QR on the PC (Devices → Show QR), or use advanced code pairing.",
+      );
       return false;
     }
-    if (!st.device_count) {
-      showAuthGate("Remote mode: register a passkey on this PC first, then pair the phone.");
-    } else {
-      showAuthGate("Remote mode: Sign in with your passkey.");
+    if (st.mode === "remote") {
+      showAuthGate(
+        st.device_count
+          ? "Sign in with your passkey, or pair a new device from Devices."
+          : "Pair this device from Devices (PC must approve).",
+      );
+      return false;
     }
-    return false;
+    hideAuthGate();
+    return true;
   } catch (_) {
     return true;
   }
@@ -391,9 +400,19 @@ function clearActivity() {
   if (feed) feed.innerHTML = "";
 }
 
+/** Pipeline chatter that makes voice mode feel broken — keep off the live HUD. */
+function isVoiceNoise(message) {
+  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening)\b/i.test(
+    String(message || "").trim(),
+  );
+}
+
 function pushActivity(message, { live = true, detail = "" } = {}) {
   const feed = $("#activityFeed");
   if (!feed || !message) return;
+  const voiceOpen = window.FridayLive && FridayLive.isOpen && FridayLive.isOpen();
+  // During live voice, don't dump classify/intent chips into the desktop feed either.
+  if (voiceOpen && isVoiceNoise(message)) return;
   feed.querySelectorAll(".step.live").forEach((el) => el.classList.remove("live"));
   const step = document.createElement("span");
   step.className = `step${live ? " live" : ""}`;
@@ -401,6 +420,10 @@ function pushActivity(message, { live = true, detail = "" } = {}) {
   if (detail) step.title = detail;
   feed.appendChild(step);
   while (feed.children.length > 6) feed.removeChild(feed.firstChild);
+  // Live HUD: only meaningful actions (look / act / errors) — never open RESULT for this.
+  if (voiceOpen && !isVoiceNoise(message)) {
+    FridayLive.activity(message, { live });
+  }
 }
 
 function setListeningLine(text, { interim = false } = {}) {
@@ -582,7 +605,11 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   $("#input").value = "";
   setListeningLine("");
   clearActivity();
-  pushActivity(fromVoice ? "Processing speech…" : "Thinking…");
+  if (window.FridayLive && FridayLive.isOpen && FridayLive.isOpen()) {
+    FridayLive.clearResult();
+    FridayLive.clearHint && FridayLive.clearHint();
+  }
+  if (!(fromVoice || voiceMode)) pushActivity("Thinking…");
   const skillOverride = $("#skillOverride").value || null;
   const chip = $("#skillChip");
   const useVoice = fromVoice || voiceMode;
@@ -645,145 +672,191 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     let skillId = null;
     let streamed = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop();
-      for (const part of parts) {
-        if (!part.startsWith("data: ")) continue;
-        let ev;
-        try {
-          ev = JSON.parse(part.slice(6));
-        } catch {
-          continue;
-        }
-
-        if (ev.type === "activity") {
-          if (filler && /search|web|look|memory|recall/i.test(ev.message || "")) filler.lookup();
-          pushActivity(ev.message || ev.step || "…", { detail: ev.detail || "" });
-          if (ev.message) liveMeta.textContent = ev.message;
-        }
-        if (ev.type === "intent") {
+    const handleStreamEvent = async (ev) => {
+      if (ev.type === "activity") {
+        if (filler && /search|web|look|memory|recall/i.test(ev.message || "")) filler.lookup();
+        pushActivity(ev.message || ev.step || "…", { detail: ev.detail || "" });
+        if (ev.message && !useVoice) liveMeta.textContent = ev.message;
+      }
+      if (ev.type === "intent") {
+        if (!useVoice) {
           pushActivity(`Intent · ${ev.mode} → ${ev.skill_id}`, {
             detail: ev.reason || "",
           });
           liveMeta.textContent = `${ev.mode} · ${ev.skill_id}`;
         }
-        if (ev.type === "skill_selected") {
-          skillId = ev.skill_id;
-          chip.textContent = `Skill · ${ev.skill_id}${ev.mode ? ` · ${ev.mode}` : ""}`;
-          chip.classList.remove("hidden");
-          liveMeta.textContent = `skill:${ev.skill_id}`;
-          if (ev.skill_id === "computer_use") setState("acting");
-          if (ev.skill_id === "camera") {
-            setCameraLooking(true, "capture");
-            filler && filler.looking && filler.looking();
-          }
+      }
+      if (ev.type === "skill_selected") {
+        skillId = ev.skill_id;
+        chip.textContent = `Skill · ${ev.skill_id}${ev.mode ? ` · ${ev.mode}` : ""}`;
+        chip.classList.remove("hidden");
+        liveMeta.textContent = `skill:${ev.skill_id}`;
+        if (ev.skill_id === "computer_use") setState("acting");
+        if (ev.skill_id === "camera") {
+          setCameraLooking(true, "capture");
+          filler && filler.looking && filler.looking();
         }
-        if (ev.type === "camera") {
-          setCameraLooking(!!ev.live, ev.phase || (ev.live ? "capture" : ""));
-          if (ev.live) {
-            pushActivity(
-              ev.phase === "describe" ? "Looking through camera…" : "Webcam open…",
-              { live: true },
-            );
-          }
+      }
+      if (ev.type === "camera") {
+        setCameraLooking(!!ev.live, ev.phase || (ev.live ? "capture" : ""));
+        if (ev.live) {
+          pushActivity(
+            ev.phase === "describe" ? "Looking through camera…" : "Webcam open…",
+            { live: true },
+          );
         }
-        if (ev.type === "status" && ev.status) {
-          // Don't let stream status yank us back to listening mid-turn.
-          if (!(useVoice && voiceBusy && (ev.status === "listening" || ev.status === "idle"))) {
-            setState(ev.status);
-          }
+      }
+      if (ev.type === "status" && ev.status) {
+        // Don't let stream status yank us back to listening mid-turn.
+        if (!(useVoice && voiceBusy && (ev.status === "listening" || ev.status === "idle"))) {
+          setState(ev.status);
         }
-        if (ev.type === "observation") {
-          if (ev.source === "camera") {
-            const sz = Array.isArray(ev.size) ? `${ev.size[0]}×${ev.size[1]}` : "";
-            pushActivity(`Webcam frame${sz ? ` · ${sz}` : ""}`);
-          } else {
-            const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
-            pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
-          }
+      }
+      if (ev.type === "camera_frame" && ev.jpeg_b64) {
+        const wrap = document.createElement("div");
+        wrap.className = "bubble assistant camera-frame";
+        wrap.innerHTML = `<div class="meta">camera</div>`;
+        const img = document.createElement("img");
+        img.src = `data:image/jpeg;base64,${ev.jpeg_b64}`;
+        img.alt = "Webcam frame";
+        img.style.cssText = "display:block;max-width:100%;max-height:280px;margin-top:8px;border:1px solid var(--line);background:#000;border-radius:4px";
+        wrap.appendChild(img);
+        $("#messages").appendChild(wrap);
+        $("#messages").scrollTop = $("#messages").scrollHeight;
+        pushActivity("Camera frame shown", { live: false });
+      }
+      if (ev.type === "observation") {
+        if (ev.source === "camera") {
+          const sz = Array.isArray(ev.size) ? `${ev.size[0]}×${ev.size[1]}` : "";
+          pushActivity(`Webcam frame${sz ? ` · ${sz}` : ""}`);
+        } else {
+          const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
+          pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
         }
-        if (ev.type === "memory_saved") pushActivity(`Remembered · ${(ev.text || "").slice(0, 80)}`, { live: false });
-        if (ev.type === "chat_cleared") {
-          $("#messages").innerHTML = "";
-          $("#messages").appendChild(live);
+      }
+      if (ev.type === "memory_saved") pushActivity(`Remembered · ${(ev.text || "").slice(0, 80)}`, { live: false });
+      if (ev.type === "chat_cleared") {
+        $("#messages").innerHTML = "";
+        $("#messages").appendChild(live);
+      }
+      if (ev.type === "reminder_set") {
+        pushActivity(`Reminder set · ${ev.title || ""} (${ev.when || ""})`, { live: false });
+        refreshBell();
+      }
+      if (ev.type === "computer_use_start") {
+        filler && filler.agent();
+        setState("acting");
+        setAgentStopVisible(true);
+        pushActivity(`Acting · ${ev.objective || "desktop task"}`);
+      }
+      if (ev.type === "computer_use_end") {
+        setAgentStopVisible(false);
+        pushActivity(`Agent finished · ${ev.status || "done"}`, { live: false });
+      }
+      if (ev.type === "shell_start") {
+        pushActivity(`Shell ▸ ${ev.command || "…"}`);
+        addBubble("assistant", `Running command:\n${ev.command || ""}`, "shell");
+      }
+      if (ev.type === "shell_end") {
+        const out = (ev.output || "").trim();
+        pushActivity(`Shell exit ${ev.exit_code}`, { live: false });
+        if (out) addBubble("assistant", out.slice(0, 1200), `shell · exit ${ev.exit_code}`);
+      }
+      if (ev.type === "action_start" && ev.step) {
+        const s = ev.step;
+        pushActivity(`${s.action}${s.description ? " · " + s.description : ""}`);
+      }
+      if (ev.type === "focus" && ev.box) {
+        pushActivity(`Focus crop · [${ev.box.join(", ")}]`);
+      }
+      if (ev.type === "skill_token" && ev.text) {
+        if (epoch !== turnEpoch) return;
+        streamed += ev.text;
+        fridayReply = streamed;
+        liveBody.textContent = streamed;
+        if (window.FridayLive && FridayLive.isOpen()) {
+          FridayLive.result(streamed);
+          if (!(speaker && vcfg.streamSpeech)) FridayLive.friday(streamed);
         }
-        if (ev.type === "reminder_set") {
-          pushActivity(`Reminder set · ${ev.title || ""} (${ev.when || ""})`, { live: false });
-          refreshBell();
+        if (speaker && vcfg.streamSpeech) {
+          await awaitFillerAudio();
+          speaker.push(ev.text);
         }
-        if (ev.type === "computer_use_start") {
-          filler && filler.agent();
-          setState("acting");
-          setAgentStopVisible(true);
-          pushActivity(`Acting · ${ev.objective || "desktop task"}`);
+        $("#messages").scrollTop = $("#messages").scrollHeight;
+      }
+      if (ev.type === "warning" && ev.message) {
+        pushActivity(`⚠ ${ev.message}`, { live: false });
+      }
+      if (ev.type === "done") {
+        setCameraLooking(false);
+        finalReply = (ev.reply || "").trim() || finalReply;
+        skillId = ev.skill_id || skillId;
+        sessionId = ev.session_id || sessionId;
+        if (sessionId) persistSession(sessionId);
+        pushActivity("Done", { live: false });
+        document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "complete" } }));
+        const openId =
+          ev.open_report ||
+          (ev.metadata && ev.metadata.open_report) ||
+          (ev.result && ev.result.metadata && ev.result.metadata.open_report);
+        if (openId && window.FridayReports) {
+          FridayReports.open(openId);
         }
-        if (ev.type === "computer_use_end") {
-          setAgentStopVisible(false);
-          pushActivity(`Agent finished · ${ev.status || "done"}`, { live: false });
+      }
+      if (ev.type === "error") {
+        setCameraLooking(false);
+        liveBody.textContent = ev.message || "Error";
+        pushActivity(`Error · ${ev.message || "failed"}`, { live: false });
+        document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "error" } }));
+      }
+    };
+
+    const flushSseParts = async (chunk, { stream = true } = {}) => {
+      buffer += decoder.decode(chunk || new Uint8Array(), { stream });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data:")) continue;
+        let ev;
+        try {
+          ev = JSON.parse(line.slice(line.indexOf(":") + 1).trim());
+        } catch {
+          continue;
         }
-        if (ev.type === "shell_start") {
-          pushActivity(`Shell ▸ ${ev.command || "…"}`);
-          addBubble("assistant", `Running command:\n${ev.command || ""}`, "shell");
-        }
-        if (ev.type === "shell_end") {
-          const out = (ev.output || "").trim();
-          pushActivity(`Shell exit ${ev.exit_code}`, { live: false });
-          if (out) addBubble("assistant", out.slice(0, 1200), `shell · exit ${ev.exit_code}`);
-        }
-        if (ev.type === "action_start" && ev.step) {
-          const s = ev.step;
-          pushActivity(`${s.action}${s.description ? " · " + s.description : ""}`);
-        }
-        if (ev.type === "focus" && ev.box) {
-          pushActivity(`Focus crop · [${ev.box.join(", ")}]`);
-        }
-        if (ev.type === "skill_token" && ev.text) {
-          if (epoch !== turnEpoch) return;
-          streamed += ev.text;
-          fridayReply = streamed;
-          liveBody.textContent = streamed;
-          if (speaker && vcfg.streamSpeech) {
-            await awaitFillerAudio();
-            speaker.push(ev.text);
-          } else if (window.FridayLive && FridayLive.isOpen()) FridayLive.friday(streamed);
-          $("#messages").scrollTop = $("#messages").scrollHeight;
-        }
-        if (ev.type === "warning" && ev.message) {
-          pushActivity(`⚠ ${ev.message}`, { live: false });
-        }
-        if (ev.type === "done") {
-          setCameraLooking(false);
-          finalReply = ev.reply;
-          skillId = ev.skill_id || skillId;
-          sessionId = ev.session_id || sessionId;
-          if (sessionId) persistSession(sessionId);
-          pushActivity("Done", { live: false });
-          document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "complete" } }));
-          const openId =
-            ev.open_report ||
-            (ev.metadata && ev.metadata.open_report) ||
-            (ev.result && ev.result.metadata && ev.result.metadata.open_report);
-          if (openId && window.FridayReports) {
-            FridayReports.open(openId);
-          }
-        }
-        if (ev.type === "error") {
-          setCameraLooking(false);
-          liveBody.textContent = ev.message || "Error";
-          pushActivity(`Error · ${ev.message || "failed"}`, { live: false });
-          document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "error" } }));
-        }
+        await handleStreamEvent(ev);
+        if (epoch !== turnEpoch) return false;
+      }
+      return true;
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(await flushSseParts(value, { stream: true }))) return;
+    }
+    // Critical: last SSE frame (usually `done`) can sit in the buffer without a trailing read.
+    if (!(await flushSseParts(undefined, { stream: false }))) return;
+    if (buffer.trim()) {
+      // Tolerate a final event missing the blank-line terminator.
+      const orphan = buffer.trim();
+      buffer = "";
+      if (orphan.startsWith("data:")) {
+        try {
+          await handleStreamEvent(JSON.parse(orphan.slice(orphan.indexOf(":") + 1).trim()));
+        } catch (_) { /* ignore */ }
       }
     }
 
     if (epoch !== turnEpoch) return;
-    const textOut = finalReply || streamed || "(no reply)";
+    const textOut = (finalReply || streamed || "").trim()
+      || (useVoice ? "I didn't catch a reply — say that once more." : "No reply.");
     fridayReply = textOut;
     liveBody.textContent = textOut;
+    if (window.FridayLive && FridayLive.isOpen()) {
+      FridayLive.result(textOut);
+      FridayLive.clearHint && FridayLive.clearHint();
+    }
     if (!live.querySelector(".feedback")) {
       live.dataset.replyId = `r-${Date.now()}`;
       const fb = document.createElement("div");
@@ -799,7 +872,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     if (speaker && vcfg.streamSpeech && speaker.spoken() > 0) {
       speaker.finish();
       await speaker.done();
-    } else if (speakEnabled() && textOut && textOut !== "(no reply)") {
+    } else if (speakEnabled() && textOut && !/^No reply\.?$/i.test(textOut)) {
       pushActivity("Speaking reply…");
       if (speaker) {
         speaker.push(String(textOut).slice(0, 700) + " ");
@@ -837,6 +910,7 @@ $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
   sendMessage($("#input").value, { fromVoice: false });
 });
+window.sendMessage = sendMessage;
 
 $("#input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -955,16 +1029,7 @@ function pauseRecognition() {
 }
 
 function resumeRecognition() {
-  if (!voiceMode || !recognition || micSuspended || voiceBusy) return;
-  try {
-    recognition.start();
-  } catch (_) {
-    // Already started / still stopping — retry once.
-    setTimeout(() => {
-      if (!voiceMode || !recognition || micSuspended || voiceBusy) return;
-      try { recognition.start(); } catch (_) {}
-    }, 150);
-  }
+  kickRecognition(4);
 }
 
 function stopVoiceMode() {
@@ -1167,6 +1232,7 @@ async function startVoiceMode() {
       stopVoiceMode();
       return;
     }
+    // network / service-not-allowed: onend will re-kick; surface once.
     pushActivity(`Mic · ${event.error}`, { live: false });
   };
 
@@ -1174,7 +1240,8 @@ async function startVoiceMode() {
     // Hold: stay stopped while suspended. Interrupt: keep recognition alive for barge-in.
     if (!voiceMode || micSuspended) return;
     if (voiceBusy && voiceHoldMode()) return;
-    try { recognition.start(); } catch (_) {}
+    // Single failed start() used to leave UI on "listening" with a dead mic.
+    kickRecognition(8);
   };
 
   try {
@@ -1589,17 +1656,33 @@ async function refreshSettings() {
           <span>Local daily briefing (plan, reminders, weather, news)</span>
         </label>
         <p class="muted" style="margin:8px 0 0">Owner-only built-in job (default 08:00). Agents cannot schedule this. No Gmail/Calendar OAuth.</p>
-        <button type="button" class="btn ghost" id="morningBriefingRun" style="margin-top:8px">Run once now</button>
+        <button type="button" class="ghost" id="morningBriefingRun" style="margin-top:8px">Run once now</button>
       </div>
       <div class="setting"><label>Camera</label>
         <p class="muted" id="cameraStatusLine" style="margin:0 0 8px">Checking…</p>
         <label class="speak-toggle">
+          <input type="checkbox" id="cameraEnableToggle" />
+          <span>Enable camera</span>
+        </label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
+          <label for="cameraDeviceSelect" class="muted" style="margin:0">Device</label>
+          <select id="cameraDeviceSelect" style="min-width:220px;max-width:100%">
+            <option value="">Scanning…</option>
+          </select>
+          <button type="button" class="ghost" id="cameraScanBtn" title="Re-scan connected cameras">Scan</button>
+        </div>
+        <p class="muted" id="cameraDeviceHint" style="margin:0 0 8px">Pick which webcam Friday uses for desk look.</p>
+        <label class="speak-toggle">
           <input type="checkbox" id="cameraArmToggle" />
           <span>Arm camera (timed grant)</span>
         </label>
-        <p class="muted" style="margin:8px 0 0">Requires <code>FRIDAY_CAMERA=on</code> + camera extras. One-shot desk look only — not always-on. E-stop disarms. Frames stay on this PC.</p>
-        <button type="button" class="btn ghost" id="cameraSnapBtn" style="margin-top:8px">Snap once now</button>
-        <span class="pill" id="cameraLivePill" style="display:none;margin-left:8px">CAMERA LIVE</span>
+        <p class="muted" style="margin:8px 0 0">All camera controls live here — no .env required. One-shot desk look; e-stop disarms. Frames stay on this PC.</p>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="ghost" id="cameraSnapBtn">Snap once now</button>
+          <button type="button" class="ghost" id="cameraPreviewBtn">Show preview</button>
+          <span class="pill" id="cameraLivePill" style="display:none">CAMERA LIVE</span>
+        </div>
+        <img id="cameraPreviewImg" alt="Camera preview" class="hidden" style="margin-top:10px;max-width:100%;max-height:240px;border:1px solid var(--line);background:#000" />
       </div>`;
     bindVoiceControls();
     syncSpeakToggles();
@@ -1618,13 +1701,20 @@ async function refreshSettings() {
 
 async function refreshCameraStatus() {
   const line = $("#cameraStatusLine");
-  const toggle = $("#cameraArmToggle");
+  const armToggle = $("#cameraArmToggle");
+  const enableToggle = $("#cameraEnableToggle");
   try {
     const st = await (await apiFetch("/api/camera/status")).json();
     if (line) {
-      line.textContent = st.detail || (st.enabled ? (st.armed ? "Armed" : "Disarmed") : "Disabled");
+      const cam = st.index_label || (typeof st.index === "number" ? `Camera ${st.index}` : "");
+      const base = st.detail || (st.enabled ? (st.armed ? "Armed" : "Disarmed") : "Disabled");
+      line.textContent = cam && st.enabled ? `${base} · ${cam}` : base;
     }
-    if (toggle) toggle.checked = !!st.armed;
+    if (enableToggle) enableToggle.checked = !!st.enabled;
+    if (armToggle) {
+      armToggle.checked = !!st.armed;
+      armToggle.disabled = !st.enabled;
+    }
     if (st && typeof st.live === "boolean") setCameraLooking(!!st.live);
     return st;
   } catch (_) {
@@ -1633,11 +1723,125 @@ async function refreshCameraStatus() {
   }
 }
 
+async function refreshCameraDevices() {
+  const sel = $("#cameraDeviceSelect");
+  const hint = $("#cameraDeviceHint");
+  if (!sel) return null;
+  sel.disabled = true;
+  if (hint) hint.textContent = "Scanning connected cameras…";
+  try {
+    const data = await (await apiFetch("/api/camera/devices")).json();
+    const devices = Array.isArray(data.devices) ? data.devices : [];
+    const selectedIdx = typeof data.selected_index === "number" ? data.selected_index : 0;
+    const selectedBe = (data.selected_backend || "").trim();
+    const selectedKey = data.selected_key || (selectedBe ? `${selectedBe}:${selectedIdx}` : `:${selectedIdx}`);
+    sel.innerHTML = "";
+    if (!data.opencv) {
+      sel.innerHTML = `<option value="">OpenCV missing</option>`;
+      if (hint) hint.textContent = data.error || "Install camera extras to list devices.";
+      return data;
+    }
+    if (!devices.length) {
+      sel.innerHTML = `<option value="">No cameras found</option>`;
+      if (hint) hint.textContent = "Plug in a webcam and hit Scan. Close other apps that lock the camera.";
+      return data;
+    }
+    let matched = false;
+    for (const d of devices) {
+      const opt = document.createElement("option");
+      const key = `${d.backend || "default"}:${d.index}`;
+      opt.value = key;
+      opt.textContent = d.label || d.name || `Camera ${d.index}`;
+      const exact = selectedBe && key === `${selectedBe}:${selectedIdx}`;
+      const loose = !selectedBe && !matched && d.index === selectedIdx;
+      if (exact || loose) {
+        opt.selected = true;
+        matched = true;
+      }
+      sel.appendChild(opt);
+    }
+    // If preferred index isn't in the live list, still show it as a choice.
+    if (!matched) {
+      const opt = document.createElement("option");
+      opt.value = selectedBe ? `${selectedBe}:${selectedIdx}` : `default:${selectedIdx}`;
+      opt.textContent = `Camera ${selectedIdx}${selectedBe ? ` · ${selectedBe}` : ""} (saved · not detected now)`;
+      opt.selected = true;
+      sel.appendChild(opt);
+    }
+    if (hint) {
+      const pnp = Array.isArray(data.pnp_names) ? data.pnp_names.length : 0;
+      hint.textContent = data.enabled
+        ? `${devices.length} OpenCV endpoint(s)${pnp ? ` · ${pnp} Windows PnP name(s)` : ""} — pick the exact device (MSMF/DSHOW indices differ).`
+        : `${devices.length} found — enable camera to use them.`;
+    }
+    return data;
+  } catch (_) {
+    sel.innerHTML = `<option value="">Scan failed</option>`;
+    if (hint) hint.textContent = "Could not list cameras (server offline?).";
+    return null;
+  } finally {
+    sel.disabled = false;
+  }
+}
+
 async function bindCameraControls() {
   const toggle = $("#cameraArmToggle");
+  const enableToggle = $("#cameraEnableToggle");
   const snapBtn = $("#cameraSnapBtn");
+  const scanBtn = $("#cameraScanBtn");
+  const sel = $("#cameraDeviceSelect");
   if (!toggle) return;
   await refreshCameraStatus();
+  await refreshCameraDevices();
+  enableToggle?.addEventListener("change", async () => {
+    try {
+      const res = await apiFetch("/api/camera/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !!enableToggle.checked }),
+      });
+      if (!res.ok) {
+        enableToggle.checked = !enableToggle.checked;
+        const err = await res.json().catch(() => ({}));
+        addBubble("assistant", err.detail || "Could not update camera enable.");
+      }
+    } catch (_) {
+      enableToggle.checked = !enableToggle.checked;
+    }
+    await refreshCameraStatus();
+    if (enableToggle?.checked) await refreshCameraDevices();
+  });
+  scanBtn?.addEventListener("click", async () => {
+    await refreshCameraDevices();
+    await refreshCameraStatus();
+  });
+  sel?.addEventListener("change", async () => {
+    const raw = String(sel.value || "");
+    let backend = "";
+    let idx = Number(raw);
+    if (raw.includes(":")) {
+      const [be, ix] = raw.split(":");
+      backend = (be || "").trim();
+      idx = Number(ix);
+    }
+    if (!Number.isFinite(idx)) return;
+    try {
+      const res = await apiFetch("/api/camera/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index: idx, backend }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        addBubble("assistant", err.detail || "Could not save camera selection.");
+        await refreshCameraDevices();
+        return;
+      }
+      await refreshCameraStatus();
+    } catch (_) {
+      addBubble("assistant", "Could not save camera selection (offline).");
+    }
+  });
   toggle.addEventListener("change", async () => {
     try {
       if (toggle.checked) {
@@ -1649,7 +1853,7 @@ async function bindCameraControls() {
         if (!res.ok) {
           toggle.checked = false;
           const err = await res.json().catch(() => ({}));
-          addBubble("assistant", err.detail || "Could not arm camera (is FRIDAY_CAMERA=on?)");
+          addBubble("assistant", err.detail || "Could not arm camera — enable it first.");
         }
       } else {
         await apiFetch("/api/camera/disarm", { method: "POST" });
@@ -1675,6 +1879,63 @@ async function bindCameraControls() {
       }
     } catch (_) {
       addBubble("assistant", "Camera snap failed (offline).");
+    } finally {
+      setCameraLooking(false);
+      await refreshCameraStatus();
+    }
+  });
+  const previewBtn = $("#cameraPreviewBtn");
+  const previewImg = $("#cameraPreviewImg");
+  previewBtn?.addEventListener("click", async () => {
+    if (!previewImg) return;
+    const hint = $("#cameraDeviceHint");
+    setCameraLooking(true, "capture");
+    if (hint) hint.textContent = "Opening preview…";
+    try {
+      // Explicit enable + arm before fetch — avoids 403 "not armed" and UI/prefs desync.
+      if (enableToggle) enableToggle.checked = true;
+      const en = await apiFetch("/api/camera/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      });
+      if (!en.ok) {
+        const detail = "Could not enable the camera.";
+        if (hint) hint.textContent = detail;
+        addBubble("assistant", detail);
+        previewImg.classList.add("hidden");
+        return;
+      }
+      await apiFetch("/api/camera/arm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ttl_seconds: 120 }),
+      });
+      if (armToggle) armToggle.checked = true;
+      const res = await apiFetch("/api/camera/preview");
+      if (!res.ok) {
+        let detail = "Preview failed.";
+        try {
+          const err = await res.json();
+          detail = err.detail || detail;
+        } catch (_) {
+          detail = `Preview failed (HTTP ${res.status}).`;
+        }
+        if (hint) hint.textContent = detail;
+        addBubble("assistant", detail);
+        previewImg.classList.add("hidden");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (previewImg.dataset.url) URL.revokeObjectURL(previewImg.dataset.url);
+      previewImg.dataset.url = url;
+      previewImg.src = url;
+      previewImg.classList.remove("hidden");
+      if (hint) hint.textContent = "Preview frame below — pick another device if this is the wrong camera.";
+    } catch (_) {
+      if (hint) hint.textContent = "Preview failed (offline).";
+      addBubble("assistant", "Preview failed (offline).");
     } finally {
       setCameraLooking(false);
       await refreshCameraStatus();
@@ -1828,19 +2089,35 @@ function stopSpeech() {
   try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (_) {}
 }
 
+/** Split spoken text on sentence endings so TTS never truncates mid-thought. */
+function speakSentences(text) {
+  const clean = String(text || "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const parts = [];
+  const re = /[^.!?\u2026]+[.!?\u2026]+["')\]]*(?:\s+|$)|[^.!?\u2026]+$/g;
+  let m;
+  while ((m = re.exec(clean))) {
+    const p = m[0].trim();
+    if (p) parts.push(p);
+  }
+  return parts.length ? parts : [clean];
+}
+
 async function speak(text) {
-  const clean = String(text || "").replace(/\*\*/g, "").trim();
-  if (!clean) return;
+  const parts = speakSentences(text);
+  if (!parts.length) return;
   stopSpeech();
   window.FridayLive && FridayLive.state("speaking");
-  const url = await ttsFetchUrl(clean);
-  if (url) {
-    await playUrl(url);
-    return;
+  for (const part of parts) {
+    const url = await ttsFetchUrl(part);
+    if (url) {
+      await playUrl(url);
+      continue;
+    }
+    window.FridayLive && FridayLive.synthSpeaking(true);
+    const ok = await speakBrowser(part);
+    if (!ok) console.warn("[Friday] browser TTS unavailable");
   }
-  window.FridayLive && FridayLive.synthSpeaking(true);
-  const ok = await speakBrowser(clean);
-  if (!ok) console.warn("[Friday] browser TTS unavailable");
 }
 
 /** Pause-line TTS for voice mode. Does not cancel an in-flight reply. */
@@ -1978,6 +2255,12 @@ async function openReminderFromUrl() {
   } catch (_) {}
 }
 
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !voiceMode || micSuspended || voiceBusy) return;
+  // Chromium often kills SpeechRecognition while the tab is backgrounded.
+  kickRecognition(8);
+});
+
 (async function init() {
   const link = $("#linkHost");
   if (link) link.textContent = location.hostname || "local";
@@ -1988,6 +2271,11 @@ async function openReminderFromUrl() {
       speechSynthesis.addEventListener("voiceschanged", () => speechSynthesis.getVoices(), { once: true });
     }
   } catch (_) {}
+  // Phone scanned PC QR (?pair=TOKEN) — redeem before the auth gate.
+  if (typeof window.FridayAuth?.consumePairQuery === "function") {
+    const paired = await window.FridayAuth.consumePairQuery();
+    if (paired) return; // reload after session cookie is set
+  }
   const authed = await ensureAuthSession();
   if (!authed) return; // redirected to localhost, or waiting on Register / Sign in
   if (micNeedsHttps()) {

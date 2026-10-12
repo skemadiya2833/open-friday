@@ -16,11 +16,16 @@ from friday.server.app import app
 @pytest.fixture()
 def auth_env(tmp_path, monkeypatch, isolated):
     monkeypatch.setenv("FRIDAY_AUTH", "local")
+    monkeypatch.setattr("friday.config.DATA_DIR", str(tmp_path))
+    from friday.auth.prefs import save_auth_prefs
+
+    save_auth_prefs({"phone_access": False})
     reset_auth_config()
     store = AuthStore(tmp_path / "auth.json")
     set_store(store)
     yield store
     set_store(None)
+    save_auth_prefs({"phone_access": False})
     monkeypatch.setenv("FRIDAY_AUTH", "off")
     reset_auth_config()
 
@@ -42,6 +47,122 @@ def test_pairing_code_and_enrollment(auth_env):
     assert en and en["device_name"] == "Pixel"
     store.consume_enrollment(ok["enrollment_token"])
     assert store.peek_enrollment(ok["enrollment_token"]) is None
+
+
+def test_claim_approved_device_without_passkey(auth_env):
+    store = auth_env
+    pend = store.create_pending("Pixel 8", {"ua": "phone", "ip": "10.0.0.5"})
+    assert store.approve_pending(pend["id"], pend["code"])
+    claimed = store.claim_approved_pending(pend["id"], pend["code"])
+    assert claimed and claimed["device_name"] == "Pixel 8"
+    # second claim fails
+    assert store.claim_approved_pending(pend["id"], pend["code"]) is None
+    device = store.add_approved_device(label=claimed["device_name"], role=Role.CHAT)
+    assert device["auth_kind"] == "approved"
+    assert not device["credential_id"]
+    sess = store.create_session(device["id"], device["role"], ttl=3600)
+    assert store.get_session(sess["id"])
+
+
+def test_lan_mode_status_flags(monkeypatch, tmp_path, isolated):
+    monkeypatch.setenv("FRIDAY_AUTH", "lan")
+    monkeypatch.setenv("FRIDAY_REQUIRE_PHYSICAL_INPUT", "false")
+    reset_auth_config()
+    store = AuthStore(tmp_path / "auth-lan.json")
+    set_store(store)
+    try:
+        from friday.auth.config import get_auth_config
+
+        cfg = get_auth_config()
+        assert cfg.mode == "lan"
+        assert cfg.bind_loopback_only is False
+        assert cfg.passkeys_required is False
+        with TestClient(app, base_url="http://127.0.0.1:8787") as c:
+            r = c.get("/api/auth/status", headers={"host": "127.0.0.1:8787"})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["mode"] == "lan"
+            assert body["authenticated"] is True
+            assert body["passkeys_optional"] is True
+    finally:
+        set_store(None)
+        monkeypatch.setenv("FRIDAY_AUTH", "off")
+        reset_auth_config()
+
+
+def test_qr_invite_and_redeem(auth_env, monkeypatch, tmp_path, isolated):
+    monkeypatch.setenv("FRIDAY_AUTH", "lan")
+    monkeypatch.setenv("FRIDAY_REQUIRE_PHYSICAL_INPUT", "false")
+    reset_auth_config()
+    from friday.auth.prefs import save_auth_prefs
+    from friday.server.security import set_listen_host
+
+    save_auth_prefs({"phone_access": False})
+    set_listen_host("0.0.0.0")
+    store = auth_env
+    try:
+        with TestClient(app, base_url="http://127.0.0.1:8787") as c:
+            r = c.post(
+                "/api/auth/pair/qr",
+                json={"device_name": "Pixel"},
+                headers={"host": "127.0.0.1:8787", "Origin": "http://127.0.0.1:8787"},
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            if body.get("needs_restart"):
+                inv = store.create_qr_invite(device_name="Pixel", ttl=120)
+                token = inv["token"]
+            else:
+                assert body.get("ok") is True
+                assert body.get("url") and "pair=" in body["url"]
+                assert body.get("token")
+                assert "<svg" in (body.get("svg") or "").lower()
+                token = body["token"]
+            redeem = c.post(
+                "/api/auth/pair/redeem",
+                json={"token": token},
+                headers={"host": "127.0.0.1:8787", "Origin": "http://127.0.0.1:8787"},
+            )
+            assert redeem.status_code == 200, redeem.text
+            out = redeem.json()
+            assert out.get("ok") is True
+            assert out.get("device_id")
+            assert c.cookies.get("friday_session")
+            again = c.post(
+                "/api/auth/pair/redeem",
+                json={"token": token},
+                headers={"host": "127.0.0.1:8787", "Origin": "http://127.0.0.1:8787"},
+            )
+            assert again.status_code == 400
+    finally:
+        save_auth_prefs({"phone_access": False})
+        set_listen_host("127.0.0.1")
+        monkeypatch.setenv("FRIDAY_AUTH", "local")
+        reset_auth_config()
+
+
+def test_qr_create_needs_restart_when_loopback(auth_env, monkeypatch, isolated):
+    monkeypatch.setenv("FRIDAY_AUTH", "local")
+    reset_auth_config()
+    from friday.auth.prefs import save_auth_prefs
+    from friday.server.security import set_listen_host
+
+    save_auth_prefs({"phone_access": False})
+    set_listen_host("127.0.0.1")
+    try:
+        with TestClient(app, base_url="http://127.0.0.1:8787") as c:
+            r = c.post(
+                "/api/auth/pair/qr",
+                json={"device_name": "Phone"},
+                headers={"host": "127.0.0.1:8787", "Origin": "http://127.0.0.1:8787"},
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body.get("needs_restart") is True
+    finally:
+        save_auth_prefs({"phone_access": False})
+        set_listen_host("127.0.0.1")
+        reset_auth_config()
 
 
 def test_session_revoke_kills_cookie(auth_env):

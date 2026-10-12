@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from friday.camera.session import camera_index, get_camera_session
+from friday.camera.session import camera_backend, camera_index, get_camera_session
 
 
 @dataclass
@@ -58,6 +58,7 @@ def capture_jpeg_b64(*, index: int | None = None) -> CaptureResult:
         return CaptureResult(ok=False, error=f"OpenCV import failed: {exc}")
 
     idx = camera_index() if index is None else int(index)
+    preferred = camera_backend() if index is None else ""
     t0 = time.perf_counter()
     session.set_live(True)
     try:
@@ -68,39 +69,51 @@ def capture_jpeg_b64(*, index: int | None = None) -> CaptureResult:
         except Exception:  # noqa: BLE001
             pass
 
-        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW) if _is_windows() else cv2.VideoCapture(idx)
-        if not cap.isOpened():
-            # Fallback without CAP_DSHOW on some devices
-            cap.release()
-            cap = cv2.VideoCapture(idx)
-        if not cap.isOpened():
-            return CaptureResult(ok=False, error=f"Could not open camera index {idx}")
+        from friday.camera.devices import _open_capture, _restore_opencv_logs, _silence_opencv_logs
 
-        # Warm up a couple of frames (drivers often return a black first frame).
-        frame = None
-        for _ in range(5):
-            ok, frame = cap.read()
-            if ok and frame is not None:
-                break
-        cap.release()
-        if frame is None:
-            return CaptureResult(ok=False, error="Camera opened but returned no frame")
+        prev_log = _silence_opencv_logs()
+        try:
+            # Systems-selected backend first — MSMF vs DSHOW indices are not interchangeable.
+            cap, used_backend = _open_capture(idx, preferred=preferred or None)
+        finally:
+            _restore_opencv_logs(prev_log)
+        if cap is None or not cap.isOpened():
+            hint = f" ({preferred})" if preferred else ""
+            return CaptureResult(
+                ok=False,
+                error=f"Could not open camera index {idx}{hint}. Rescan in Systems and pick the device again.",
+            )
 
-        h, w = int(frame.shape[0]), int(frame.shape[1])
-        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-        if not ok:
-            return CaptureResult(ok=False, error="JPEG encode failed")
-        raw = buf.tobytes()
-        b64 = base64.b64encode(raw).decode("ascii")
-        ms = round((time.perf_counter() - t0) * 1000, 1)
-        return CaptureResult(
-            ok=True,
-            jpeg_b64=b64,
-            width=w,
-            height=h,
-            bytes_len=len(raw),
-            duration_ms=ms,
-        )
+        try:
+            # Warm up a couple of frames (drivers often return a black first frame).
+            frame = None
+            for _ in range(5):
+                ok, frame = cap.read()
+                if ok and frame is not None:
+                    break
+            if frame is None:
+                return CaptureResult(ok=False, error="Camera opened but returned no frame")
+
+            h, w = int(frame.shape[0]), int(frame.shape[1])
+            ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            if not ok:
+                return CaptureResult(ok=False, error="JPEG encode failed")
+            raw = buf.tobytes()
+            b64 = base64.b64encode(raw).decode("ascii")
+            ms = round((time.perf_counter() - t0) * 1000, 1)
+            return CaptureResult(
+                ok=True,
+                jpeg_b64=b64,
+                width=w,
+                height=h,
+                bytes_len=len(raw),
+                duration_ms=ms,
+            )
+        finally:
+            try:
+                cap.release()
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as exc:  # noqa: BLE001
         return CaptureResult(ok=False, error=f"{type(exc).__name__}: {exc}")
     finally:

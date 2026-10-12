@@ -37,9 +37,14 @@ _LOOK_ONLY = re.compile(
 )
 # Webcam / desk camera (not screen). Checked before observe.
 _CAMERA_LOOK = re.compile(
-    r"^\s*(what am i looking at|what('?s| is) on my desk|what('?s| is) in front of me|"
+    r"(?:"
+    r"^\s*(?:what am i looking at|what('?s| is) on my desk|what('?s| is) in front of me|"
     r"look at (my )?desk|look at me|use the (web)?camera|through the (web)?camera|"
-    r"(web)?camera\b.*\?|(can you|could you) (see|look) (at )?(me|my desk|in front))\b",
+    r"(web)?camera\b.*\?|(can you|could you) (see|look) (at )?(me|my desk|in front))"
+    r"|(?:show|open|display)\b.{0,80}\b(?:(?:web)?camera|what (?:you'?re|you are|it'?s) (?:seeing|looking at))"
+    r"|\b(?:what|what'?s|whats)\b.{0,60}\b(?:(?:web)?camera|seeing through)\b"
+    r"|\blook through\b.{0,40}\b(?:web)?camera\b"
+    r")",
     re.I,
 )
 _QUESTION = re.compile(
@@ -53,14 +58,16 @@ _IMPERATIVE = re.compile(
     r"show|display|put|bring up|pull up)\b",
     re.I,
 )
-# "Put my system specs / resources on screen" — act (direct tools → HTML), never chat hallucination.
+# "Put my system specs / resources / specification on screen" — act (direct tools → HTML).
 _SHOW_ON_SCREEN = re.compile(
     r"\b(show|display|put|bring up|pull up|open|list)\b.{"
     r"0,100}\b(on (my |the )?(screen|desktop|monitor|display)|in (a |my )?notepad|"
     r"system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?|resources?)|"
-    r"pc specs?|computer specs?|resources?.{0,40}on (the )?system)\b|"
+    r"pc specs?|computer specs?|my specs?|my specifications?|specifications?|"
+    r"resources?.{0,40}on (the )?system)\b|"
     r"\b(system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?)|pc specs?|"
-    r"computer specs?|device specs?|resources?.{0,40}on (the )?system)\b.{"
+    r"computer specs?|device specs?|my specs?|my specifications?|specifications?|"
+    r"resources?.{0,40}on (the )?system)\b.{"
     r"0,60}\b(on (my |the )?(screen|desktop)|in notepad|html|browser)\b",
     re.I,
 )
@@ -206,7 +213,8 @@ def apply_policy(intent: Intent, message: str) -> Intent:
     msg = message.strip()
 
     # 1) Webcam look-questions → camera skill (never Act).
-    if _CAMERA_LOOK.search(msg) and not _IMPERATIVE.search(msg):
+    # show/open/display with camera still = look, not desktop Act.
+    if _CAMERA_LOOK.search(msg):
         return Intent(
             mode="look",
             skill_id="camera",
@@ -300,7 +308,8 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         )
 
     # Webcam / desk camera before screen observe.
-    if _CAMERA_LOOK.search(msg) and not _IMPERATIVE.search(msg):
+    # "show/open the camera" still counts as look (imperative words are OK here).
+    if _CAMERA_LOOK.search(msg):
         return Intent(
             mode="look",
             skill_id="camera",
@@ -415,6 +424,24 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             confidence=0.93,
             objective=msg,
             reason="deterministic: web lookup",
+            source="policy",
+        )
+
+    # Device / peripheral inventory → computer_use (direct PowerShell + camera probe, not chat invent).
+    if re.search(
+        r"\b(?:list|show|scan|enumerate|inventory|what|which|how many)\b.{"
+        r"0,80}\b(?:peripherals?|devices?|usb|cameras?|webcams?|web\s*cams?|"
+        r"displays?|monitors?|audio|microphones?|printers?|connected (?:devices?|hardware))\b|"
+        r"\b(?:device|peripheral|hardware)\s+(?:list|inventory)\b",
+        msg,
+        re.I,
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.94,
+            objective=msg,
+            reason="deterministic: peripherals inventory",
             source="policy",
         )
 

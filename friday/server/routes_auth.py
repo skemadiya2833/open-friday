@@ -44,10 +44,16 @@ def _session_from_request(request: Request) -> dict[str, Any] | None:
     return get_store().get_session(sid)
 
 
+def _host_is_loopback(request: Request) -> bool:
+    from friday.server.security import _hostname, is_loopback
+
+    return is_loopback(_hostname(request.headers.get("host") or ""))
+
+
 def require_session(request: Request, *, min_role: Role = Role.CHAT) -> dict[str, Any]:
     cfg = get_auth_config()
-    # local / off: owner is on the PC — no passkey wall.
-    if cfg.mode in ("off", "local"):
+    # This PC's browser is always admin — pair/approve phones from localhost freely.
+    if cfg.mode in ("off", "local") or _host_is_loopback(request):
         return {"id": "local", "device_id": "local", "role": Role.ADMIN.value}
     sess = _session_from_request(request)
     if not sess:
@@ -59,8 +65,10 @@ def require_session(request: Request, *, min_role: Role = Role.CHAT) -> dict[str
 
 def require_stepup(request: Request) -> dict[str, Any]:
     sess = require_session(request, min_role=Role.ADMIN)
-    if get_auth_config().mode in ("off", "local"):
+    cfg = get_auth_config()
+    if cfg.mode in ("off", "local") or (cfg.mode == "lan" and _host_is_loopback(request)):
         return sess
+    # Approved (no-passkey) admin still needs a passkey for revoke — skip if no passkey devices.
     if not get_store().stepup_ok(sess["id"]):
         raise HTTPException(403, "step-up passkey verification required")
     return sess
@@ -73,6 +81,19 @@ class PairRequest(BaseModel):
 class PairApprove(BaseModel):
     pending_id: str
     code: str = Field(min_length=6, max_length=6)
+
+
+class PairClaim(BaseModel):
+    pending_id: str
+    code: str = Field(min_length=6, max_length=6)
+
+
+class QrInviteBody(BaseModel):
+    device_name: str = Field(default="Phone", min_length=1, max_length=64)
+
+
+class QrRedeemBody(BaseModel):
+    token: str = Field(min_length=8, max_length=128)
 
 
 class RegVerify(BaseModel):
@@ -95,18 +116,24 @@ class DevicePatch(BaseModel):
 def auth_status(request: Request) -> dict[str, Any]:
     cfg = get_auth_config()
     sess = _session_from_request(request)
+    loopback = _host_is_loopback(request)
+    pc_open = cfg.mode in ("off", "local") or loopback
+    from friday.server.security import local_ipv4s
+
     return {
         "mode": cfg.mode,
         "rp_id": cfg.rp_id,
         "origin": cfg.origin,
         "public_host": cfg.public_host,
         "bind_loopback_only": cfg.bind_loopback_only,
-        # UI may treat local as usable without a passkey session; session_active is the cookie truth.
-        "authenticated": bool(sess) or cfg.mode in ("off", "local"),
+        "lan_ips": local_ipv4s() if cfg.mode == "lan" else [],
+        "authenticated": bool(sess) or pc_open,
         "session_active": bool(sess),
-        "role": (sess or {}).get("role") if sess else ("admin" if cfg.mode in ("off", "local") else None),
+        "role": (sess or {}).get("role") if sess else ("admin" if pc_open else None),
         "device_count": len(get_store().list_devices()),
-        "passkeys_required": cfg.mode == "remote",
+        "passkeys_required": cfg.passkeys_required,
+        "passkeys_optional": not cfg.passkeys_required,
+        "loopback": loopback,
     }
 
 
@@ -139,21 +166,21 @@ def pair_pending(request: Request) -> dict[str, Any]:
 @router.post("/pair/approve")
 def pair_approve(body: PairApprove, request: Request) -> dict[str, Any]:
     sess = require_session(request, min_role=Role.ADMIN)
-    # Physical / Windows Hello gate — desktop agent must not be able to click Allow.
-    try:
-        from friday.safety.physical import check_pair_approve, pair_approve_mode
+    cfg = get_auth_config()
+    # Physical gate for remote; LAN defaults to owner click on the PC.
+    if cfg.require_physical_for_pair:
+        try:
+            from friday.safety.physical import check_pair_approve
 
-        if get_auth_config().require_physical_for_pair or pair_approve_mode() != "physical":
-            # require_physical_for_pair still enables the gate; hello/either always gated.
             ok, why = check_pair_approve(session_id=sess.get("id"), window=5.0)
             if not ok:
                 _audit("auth_pair_approve", outcome="denied", detail=why)
                 raise HTTPException(403, f"pair confirmation required: {why}")
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        _audit("auth_pair_approve", outcome="error", detail=str(exc))
-        raise HTTPException(403, f"pair confirmation unavailable: {exc}") from exc
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _audit("auth_pair_approve", outcome="error", detail=str(exc))
+            raise HTTPException(403, f"pair confirmation unavailable: {exc}") from exc
 
     store = get_store()
     if not store.rate_hit("pair_approve", limit=20, window=300):
@@ -167,7 +194,156 @@ def pair_approve(body: PairApprove, request: Request) -> dict[str, Any]:
         "enrollment_token": out["enrollment_token"],
         "expires_in": 300,
         "device_name": out["pending"]["device_name"],
+        "message": "Approved. Phone can Continue without passkey, or register a passkey.",
     }
+
+
+@router.post("/pair/wait")
+def pair_wait(body: PairClaim) -> dict[str, Any]:
+    """Phone polls: pending | approved | expired (does not consume)."""
+    store = get_store()
+    rec = store.data.get("pending", {}).get(body.pending_id)
+    if not rec:
+        return {"status": "missing"}
+    if not secrets.compare_digest(str(rec.get("code") or ""), body.code.strip()):
+        raise HTTPException(400, "code mismatch")
+    if rec.get("expires", 0) < time.time() and rec.get("status") == "pending":
+        return {"status": "expired"}
+    st = rec.get("status") or "pending"
+    return {
+        "status": st,
+        "device_name": rec.get("device_name"),
+        "passkey_optional": not get_auth_config().passkeys_required,
+    }
+
+
+def _issue_approved_session(response: Response, *, label: str) -> dict[str, Any]:
+    store = get_store()
+    cfg = get_auth_config()
+    device = store.add_approved_device(label=label, role=Role.CHAT)
+    sess = store.create_session(device["id"], device["role"], cfg.session_ttl_s)
+    # Secure cookies only on https origins; LAN http needs secure=False.
+    response.set_cookie(
+        cfg.cookie_name,
+        sess["id"],
+        httponly=True,
+        secure=cfg.origin.startswith("https://"),
+        samesite="lax",
+        max_age=cfg.session_ttl_s,
+        path="/",
+    )
+    return {
+        "ok": True,
+        "device_id": device["id"],
+        "role": device["role"],
+        "label": device["label"],
+        "auth_kind": "approved",
+        "passkey_optional": not cfg.passkeys_required,
+        "message": "Connected.",
+    }
+
+
+@router.post("/pair/claim")
+def pair_claim(body: PairClaim, response: Response) -> dict[str, Any]:
+    """After PC approve: create an approved-device session (passkey optional)."""
+    store = get_store()
+    if not store.rate_hit(f"pair_claim:{body.pending_id}", limit=12, window=300):
+        raise HTTPException(429, "rate limited")
+    claimed = store.claim_approved_pending(body.pending_id, body.code)
+    if not claimed:
+        # Still pending?
+        rec = store.get_pending(body.pending_id)
+        if rec and rec.get("status") == "pending":
+            raise HTTPException(409, "not approved yet — wait for the PC owner")
+        raise HTTPException(400, "invalid or already used pairing")
+    out = _issue_approved_session(response, label=claimed["device_name"])
+    _audit("auth_pair_claim", detail=out["device_id"])
+    return out
+
+
+@router.post("/pair/qr")
+def pair_qr_create(body: QrInviteBody | None, request: Request) -> dict[str, Any]:
+    """PC only: create a one-time QR invite. Enables phone_access prefs if needed."""
+    require_session(request, min_role=Role.ADMIN)
+    if not _host_is_loopback(request):
+        raise HTTPException(403, "Create QR invites from the PC (localhost) only")
+
+    from friday.auth.config import reset_auth_config
+    from friday.auth.prefs import phone_access_enabled, save_auth_prefs
+    from friday.config import SERVER_PORT
+    from friday.server.security import local_ipv4s
+
+    body = body or QrInviteBody()
+    # Flip prefs so next restart (or current process after cache clear) is lan-capable.
+    if not phone_access_enabled():
+        save_auth_prefs({"phone_access": True})
+        reset_auth_config()
+
+    from friday.server.security import listen_is_lan_reachable
+
+    cfg = get_auth_config()
+    lan_ips = local_ipv4s()
+    # Prefs can flip to lan mid-process, but uvicorn bind only changes on restart.
+    if cfg.bind_loopback_only or not listen_is_lan_reachable() or not lan_ips:
+        return {
+            "ok": False,
+            "needs_restart": True,
+            "message": (
+                "Phone access enabled. Restart Friday once, then click Show QR again. "
+                "Also allow firewall TCP "
+                f"{SERVER_PORT} if the phone still cannot connect."
+            ),
+            "lan_ips": lan_ips,
+        }
+
+    store = get_store()
+    inv = store.create_qr_invite(device_name=body.device_name, ttl=300)
+    primary = lan_ips[0]
+    port = SERVER_PORT
+    # Phone opens this URL → auto-redeems and gets a session cookie.
+    url = f"http://{primary}:{port}/?pair={inv['token']}"
+    urls = [f"http://{ip}:{port}/?pair={inv['token']}" for ip in lan_ips]
+
+    svg = ""
+    try:
+        import io
+
+        import segno
+
+        qr = segno.make(url, error="m")
+        buf = io.BytesIO()
+        qr.save(buf, kind="svg", scale=6, border=2)
+        svg = buf.getvalue().decode("utf-8")
+    except Exception:  # noqa: BLE001
+        svg = ""
+
+    _audit("auth_pair_qr", detail=inv["token"][:12])
+    return {
+        "ok": True,
+        "needs_restart": False,
+        "token": inv["token"],
+        "url": url,
+        "urls": urls,
+        "svg": svg,
+        "device_name": inv["device_name"],
+        "expires_in": int(inv["expires"] - time.time()),
+        "message": "Scan with your phone camera (same Wi‑Fi).",
+    }
+
+
+@router.post("/pair/redeem")
+def pair_qr_redeem(body: QrRedeemBody, response: Response) -> dict[str, Any]:
+    """Phone: redeem QR token → registered + authenticated session."""
+    store = get_store()
+    if not store.rate_hit("pair_redeem", limit=30, window=300):
+        raise HTTPException(429, "rate limited")
+    claimed = store.redeem_qr_invite(body.token.strip())
+    if not claimed:
+        raise HTTPException(400, "invite invalid, expired, or already used — ask the PC for a new QR")
+    out = _issue_approved_session(response, label=claimed["device_name"])
+    _audit("auth_pair_redeem", detail=out["device_id"])
+    out["message"] = "Phone registered and signed in."
+    return out
 
 
 @router.post("/register/options")
@@ -310,6 +486,7 @@ def devices(request: Request) -> dict[str, Any]:
             "id": d["id"],
             "label": d["label"],
             "role": d["role"],
+            "auth_kind": d.get("auth_kind") or ("passkey" if d.get("credential_id") else "approved"),
             "created": d["created"],
             "last_used": d["last_used"],
         })
@@ -333,7 +510,12 @@ def patch_device(device_id: str, body: DevicePatch, request: Request) -> dict[st
 
 @router.delete("/devices/{device_id}")
 def revoke_device(device_id: str, request: Request) -> dict[str, Any]:
-    require_stepup(request)
+    # LAN PC (loopback) can revoke without passkey step-up; remote still needs step-up.
+    cfg = get_auth_config()
+    if cfg.mode == "remote":
+        require_stepup(request)
+    else:
+        require_session(request, min_role=Role.ADMIN)
     if not get_store().revoke_device(device_id):
         raise HTTPException(404, "device not found")
     _audit("auth_device_revoke", detail=device_id)

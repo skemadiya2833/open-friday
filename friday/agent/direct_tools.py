@@ -85,18 +85,37 @@ _STATUS = re.compile(
     r"cpu(?: and)?(?:/?| )ram|resource(?:s)?(?: usage)?)\s*\??\s*$",
     re.I,
 )
-# "Resources on the system", "system specs", "hardware info" — never vision-type into Cursor.
+# "Resources on the system", "system specs", "my specification" — never vision-type into the HUD.
 _SPECS_TOPIC = (
     r"(?:system\s+specs?|system\s+info(?:rmation)?|hardware\s+(?:info|specs?|resources?)|"
-    r"pc\s+specs?|computer\s+specs?|device\s+specs?|my\s+specs|"
+    r"pc\s+specs?|computer\s+specs?|device\s+specs?|"
+    r"my\s+specs?|my\s+specifications?|(?:the\s+)?specifications?|"
     r"(?:my\s+)?system\s+resources?|resources?.{0,40}on\s+(?:the\s+)?system|"
-    r"machine\s+(?:specs?|info))"
+    r"machine\s+(?:specs?|info|specifications?))"
 )
 _SHOW_SPECS_ON_SCREEN = re.compile(
     rf"\b(?:show|display|put|bring up|pull up|open|list)\b.{{0,120}}{_SPECS_TOPIC}\b|"
     rf"\b{_SPECS_TOPIC}\b.{{0,80}}\b(?:on (?:my |the )?(?:screen|desktop|monitor|display)|"
     r"in (?:a |my )?notepad|in (?:a |the )?browser|as html|html)\b|"
+    # Voice: "list of my specification and put it on my screen"
+    r"\b(?:list|show|put|display)\b.{0,80}\bspecifications?\b.{0,60}\b"
+    r"(?:on (?:my |the )?(?:screen|desktop|monitor|display)|put (?:it |them )?on)\b|"
     rf"^\s*(?:please\s+)?{_SPECS_TOPIC}\s*\??\s*$",
+    re.I,
+)
+# Inventory: cameras, USB, displays, audio, printers — measured via PowerShell / OpenCV.
+_PERIPHERALS = re.compile(
+    r"\b(?:list|show|what|which|enumerate|inventory)\b.{"
+    r"0,80}\b(?:peripherals?|devices?|hardware|usb|webcams?|cameras?|web\s*cams?|"
+    r"displays?|monitors?|audio|microphones?|speakers?|printers?|"
+    r"connected (?:devices?|hardware)|what(?:'s| is) (?:plugged|connected))\b|"
+    r"\b(?:how many|list(?: of)?(?: my)?)\b.{0,40}\b(?:cameras?|webcams?|monitors?|displays?)\b|"
+    r"^\s*(?:please\s+)?(?:device|peripheral|hardware)\s+(?:list|inventory)\s*\??\s*$",
+    re.I,
+)
+_LIST_CAMERAS = re.compile(
+    r"\b(?:list|show|scan|what|which|how many)\b.{0,40}\b(?:cameras?|webcams?|web\s*cams?)\b|"
+    r"\bcameras?\s+(?:list|available|connected)\b",
     re.I,
 )
 _SHOW_TEXT_ON_SCREEN = re.compile(
@@ -199,6 +218,84 @@ def _system_status() -> str:
             capture_output=True, text=True, timeout=8,
         )
         return out.stdout.strip() or "status unavailable"
+
+
+def _collect_peripherals() -> str:
+    """Cameras (OpenCV + PnP), displays, audio, USB, printers — measured, not invented."""
+    lines: list[str] = ["Friday — Peripherals / devices", "=============================="]
+
+    # Cameras via OpenCV probe (same path Systems UI uses).
+    try:
+        from friday.camera.devices import devices_payload
+
+        payload = devices_payload()
+        cams = payload.get("devices") or []
+        sel = payload.get("selected_index")
+        sel_be = payload.get("selected_backend") or ""
+        lines.append(f"Cameras (OpenCV): {len(cams)}")
+        if not cams:
+            lines.append("  (none opened — close Zoom/Teams/OBS if they lock the device)")
+        for d in cams:
+            mark = ""
+            if d.get("index") == sel and (not sel_be or d.get("backend") == sel_be):
+                mark = " ← selected"
+            lines.append(
+                f"  [{d.get('backend')}:{d.get('index')}] {d.get('name')} "
+                f"{d.get('width')}×{d.get('height')}{mark}"
+            )
+        pnp = payload.get("pnp_names") or []
+        if pnp:
+            lines.append(f"Windows PnP camera/image names: {len(pnp)}")
+            for n in pnp[:12]:
+                lines.append(f"  · {n}")
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"Cameras: unavailable ({exc})")
+
+    ps = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$out = @()
+$mons = @(Get-CimInstance Win32_DesktopMonitor | Where-Object { $_.Name })
+$out += "Displays: $($mons.Count)"
+foreach ($m in $mons) { $out += "  · $($m.Name)" }
+try {
+  Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+  $screens = [System.Windows.Forms.Screen]::AllScreens
+  $out += "Active screens: $($screens.Count)"
+  foreach ($s in $screens) {
+    $out += "  · $($s.DeviceName) $($s.Bounds.Width)x$($s.Bounds.Height)$(if($s.Primary){' (primary)'}else{''})"
+  }
+} catch {}
+$audio = @(Get-CimInstance Win32_SoundDevice | Where-Object { $_.Name })
+$out += "Audio devices: $($audio.Count)"
+foreach ($a in $audio | Select-Object -First 10) { $out += "  · $($a.Name)" }
+$usb = @(Get-CimInstance Win32_USBControllerDevice | ForEach-Object {
+  [wmi]($_.Dependent)
+} | Where-Object { $_.Name } | Select-Object -ExpandProperty Name -Unique)
+$out += "USB devices (sample): $([Math]::Min(16,$usb.Count)) of $($usb.Count)"
+foreach ($u in $usb | Select-Object -First 16) { $out += "  · $u" }
+$printers = @(Get-CimInstance Win32_Printer | Where-Object { $_.Name })
+$out += "Printers: $($printers.Count)"
+foreach ($p in $printers | Select-Object -First 8) {
+  $out += "  · $($p.Name)$(if($p.Default){' (default)'}else{''})"
+}
+$nics = @(Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.NetEnabled -eq $true -and $_.Name })
+$out += "Active network adapters: $($nics.Count)"
+foreach ($n in $nics | Select-Object -First 8) { $out += "  · $($n.Name)" }
+$out -join "`n"
+"""
+    out = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    extra = (out.stdout or "").strip()
+    if extra:
+        lines.append("")
+        lines.append(extra)
+    lines.append("")
+    lines.append(f"Collected : {time.strftime('%Y-%m-%dT%H:%M:%S')}")
+    return "\n".join(lines)
 
 
 def _collect_system_specs() -> str:
@@ -524,6 +621,21 @@ def try_direct(objective: str, *, workspace: str | None = None,
 
     if _STATUS.match(obj):
         return DirectResult(True, True, _system_status(), "system_status")
+
+    # Cameras / peripherals inventory (before generic specs — more specific).
+    if _LIST_CAMERAS.search(obj) or _PERIPHERALS.search(obj):
+        try:
+            text = _collect_peripherals()
+            # Always open HTML so live mode users can actually see the list.
+            html_path = _open_specs_html(text, stem="friday-peripherals")
+            return DirectResult(
+                True,
+                True,
+                f"{text}\n\nOpened as HTML ({html_path.name}).",
+                "list_peripherals",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return DirectResult(True, False, f"Couldn't list devices: {exc}", "list_peripherals")
 
     if _SHOW_SPECS_ON_SCREEN.search(obj):
         try:

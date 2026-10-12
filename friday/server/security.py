@@ -20,6 +20,9 @@ _SAFE_METHODS = {"GET", "HEAD"}
 _PUBLIC_PREFIXES = (
     "/api/auth/status",
     "/api/auth/pair/request",
+    "/api/auth/pair/claim",
+    "/api/auth/pair/wait",
+    "/api/auth/pair/redeem",
     "/api/auth/register/",
     "/api/auth/login/",
     "/api/health",
@@ -28,7 +31,7 @@ _PUBLIC_PREFIXES = (
     "/health",
     "/favicon",
 )
-_PUBLIC_EXACT = {"/", "/index.html", "/app.js", "/styles.css", "/live.js", "/tools.js", "/dialog.js", "/auth.js"}
+_PUBLIC_EXACT = {"/", "/index.html", "/app.js", "/styles.css", "/live.js", "/tools.js", "/dialog.js", "/auth.js", "/hud.css"}
 _STATIC_SUFFIXES = (".js", ".css", ".map", ".svg", ".png", ".ico", ".woff2", ".html")
 
 
@@ -43,6 +46,28 @@ def _hostname(hostport: str) -> str:
 def is_loopback(host: str) -> bool:
     h = host.strip().lower().strip("[]")
     return h in {"127.0.0.1", "localhost", "::1"}
+
+
+# Actual uvicorn bind for this process (set in run_server). Used by QR pairing
+# so we do not hand out a LAN URL while still listening on loopback only.
+_LISTEN_HOST: str = "127.0.0.1"
+
+
+def set_listen_host(host: str) -> None:
+    global _LISTEN_HOST
+    _LISTEN_HOST = (host or "127.0.0.1").strip() or "127.0.0.1"
+
+
+def get_listen_host() -> str:
+    return _LISTEN_HOST
+
+
+def listen_is_lan_reachable() -> bool:
+    """True when this process accepts connections from the LAN (not loopback-only)."""
+    h = get_listen_host().lower().strip("[]")
+    if h in ("0.0.0.0", "::", ""):
+        return True
+    return not is_loopback(h)
 
 
 def local_ipv4s() -> list[str]:
@@ -68,7 +93,7 @@ def local_ipv4s() -> list[str]:
 
 
 def default_allowed_hosts(extra: Iterable[str] = ()) -> set[str]:
-    """Exact hostnames only. Private LAN IPs are NOT included unless listed in extra / public host."""
+    """Exact hostnames. LAN mode also includes this machine's IPv4 addresses."""
     hosts = {"127.0.0.1", "localhost", "[::1]"}
     try:
         from friday.auth.config import get_auth_config
@@ -77,10 +102,35 @@ def default_allowed_hosts(extra: Iterable[str] = ()) -> set[str]:
         if cfg.public_host:
             hosts.add(cfg.public_host.lower())
         hosts.add(cfg.rp_id.lower())
+        if cfg.mode == "lan":
+            hosts.update(local_ipv4s())
     except Exception:  # noqa: BLE001
         pass
     hosts.update(h.strip().lower() for h in extra if h and h.strip())
     return hosts
+
+
+def host_is_allowed(name: str, allowed: set[str]) -> bool:
+    n = (name or "").strip().lower()
+    if n in allowed:
+        return True
+    try:
+        from friday.auth.config import get_auth_config
+
+        if get_auth_config().mode == "lan" and n in set(local_ipv4s()):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def request_is_loopback(scope) -> bool:
+    host = ""
+    for k, v in scope.get("headers", []):
+        if k == b"host":
+            host = v.decode("latin-1")
+            break
+    return is_loopback(_hostname(host))
 
 
 def _public_path(path: str) -> bool:
@@ -209,7 +259,7 @@ class RequestGuard:
 
         host = self._header(scope, b"host").lower()
         name = _hostname(host)
-        if name not in self.allowed_hosts:
+        if not host_is_allowed(name, self.allowed_hosts):
             return await self._deny(scope, receive, send, 403, "host not allowed")
 
         origin = self._header(scope, b"origin")
@@ -232,15 +282,17 @@ class RequestGuard:
 
         min_role = _min_role_for(path, method)
         if min_role is not None:
-            # Passkeys are required only for remote (phone / public hostname).
-            # local = this PC on loopback, no login wall; off = tests / explicit open.
-            if auth_mode == "remote":
+            # remote: session or API token
+            # lan: loopback (PC) open; phone needs approved-device session
+            # local/off: no login wall (optional API token)
+            # This PC (loopback) is always trusted. Phones / other hosts need a session.
+            if request_is_loopback(scope) or auth_mode in ("off", "local"):
+                if auth_mode in ("off", "local") and self.token and not self._session_ok(scope, min_role):
+                    if not self._token_ok(scope):
+                        return await self._deny(scope, receive, send, 401, "missing or invalid token")
+            elif auth_mode in ("remote", "lan"):
                 if not (self._session_ok(scope, min_role) or self._token_ok(scope)):
                     return await self._deny(scope, receive, send, 401, "authentication required")
-            elif auth_mode in ("off", "local") and self.token and not self._session_ok(scope, min_role):
-                # Optional script bearer when configured (even on local).
-                if not self._token_ok(scope):
-                    return await self._deny(scope, receive, send, 401, "missing or invalid token")
 
         await self.app(scope, receive, send)
 

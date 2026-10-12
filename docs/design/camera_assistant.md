@@ -13,6 +13,7 @@ Friday already sees the **screen** (computer-use / observe). The camera lets Fri
 | Opt-in | `FRIDAY_CAMERA=off` by default |
 | Extras | `pip install -r requirements/camera.lock.txt` (OpenCV headless) |
 | Arm grant | Systems → **Arm camera** (TTL, default 5 min) or `POST /api/camera/arm` |
+| Device pick | Systems → Camera **Device** dropdown (`GET /api/camera/devices`, `POST /api/camera/select`) — prefs in `data/camera_prefs.json` |
 | Skill | `camera` — triggers like “what am I looking at”, “what’s on my desk” |
 | Capture | One JPEG in memory → local VLM → discard; never written to disk/memory/reports |
 | Fence | Prompt treats frame as `CAMERA_DATA` untrusted data |

@@ -34,25 +34,15 @@
     if (spin) spin.classList.add("hud-rings-spin");
   }
 
-  function bracketSvg(panel) {
-    if (panel.querySelector(".hud-bracket-svg")) return;
-    panel.classList.add("hud-bracket");
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("class", "hud-bracket-svg");
-    svg.setAttribute("viewBox", "0 0 100 100");
-    svg.setAttribute("preserveAspectRatio", "none");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute(
-      "d",
-      "M2 18 V2 H18 M82 2 H98 V18 M98 82 V98 H82 M18 98 H2 V82"
-    );
-    svg.appendChild(path);
-    panel.appendChild(svg);
-  }
-
   function assemblePanels() {
+    // CSS already draws panel-frame corners (::before/::after). Do not inject a
+    // second SVG bracket layer — that stacked and looked "assembled twice".
     document.querySelectorAll(".panel-frame").forEach((panel) => {
-      bracketSvg(panel);
+      if (panel.dataset.hudAssembled === "1") return;
+      panel.dataset.hudAssembled = "1";
+      // Strip any leftover SVG brackets from older motion.js builds.
+      panel.querySelectorAll(".hud-bracket-svg").forEach((el) => el.remove());
+      panel.classList.remove("hud-bracket");
       if (!motionAllowed()) {
         panel.classList.add("hud-assembled");
         return;

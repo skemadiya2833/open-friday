@@ -204,14 +204,24 @@
       if (!overlay) return;
       canvas = $("#liveOrb");
       g = canvas.getContext("2d");
-      const dpr = Math.min(2, window.devicePixelRatio || 1), size = 420;
-      canvas.width = size * dpr; canvas.height = size * dpr;
-      canvas.style.width = canvas.style.height = size + "px";
       overlay.classList.remove("hidden");
       document.body.classList.add("live-open");
       open = true; t0 = performance.now();
-      Live.user(""); Live.friday("");
+      Live.user("");
+      const cap = $("#capFriday");
+      if (cap) { cap.textContent = ""; cap.classList.add("faded"); }
+      Live.clearResult();
       Live.state("listening");
+      // Size the bitmap to the CSS box so the ring stays circular (no stretch).
+      const sizeCanvas = () => {
+        if (!canvas) return;
+        const css = Math.max(160, Math.round(canvas.getBoundingClientRect().width || 320));
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        canvas.width = Math.round(css * dpr);
+        canvas.height = Math.round(css * dpr);
+      };
+      sizeCanvas();
+      requestAnimationFrame(sizeCanvas);
       cancelAnimationFrame(raf); raf = requestAnimationFrame(drawOrb);
       openMic();
       Live.syncControls();
@@ -222,6 +232,7 @@
       if (!overlay) return;
       open = false;
       overlay.classList.add("hidden");
+      overlay.classList.remove("has-result", "show-type");
       document.body.classList.remove("live-open");
       cancelAnimationFrame(raf);
       closeMic();
@@ -255,9 +266,51 @@
       const el = $("#capFriday");
       if (!el) return;
       const t = String(text || "").replace(/\s+/g, " ").trim();
-      el.textContent = t.length > 300 ? "…" + t.slice(-300) : t;
+      el.textContent = t.length > 220 ? "…" + t.slice(-220) : t;
       el.classList.toggle("filler", filler);
       el.classList.toggle("faded", !t);
+    },
+    activity(message, { live = true } = {}) {
+      // Never open the RESULT panel for pipeline chatter — that panel is for the reply.
+      // Keep at most one quiet hint under the captions.
+      const hint = $("#liveHint");
+      if (!hint || !message) return;
+      const t = String(message).trim();
+      if (!t) return;
+      hint.textContent = t;
+      hint.classList.toggle("live", !!live);
+      hint.classList.remove("hidden");
+    },
+    clearHint() {
+      const hint = $("#liveHint");
+      if (!hint) return;
+      hint.textContent = "";
+      hint.classList.add("hidden");
+      hint.classList.remove("live");
+    },
+    result(text, { append = false } = {}) {
+      const reply = $("#liveReply");
+      const box = $("#liveResults");
+      overlay = overlay || $("#liveOverlay");
+      if (!reply) return;
+      const t = String(text || "");
+      if (!t.trim() && !append) return;
+      if (box) box.hidden = false;
+      if (overlay) overlay.classList.add("has-result");
+      if (append) reply.textContent += t;
+      else reply.textContent = t;
+      reply.scrollTop = reply.scrollHeight;
+    },
+    clearResult() {
+      const reply = $("#liveReply");
+      const feed = $("#liveActivity");
+      const box = $("#liveResults");
+      overlay = overlay || $("#liveOverlay");
+      if (reply) reply.textContent = "";
+      if (feed) feed.replaceChildren();
+      if (box) box.hidden = true;
+      if (overlay) overlay.classList.remove("has-result");
+      this.clearHint();
     },
     attachAudio(audio) {
       try {
@@ -388,17 +441,21 @@
         },
         push(chunk) {
           pending += chunk;
-          const realtime = Voice.style() === "realtime";
           for (;;) {
-            const re = /[.!?\u2026]+["')\]]*\s+|\n+|,\s+/g;
+            // Cut on sentence endings only — never mid-clause on commas or raw length.
+            // (.!?…) + optional quotes/brackets + whitespace, or a blank line.
+            const re = /[.!?\u2026]+["')\]]*(?:\s+|$)|(?:\r?\n){2,}/g;
             let m, cut = -1;
-            const need = (realtime && spokenReal === 0) ? 6 : 10;
             while ((m = re.exec(pending))) {
               const end = m.index + m[0].length;
-              if (end >= need || m[0].includes("\n")) { cut = end; break; }
+              // Skip tiny fragments ("OK." / "Yes.") so we don't over-chop.
+              if (end >= 18 || m[0].includes("\n")) { cut = end; break; }
             }
-            const flushAt = (realtime && spokenReal === 0) ? 32 : 72;
-            if (cut < 0 && pending.length > flushAt) { cut = pending.length; }
+            // Soft overflow: only at a word boundary if a sentence never arrived.
+            if (cut < 0 && pending.length > 280) {
+              const space = pending.lastIndexOf(" ", 240);
+              if (space >= 40) cut = space + 1;
+            }
             if (cut < 0) break;
             sp.say(pending.slice(0, cut));
             pending = pending.slice(cut);
@@ -423,6 +480,40 @@
     $("#liveOrb")?.addEventListener("click", () => {
       Live.interrupt();
       if (typeof window.onFridayLiveInterrupt === "function") window.onFridayLiveInterrupt();
+    });
+    $("#liveTypeToggle")?.addEventListener("click", () => {
+      overlay = overlay || $("#liveOverlay");
+      if (!overlay) return;
+      overlay.classList.toggle("show-type");
+      const on = overlay.classList.contains("show-type");
+      $("#liveTypeToggle").textContent = on ? "Hide type" : "Type";
+      if (on) {
+        const ta = $("#liveInput");
+        try { ta?.focus(); } catch (_) {}
+      }
+    });
+    $("#liveResultsClear")?.addEventListener("click", () => Live.clearResult());
+    $("#liveCompose")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const ta = $("#liveInput");
+      const text = (ta?.value || "").trim();
+      if (!text) return;
+      if (ta) ta.value = "";
+      if (typeof window.sendMessage === "function") {
+        window.sendMessage(text, { fromVoice: false });
+      } else {
+        const main = document.getElementById("input");
+        if (main) {
+          main.value = text;
+          document.getElementById("composer")?.requestSubmit?.();
+        }
+      }
+    });
+    $("#liveInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        $("#liveCompose")?.requestSubmit?.();
+      }
     });
     document.querySelectorAll("[data-voice-style]").forEach((b) => b.addEventListener("click", () => Voice.setStyle(b.dataset.voiceStyle)));
     document.querySelectorAll("[data-voice-duplex]").forEach((b) => b.addEventListener("click", () => Voice.setDuplex(b.dataset.voiceDuplex)));

@@ -33,7 +33,7 @@
     return c;
   }
   function button(label, fn, cls) {
-    const b = el("button", cls || "", label);
+    const b = el("button", cls || "ghost", label);
     b.type = "button";
     b.addEventListener("click", async () => {
       b.disabled = true;
@@ -87,12 +87,14 @@
     }
   }
 
-  // --- view hook -----------------------------------------------------------
-  const baseShowView = showView;
-  showView = function (name) {
-    baseShowView(name);
-    if (name === "tools") refreshTools();
-  };
+  // --- view hook (app.js defines showView; load tools.js after app.js) ------
+  if (typeof showView === "function") {
+    const baseShowView = showView;
+    window.showView = function (name) {
+      baseShowView(name);
+      if (name === "tools") refreshTools();
+    };
+  }
 
   setInterval(() => {
     if ($("#view-tools").classList.contains("active")) refreshTools();

@@ -91,6 +91,23 @@ def test_show_system_resources_phrase(monkeypatch, tmp_path):
     assert r.handled and r.ok and r.tool == "show_specs_on_screen"
 
 
+def test_list_my_specification_on_screen(monkeypatch, tmp_path):
+    """Voice: 'list of my specification … on my screen' must not vision-type into the HUD chat."""
+    opened = []
+    monkeypatch.setattr(DT, "_collect_system_specs", lambda: "Friday — System specs\nCPU : test")
+    monkeypatch.setattr(DT.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(
+        "friday.calendar.create.open_in_chrome",
+        lambda u: opened.append(u) or {"opened": True, "browser": "chrome", "url": u},
+    )
+    monkeypatch.setattr(DT.webbrowser, "open", lambda u: opened.append(u) or True)
+    monkeypatch.setattr(DT.subprocess, "Popen", lambda *a, **k: type("P", (), {})())
+    msg = "Can you list of my specification and put it on my screen"
+    r = DT.try_direct(msg)
+    assert r.handled and r.ok and r.tool == "show_specs_on_screen"
+    assert opened or list(tmp_path.glob("friday-system-specs-*.html"))
+
+
 def test_router_prefers_direct_before_gui(tmp_path, monkeypatch):
     monkeypatch.setattr(DT.webbrowser, "open", lambda u: True)
     routed = RT.route("open https://example.com", workspace=str(tmp_path))

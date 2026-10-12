@@ -72,26 +72,26 @@ def handle_message(
     except Exception as exc:  # noqa: BLE001
         print(f"[Memory] auto-remember failed: {exc}")
 
-    if voice_mode:
-        emit("activity", {"step": "voice", "message": "Voice mode · keeping answers short"})
-
     # --- Architectural gate: LLM classify + deterministic policy ---
     emit("status", {"status": "thinking"})
-    emit("activity", {"step": "classify", "message": "Figuring out what you want…"})
+    # Voice stays quiet — no classify/intent chatter in the live HUD.
+    if not voice_mode:
+        emit("activity", {"step": "classify", "message": "Figuring out what you want…"})
     intent = classify_intent(
         message,
         history=history,
         override_skill=skill_override,
     )
     emit("intent", intent.to_dict())
-    emit("activity", {
-        "step": "intent",
-        "message": (
-            f"Mode · {intent.mode} → {intent.skill_id} "
-            f"({intent.confidence:.0%} · {intent.source})"
-        ),
-        "detail": intent.reason,
-    })
+    if not voice_mode:
+        emit("activity", {
+            "step": "intent",
+            "message": (
+                f"Mode · {intent.mode} → {intent.skill_id} "
+                f"({intent.confidence:.0%} · {intent.source})"
+            ),
+            "detail": intent.reason,
+        })
     emit("skill_selected", {
         "skill_id": intent.skill_id,
         "score": intent.confidence,
@@ -198,10 +198,10 @@ def handle_message(
         "files": "Working with files…",
         "tasks": "Scheduling…",
     }
-    emit("activity", {
-        "step": "skill_run",
-        "message": skill_labels.get(intent.skill_id, f"Running {intent.skill_id}…"),
-    })
+    skill_msg = skill_labels.get(intent.skill_id, f"Running {intent.skill_id}…")
+    # In voice, skip "Chatting…" noise; keep visible only when she is looking/acting.
+    if not voice_mode or intent.skill_id in ("observe", "camera", "computer_use", "research", "files", "tasks"):
+        emit("activity", {"step": "skill_run", "message": skill_msg})
     if intent.skill_id == "computer_use":
         emit("status", {"status": "acting"})
     elif intent.skill_id in ("observe", "camera"):
@@ -227,7 +227,8 @@ def handle_message(
         )
     if voice_mode and reply:
         reply = _clip_voice_reply(reply)
-    emit("activity", {"step": "done", "message": "Done"})
+    if not voice_mode:
+        emit("activity", {"step": "done", "message": "Done"})
     emit("status", {"status": "idle"})
 
     if result.skill_id == "computer_use" and result.metadata.get("status") == "completed":

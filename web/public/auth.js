@@ -1,7 +1,10 @@
-/* Passkey pairing / login UI. Soft signals only — never used as an authenticator. */
+/* Pairing / passkey UI. Soft signals only — never used as an authenticator. */
 (function () {
   "use strict";
   const $ = (s) => document.querySelector(s);
+
+  let phonePending = null; // { pending_id, code }
+  let waitTimer = 0;
 
   async function dlgAlert(opts) {
     if (window.FridayDialog) return FridayDialog.alert(opts);
@@ -65,12 +68,17 @@
   async function refreshStatus() {
     const line = $("#authStatusLine");
     try {
-      const st = await (await fetch("/api/auth/status")).json();
+      const st = await (await fetch("/api/auth/status", { credentials: "same-origin" })).json();
       if (line) {
-        const gate = st.passkeys_required ? "passkeys required" : "no login on this PC";
-        line.textContent = `Mode ${st.mode} (${gate}) · RP ${st.rp_id} · ${st.authenticated ? "signed in (" + (st.role || "?") + ")" : "signed out"} · ${st.device_count} device(s). Phone: set FRIDAY_AUTH=remote + FRIDAY_PUBLIC_HOST — docs/PHONE_SETUP.md.`;
+        const gate = st.passkeys_required
+          ? "passkeys required"
+          : st.passkeys_optional
+            ? "passkey optional"
+            : "no login on this PC";
+        const ips = (st.lan_ips || []).length ? ` · LAN ${(st.lan_ips || []).join(", ")}` : "";
+        line.textContent = `Mode ${st.mode} (${gate}) · ${st.authenticated ? "signed in (" + (st.role || "?") + ")" : "signed out"} · ${st.device_count} device(s)${ips}`;
       }
-      if (st.authenticated && st.role === "admin") {
+      if (st.authenticated && (st.role === "admin" || st.loopback)) {
         await refreshDevices();
         await refreshPending();
       }
@@ -83,32 +91,35 @@
     const box = $("#deviceList");
     if (!box) return;
     try {
-      const data = await (await fetch("/api/auth/devices")).json();
+      const data = await (await fetch("/api/auth/devices", { credentials: "same-origin" })).json();
       box.replaceChildren();
       for (const d of data.devices || []) {
         const el = document.createElement("div");
         el.className = "card";
         el.innerHTML = `<div><h3></h3><p class="muted"></p></div><div class="actions"></div>`;
         el.querySelector("h3").textContent = d.label;
-        el.querySelector("p").textContent = `${d.role} · last ${new Date(d.last_used * 1000).toLocaleString()}`;
+        const kind = d.auth_kind === "approved" ? "approved (no passkey)" : "passkey";
+        el.querySelector("p").textContent = `${d.role} · ${kind} · last ${new Date(d.last_used * 1000).toLocaleString()}`;
         const rev = document.createElement("button");
         rev.type = "button";
         rev.className = "ghost danger";
         rev.textContent = "Revoke";
         rev.onclick = async () => {
-          await fetch("/api/auth/stepup/options", { method: "POST" }).catch(() => {});
           const ok = await dlgConfirm({
             eyebrow: "DEVICES",
             title: `Revoke “${d.label}”?`,
-            body: "This needs a fresh passkey step-up. The device will lose access until re-enrolled.",
+            body: "The device will lose access until paired again.",
             tone: "danger",
             confirmLabel: "Revoke device",
             cancelLabel: "Cancel",
           });
           if (!ok) return;
-          const r = await fetch("/api/auth/devices/" + d.id, { method: "DELETE" });
+          const r = await fetch("/api/auth/devices/" + d.id, {
+            method: "DELETE",
+            credentials: "same-origin",
+          });
           if (!r.ok) {
-            const detail = (await r.json().catch(() => ({}))).detail || "Revoke failed — complete step-up first.";
+            const detail = (await r.json().catch(() => ({}))).detail || "Revoke failed.";
             await dlgAlert({
               eyebrow: "DEVICES",
               title: "Couldn’t revoke",
@@ -130,7 +141,7 @@
     const box = $("#pairPending");
     if (!box) return;
     try {
-      const data = await (await fetch("/api/auth/pair/pending")).json();
+      const data = await (await fetch("/api/auth/pair/pending", { credentials: "same-origin" })).json();
       box.replaceChildren();
       for (const p of data.pending || []) {
         const el = document.createElement("div");
@@ -140,11 +151,97 @@
         el.querySelector("p").textContent = JSON.stringify(p.soft || {});
         box.append(el);
         const id = $("#pairPendingId");
+        const code = $("#pairCode");
         if (id && !id.value) id.value = p.id;
+        if (code && !code.value) code.value = p.code;
       }
     } catch (_) {
       box.textContent = "";
     }
+  }
+
+  function stopWait() {
+    if (waitTimer) clearInterval(waitTimer);
+    waitTimer = 0;
+  }
+
+  async function requestAccess() {
+    const name = ($("#pairDeviceName")?.value || "").trim() || "Phone";
+    const hint = $("#pairPhoneHint");
+    const actions = $("#pairPhoneActions");
+    const r = await fetch("/api/auth/pair/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device_name: name }),
+    });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      await dlgAlert({
+        eyebrow: "PAIRING",
+        title: "Request failed",
+        body: String(out.detail || "Could not start pairing."),
+        tone: "danger",
+      });
+      return;
+    }
+    phonePending = { pending_id: out.pending_id, code: out.code };
+    if (hint) {
+      hint.textContent = `Code ${out.code} — show this on the PC Devices page and tap Approve. Waiting…`;
+    }
+    actions?.classList.remove("hidden");
+    stopWait();
+    waitTimer = setInterval(async () => {
+      if (!phonePending) return;
+      try {
+        const w = await fetch("/api/auth/pair/wait", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(phonePending),
+        });
+        const st = await w.json().catch(() => ({}));
+        if (st.status === "approved" && hint) {
+          hint.textContent = `Approved — tap Continue without passkey (or Register passkey).`;
+          stopWait();
+        } else if (st.status === "expired" || st.status === "missing") {
+          if (hint) hint.textContent = "Request expired — tap Request access again.";
+          stopWait();
+        }
+      } catch (_) { /* ignore */ }
+    }, 2000);
+  }
+
+  async function claimWithoutPasskey() {
+    if (!phonePending) {
+      await dlgAlert({ eyebrow: "PAIRING", title: "No request", body: "Tap Request access first.", tone: "warn" });
+      return;
+    }
+    const r = await fetch("/api/auth/pair/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(phonePending),
+    });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      await dlgAlert({
+        eyebrow: "PAIRING",
+        title: "Not connected yet",
+        body: String(out.detail || "Wait for PC approve, then try again."),
+        tone: "warn",
+      });
+      return;
+    }
+    stopWait();
+    phonePending = null;
+    await dlgNotice({
+      eyebrow: "PAIRING",
+      title: "Connected",
+      body: `${out.label} is signed in as ${out.role}. Passkey optional later.`,
+      tone: "ok",
+      okLabel: "Open Friday",
+    });
+    window.hideAuthGate?.();
+    location.reload();
   }
 
   async function bootstrapPc() {
@@ -157,7 +254,7 @@
       });
       return;
     }
-    const optRes = await fetch("/api/auth/register/options", { method: "POST" });
+    const optRes = await fetch("/api/auth/register/options", { method: "POST", credentials: "same-origin" });
     const body = await optRes.json();
     if (!optRes.ok) {
       await dlgAlert({
@@ -173,6 +270,7 @@
     const ver = await fetch("/api/auth/register/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({
         enrollment_token: body.enrollment_token,
         challenge,
@@ -201,6 +299,22 @@
     location.reload();
   }
 
+  async function registerPasskeyAfterPair() {
+    // Claim first if needed, then use enrollment from approve for WebAuthn —
+    // for LAN we claim session then optional passkey is a future upgrade.
+    // If still pending approval, claim may fail; if approved, claim then reload.
+    if (phonePending) {
+      await claimWithoutPasskey();
+      return;
+    }
+    await dlgAlert({
+      eyebrow: "PASSKEYS",
+      title: "Connect first",
+      body: "Use Continue without passkey after PC approve. Passkey upgrade can be added when a public hostname is configured.",
+      tone: "warn",
+    });
+  }
+
   async function login() {
     const optRes = await fetch("/api/auth/login/options", { method: "POST" });
     const body = await optRes.json();
@@ -208,7 +322,7 @@
       await dlgAlert({
         eyebrow: "PASSKEYS",
         title: "Couldn’t start sign-in",
-        body: String(body.detail || "Login options failed."),
+        body: String(body.detail || "Login options failed. On LAN, use Request access instead."),
         tone: "danger",
       });
       return;
@@ -218,6 +332,7 @@
     const ver = await fetch("/api/auth/login/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ challenge, credential: serializeCred(cred) }),
     });
     const out = await ver.json();
@@ -235,6 +350,83 @@
     location.reload();
   }
 
+  async function showPairQr() {
+    const name = ($("#pairDeviceName")?.value || "").trim() || "Phone";
+    const hint = $("#qrPairHint");
+    const box = $("#qrPairBox");
+    const svgHost = $("#qrPairSvg");
+    const urlEl = $("#qrPairUrl");
+    if (hint) hint.textContent = "Creating invite…";
+    const r = await fetch("/api/auth/pair/qr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ device_name: name }),
+    });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      await dlgAlert({
+        eyebrow: "QR PAIR",
+        title: "Couldn’t create QR",
+        body: String(out.detail || "Try again from localhost on the PC."),
+        tone: "danger",
+      });
+      return;
+    }
+    if (out.needs_restart) {
+      if (hint) hint.textContent = out.message || "Restart Friday, then click Show QR again.";
+      box?.classList.add("hidden");
+      await dlgNotice({
+        eyebrow: "QR PAIR",
+        title: "Restart Friday once",
+        body: out.message || "Phone access was enabled. Restart the Friday process, then Show QR again.",
+        tone: "warn",
+        okLabel: "OK",
+      });
+      return;
+    }
+    if (hint) hint.textContent = out.message || "Scan with your phone (same Wi‑Fi).";
+    if (svgHost) {
+      if (out.svg) svgHost.innerHTML = out.svg;
+      else svgHost.textContent = "QR unavailable — use the link below.";
+    }
+    if (urlEl) urlEl.textContent = out.url || "";
+    box?.classList.remove("hidden");
+    window._fridayPairUrl = out.url || "";
+  }
+
+  async function redeemPairToken(token) {
+    const r = await fetch("/api/auth/pair/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ token }),
+    });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      await dlgAlert({
+        eyebrow: "QR PAIR",
+        title: "Couldn’t join",
+        body: String(out.detail || "Ask the PC for a fresh QR."),
+        tone: "danger",
+      });
+      return false;
+    }
+    window.hideAuthGate?.();
+    // Drop ?pair= then reload into the signed-in HUD (cookie already set).
+    const u = new URL(location.href);
+    u.searchParams.delete("pair");
+    history.replaceState(null, "", u.pathname + u.search + u.hash);
+    location.reload();
+    return true;
+  }
+
+  async function consumePairQuery() {
+    const token = new URLSearchParams(location.search).get("pair");
+    if (!token) return false;
+    return redeemPairToken(token);
+  }
+
   window.FridayAuth = {
     bootstrapPc: () =>
       bootstrapPc().catch((e) =>
@@ -242,18 +434,43 @@
     login: () =>
       login().catch((e) =>
         dlgAlert({ eyebrow: "PASSKEYS", title: "Sign-in error", body: e.message || String(e), tone: "danger" })),
+    requestAccess: () =>
+      requestAccess().catch((e) =>
+        dlgAlert({ eyebrow: "PAIRING", title: "Request error", body: e.message || String(e), tone: "danger" })),
+    claim: () =>
+      claimWithoutPasskey().catch((e) =>
+        dlgAlert({ eyebrow: "PAIRING", title: "Claim error", body: e.message || String(e), tone: "danger" })),
+    showPairQr: () =>
+      showPairQr().catch((e) =>
+        dlgAlert({ eyebrow: "QR PAIR", title: "Error", body: e.message || String(e), tone: "danger" })),
+    consumePairQuery,
     refreshStatus,
   };
 
   $("#btnAuthBootstrap")?.addEventListener("click", () => window.FridayAuth.bootstrapPc());
   $("#btnAuthLogin")?.addEventListener("click", () => window.FridayAuth.login());
   $("#btnAuthRefresh")?.addEventListener("click", () => refreshStatus());
+  $("#btnShowPairQr")?.addEventListener("click", () => window.FridayAuth.showPairQr());
+  $("#btnCopyPairUrl")?.addEventListener("click", async () => {
+    const url = window._fridayPairUrl || $("#qrPairUrl")?.textContent || "";
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      const hint = $("#qrPairHint");
+      if (hint) hint.textContent = "Link copied.";
+    } catch (_) {
+      await dlgAlert({ eyebrow: "QR PAIR", title: "Copy failed", body: url, tone: "warn" });
+    }
+  });
+  $("#btnPairRequest")?.addEventListener("click", () => window.FridayAuth.requestAccess());
+  $("#btnPairClaim")?.addEventListener("click", () => window.FridayAuth.claim());
   $("#btnPairApprove")?.addEventListener("click", async () => {
     const pending_id = $("#pairPendingId")?.value?.trim();
     const code = $("#pairCode")?.value?.trim();
     const r = await fetch("/api/auth/pair/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ pending_id, code }),
     });
     const out = await r.json();
@@ -261,17 +478,16 @@
       await dlgAlert({
         eyebrow: "PAIRING",
         title: "Approve failed",
-        body: String(out.detail || "Press a physical key, then retry."),
+        body: String(out.detail || "Check the code and try again."),
         tone: "danger",
       });
       return;
     }
     await dlgNotice({
       eyebrow: "PAIRING",
-      title: "Enrollment token ready",
-      body: "Valid for 5 minutes. Enter this on the phone to finish passkey registration.",
+      title: "Phone approved",
+      body: "On the phone tap Continue without passkey (or Register passkey).",
       tone: "ok",
-      code: out.enrollment_token,
       okLabel: "Done",
     });
     refreshStatus();
