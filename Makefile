@@ -1,13 +1,17 @@
-.PHONY: run server test install
+.PHONY: run server test install doctor
 
 install:
-	pip install -r requirements.txt
+	pip install -r requirements/core.lock.txt
+	pip install -e .
 
 run:
-	python main.py
+	python -m friday
 
 server:
-	python main.py --server
+	python -m friday serve --server
+
+doctor:
+	python -m friday doctor
 
 test:
-	python tests/test_skills_tools.py
+	pytest -q -k "not real_hotkey and not hotkey_conflict"

@@ -9,9 +9,12 @@ python -m venv friday_env
 friday_env\Scripts\activate
 pip install -r requirements/core.lock.txt
 pip install -r requirements/dev.lock.txt
+pip install -e .
 copy .env.example .env
 # Use models already installed locally (default: qwen3.5:9b). Do not pull extras unless asked.
-python main.py --server
+friday doctor
+friday serve --server
+# or: python main.py --server
 ```
 
 Open http://127.0.0.1:8787/
@@ -50,15 +53,19 @@ Adapted-from headers must stay listed in the notices file — `python scripts/ch
 
 ## Tests and checks
 
-There is **no CI**. Run everything locally:
+GitHub Actions runs the same suite on push/PR (`.github/workflows/ci.yml`). Still run locally before pushing:
 
 ```powershell
 pip install -r requirements/dev.lock.txt
-pytest -q                                  # add -k "not real_hotkey and not hotkey_conflict" if the e-stop hotkey is in use
+pip install -e .
+pytest -q -k "not real_hotkey and not hotkey_conflict"
 ruff check friday tests main.py scripts --select F,E9
+friday doctor --json --no-hardware
 python scripts/pre_push_secrets_check.py   # required before any push — secrets / data/tls / audit dumps
 python scripts/pre_push_guard.py           # blocks .internal/ and non-public branch names
 ```
+
+Cutting a release: [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 Rules that keep this project safe:
 

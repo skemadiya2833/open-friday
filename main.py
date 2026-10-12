@@ -7,6 +7,7 @@ Usage:
     python main.py --gui        # Legacy tkinter Control Center
     python main.py --cli        # Classic terminal computer-use prompt
     python main.py --cli "Open Notepad"
+    python main.py --doctor     # Diagnostics (same as ``friday doctor``)
 """
 
 from __future__ import annotations
@@ -14,13 +15,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import threading
 
 
 def main(argv: list[str] | None = None) -> None:
-    # Quiet HF cache symlink noise on Windows before any voice/model imports.
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    from friday.cli import _quiet_hf_env, run_computer_use_cli, run_control_center
+
+    _quiet_hf_env()
 
     parser = argparse.ArgumentParser(description="Friday — local personal AI assistant")
     parser.add_argument("--cli", action="store_true", help="Terminal computer-use mode")
@@ -54,59 +54,13 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(print_doctor_report(run_doctor()))
 
     if args.cli or args.task:
-        _run_cli(args.task)
+        run_computer_use_cli(args.task)
     elif args.gui:
         from friday.ui.app import launch_gui
+
         launch_gui()
     else:
-        _run_control_center(tray=args.tray or not args.server)
-
-
-def _run_cli(task: str | None) -> None:
-    from friday.agent import run_agent
-    from friday.types import AgentStatus
-
-    objective = (task or "").strip()
-    if not objective:
-        objective = input("[Friday] On Your Service: ").strip()
-    if not objective:
-        print("[Friday] No task provided. Exiting.")
-        return
-
-    status = run_agent(objective)
-    if status == AgentStatus.COMPLETED:
-        print("\n[Friday] Done.")
-    elif status == AgentStatus.HALTED:
-        print("\n[Friday] Halted.")
-    elif status == AgentStatus.MAX_ITERATIONS:
-        print("\n[Friday] Stopped at iteration limit.")
-    else:
-        print(f"\n[Friday] Finished with status: {status.value}")
-
-
-def _run_control_center(*, tray: bool) -> None:
-    from friday.config import SERVER_PORT, ensure_data_dirs, ui_host
-    from friday.runtime.singleton import SingleInstanceError, acquire_instance_lock
-
-    ensure_data_dirs()
-    try:
-        acquire_instance_lock()
-    except SingleInstanceError as exc:
-        print(f"[Friday] {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
-    print(f"[Friday] Control Center → http://{ui_host()}:{SERVER_PORT}/")
-
-    def _serve() -> None:
-        from friday.server.app import run_server
-        run_server()
-
-    if tray:
-        t = threading.Thread(target=_serve, name="FridayServer", daemon=True)
-        t.start()
-        from friday.ui.tray import start_tray
-        start_tray(t)
-    else:
-        _serve()
+        run_control_center(tray=args.tray or not args.server)
 
 
 if __name__ == "__main__":

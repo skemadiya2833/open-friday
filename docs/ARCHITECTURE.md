@@ -39,6 +39,7 @@ Browser / tray  ──HTTP/SSE/WS──►  FastAPI (friday/server)
 - One Python interpreter; long agent runs use worker threads.
 - Global singletons include the event bus, model manager, and scheduler — designed for a single interactive user on one machine.
 - MCP servers (e.g. Windows-MCP) run as isolated child processes when enabled in `config/mcp_servers.yaml`.
+- Console entry: `friday` / `python -m friday` ([`friday/cli.py`](../friday/cli.py)); Windows one-click install under [`deploy/windows/`](../deploy/windows/).
 
 ## Data on disk
 

@@ -57,17 +57,40 @@ Benchmark methodology and caveats: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Install and first run
 
+### One-click (Windows 11)
+
+```powershell
+irm https://raw.githubusercontent.com/skemadiya2833/open-friday/main/deploy/windows/install.ps1 | iex
+friday doctor
+friday
+```
+
+Installs under `%LOCALAPPDATA%\OpenFriday`, adds a `friday` shim to your user PATH, and **does not** pull Ollama models unless you pass `-PullModels` / `-PullVision` (see [`deploy/windows/README.md`](deploy/windows/README.md)).
+
+### Manual (developers)
+
 ```powershell
 python -m venv friday_env
 friday_env\Scripts\activate
 python -m pip install --upgrade pip
 pip install -r requirements/core.lock.txt
+pip install -e .
 copy .env.example .env
 
-python main.py              # tray + Control Center
-# or
-python main.py --server     # HTTP only — http://127.0.0.1:8787/
+friday                  # tray + Control Center (same as python main.py)
+friday --help           # also: friday doctor | friday version | friday serve --server
+python main.py --server # HTTP only — http://127.0.0.1:8787/
 ```
+
+CLI:
+
+| Command | What it does |
+|---------|----------------|
+| `friday` / `friday serve` | Control Center + tray |
+| `friday serve --server` | HTTP only |
+| `friday doctor` | Preflight checks + next steps (never downloads models) |
+| `friday doctor --json` | Machine-readable report |
+| `friday version` | Print version |
 
 Optional extras:
 
@@ -118,6 +141,8 @@ Legacy entry points: `python main.py --gui` · `python main.py --cli "Open Notep
 - Optional SearXNG-backed research provider (design in `docs/design/searxng_provider.md`)
 - Continued hybrid-agent hardening and benchmark coverage
 - Community skill import with quarantine and hash-bound approval (see threat model)
+- Opt-in local camera context (design only: [`docs/design/camera_assistant.md`](docs/design/camera_assistant.md))
+- Releases: [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)
 
 ---
 
