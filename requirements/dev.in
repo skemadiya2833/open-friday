@@ -1,0 +1,4 @@
+﻿-c core.lock.txt
+pytest
+ruff
+playwright>=1.40,<2

@@ -45,6 +45,33 @@ def handle_message(
 
     history = [{"role": t.role, "content": t.content} for t in session.turns[:-1]]
 
+    if re.search(r"\b(clear|wipe|forget|reset)\b.{0,20}\b(chat|conversation|this (chat|conversation|link))\b", message, re.I):
+        n = len(session.turns)
+        session.turns = []
+        session.title = "New chat"
+        store.save(session)
+        reply = "Chat cleared, boss. Fresh page — memories I saved stay in Memory Core."
+        store.append(session, "assistant", reply, skill_id="chat")
+        emit("status", {"status": "idle"})
+        emit("chat_cleared", {"cleared": n})
+        return {
+            "reply": reply,
+            "session_id": session.id,
+            "skill_id": "chat",
+            "events": events,
+            "metadata": {"cleared": n},
+        }
+
+    # Durable facts — background so voice replies are not blocked by embedding.
+    try:
+        from friday.assistant.automemory import remember
+
+        for fact in remember(message, background=True):
+            emit("memory_saved", {"text": fact})
+            emit("activity", {"step": "memory", "message": f"Remembered · {fact[:80]}"})
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Memory] auto-remember failed: {exc}")
+
     if voice_mode:
         emit("activity", {"step": "voice", "message": "Voice mode · keeping answers short"})
 
@@ -116,6 +143,12 @@ def handle_message(
         }
 
     mem_hits: list[str] = []
+    try:
+        from friday.assistant.automemory import owner_facts
+
+        mem_hits.extend(owner_facts(8))
+    except Exception:
+        pass
     want_rag = (
         CHAT_RAG_ENABLED
         or intent.skill_id == "memory"
@@ -126,8 +159,8 @@ def handle_message(
         try:
             from friday.memory import get_memory
 
-            for h in get_memory().search(message, collection="memories", limit=3):
-                if h.score >= 0.3:
+            for h in get_memory().search(message, collection="memories", limit=4):
+                if h.score >= 0.25 and h.text not in mem_hits:
                     mem_hits.append(h.text)
         except Exception as exc:
             emit("warning", {"message": f"memory unavailable: {exc}"})

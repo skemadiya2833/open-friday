@@ -1,0 +1,29 @@
+# Third-party notices
+
+## OpenJarvis (Apache-2.0)
+
+- **Project:** [open-jarvis/OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
+- **License:** Apache License 2.0
+- **Copyright:** Copyright 2025 The OpenJarvis Authors
+- **Commit adapted from:** `f9e9d5d28d9e58d7fe601c331fc15a02fad32b2c`
+- **Local clone (read-only reference):** `D:\Workspace\_reference\OpenJarvis`
+- **Borrow plan:** `data/benchmarks/OPENJARVIS_BORROW_PLAN.md`
+
+Portions of Friday listed below are derived from OpenJarvis source under Apache-2.0.
+Each adapted Python file carries a header with the source path, license, and a short
+description of changes. Original copyright notices are preserved.
+
+| Friday file | OpenJarvis source | Stage |
+|-------------|-------------------|-------|
+| `friday/agent/tool_loop_guard.py` | `src/openjarvis/agents/loop_guard.py` | V2 |
+| `friday/security/ssrf.py` | `src/openjarvis/security/ssrf.py` | V3 |
+| `friday/security/file_policy.py` | `src/openjarvis/security/file_policy.py` | V3 |
+| `friday/security/content_scan.py` | `src/openjarvis/security/scanner.py` (+ injection / stripper ideas) | V3 |
+| `friday/security/taint.py` | `src/openjarvis/security/taint.py` (ideas) | V3 |
+| `friday/models/complexity.py` | `src/openjarvis/learning/routing/complexity.py` (+ heuristic select from `router.py`) | V4 |
+| `friday/briefing/morning.py` | `src/openjarvis/tools/digest_collect.py` (sectioned digest pattern; no OAuth connectors) | V5 |
+| `friday/perf.py` | `src/openjarvis/telemetry/gpu_monitor.py` (+ energy/phase ideas); **no** analytics clients | V6 |
+| `friday/skills/skill_security.py` | `src/openjarvis/skills/security.py` (+ importer trust ideas) | V7 |
+
+Full Apache-2.0 text: see the `LICENSE` file in the OpenJarvis repository at the commit above,
+or <http://www.apache.org/licenses/LICENSE-2.0>.

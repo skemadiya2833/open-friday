@@ -9,11 +9,11 @@ import httpx
 
 from friday.config import (
     EMBED_MODEL,
-    MODEL_KEEP_ALIVE,
     OLLAMA_HOST,
     VISION_MODEL,
     resolve_chat_model,
 )
+from friday.runtime.resource_policy import keep_alive_for_role
 
 Role = Literal["vision", "chat", "embed"]
 
@@ -38,7 +38,7 @@ class ModelManager:
             # Embeddings stay light / often CPU — don't displace vision/chat.
             if role == "embed":
                 if self._loaded_name != name:
-                    self._warmup(name, keep_alive="10m")
+                    self._warmup(name, keep_alive=keep_alive_for_role("embed"))
                     self._loaded_name = name
                 return name
 
@@ -52,7 +52,7 @@ class ModelManager:
                     self._unload(other)
                     self._loaded_name = None
 
-            self._warmup(name, keep_alive=MODEL_KEEP_ALIVE)
+            self._warmup(name, keep_alive=keep_alive_for_role("main"))
             self._loaded = role
             self._loaded_name = name
             return name

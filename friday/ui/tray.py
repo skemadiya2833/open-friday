@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import threading
 import webbrowser
-from pathlib import Path
 
-from friday.config import SERVER_HOST, SERVER_PORT
+from friday.config import SERVER_PORT, ui_host
 
 
 def _open_ui() -> None:
-    webbrowser.open(f"http://{SERVER_HOST}:{SERVER_PORT}/")
+    webbrowser.open(f"http://{ui_host()}:{SERVER_PORT}/")
 
 
 def start_tray(server_thread: threading.Thread | None = None) -> None:
@@ -19,9 +18,15 @@ def start_tray(server_thread: threading.Thread | None = None) -> None:
         from PIL import Image, ImageDraw
     except ImportError:
         print("[Tray] pystray/Pillow missing — open UI in browser only.")
+        from friday.shutdown import install_ctrl_c, request_stop
+
+        install_ctrl_c()
         _open_ui()
         if server_thread:
-            server_thread.join()
+            try:
+                server_thread.join()
+            except KeyboardInterrupt:
+                request_stop(0)
         return
 
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -33,12 +38,22 @@ def start_tray(server_thread: threading.Thread | None = None) -> None:
         _open_ui()
 
     def on_quit(icon, item) -> None:  # noqa: ARG001
+        from friday.shutdown import request_stop
+
         icon.stop()
+        request_stop(0)
 
     menu = pystray.Menu(
         pystray.MenuItem("Open Friday", on_open, default=True),
         pystray.MenuItem("Quit", on_quit),
     )
     icon = pystray.Icon("friday", img, "Friday", menu)
+    from friday.shutdown import install_ctrl_c, request_stop
+
+    install_ctrl_c(on_stop=icon.stop)
     _open_ui()
-    icon.run()
+    print("[Friday] Stop → Ctrl+C in this window, or Quit on the tray icon.", flush=True)
+    try:
+        icon.run()
+    except KeyboardInterrupt:
+        request_stop(0)

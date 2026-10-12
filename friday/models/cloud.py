@@ -88,16 +88,70 @@ def _call_cloud(prompt: str, base64_image: str | None) -> str | None:
     raise ValueError(f"Unknown CLOUD_PROVIDER: {CLOUD_PROVIDER}")
 
 
-def _call_gemini(prompt: str, base64_image: str | None) -> str | None:
+_FALLBACK_GEMINI = "gemini-2.5-flash"
+_gemini_model: str | None = None
+
+
+def pick_gemini_model(names: list[str]) -> str | None:
+    """Best general vision-capable stable Flash model from a models list (pure; unit-tested).
+
+    Prefers the highest-versioned ``gemini-N[.M]-flash`` that is not lite/preview/experimental/image/tts/live,
+    then the highest-versioned ``-pro``. Returns None when nothing suitable is listed."""
+    import re
+
+    def ver(n: str) -> tuple:
+        m = re.search(r"gemini-(\d+)(?:\.(\d+))?", n)
+        return (int(m.group(1)), int(m.group(2) or 0)) if m else (0, 0)
+
+    ok = []
+    for raw in names:
+        n = raw.split("/")[-1]
+        if not n.startswith("gemini-"):
+            continue
+        ok.append(n)
+    for kind in ("flash", "pro"):
+        c = [n for n in ok if re.fullmatch(rf"gemini-\d+(\.\d+)?-{kind}", n)]
+        if c:
+            return max(c, key=ver)
+    return None
+
+
+def discover_gemini_model(client) -> str:
+    """GEMINI_MODEL wins; otherwise ask the installed google-genai client which models this key can use.
+    UNVERIFIED without a real key: only ``pick_gemini_model`` is tested, with a fake listing."""
+    import os
+
+    global _gemini_model
+    if os.getenv("GEMINI_MODEL"):
+        return os.environ["GEMINI_MODEL"]
+    if _gemini_model:
+        return _gemini_model
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-pro-latest")
-        parts: list = [prompt]
+        names = [m.name for m in client.models.list()
+                 if "generateContent" in (getattr(m, "supported_actions", None) or ["generateContent"])]
+        _gemini_model = pick_gemini_model(names) or _FALLBACK_GEMINI
+    except Exception as e:  # noqa: BLE001
+        print(f"[Gemini] model discovery failed ({e}); using {_FALLBACK_GEMINI}")
+        _gemini_model = _FALLBACK_GEMINI
+    return _gemini_model
+
+
+def _call_gemini(prompt: str, base64_image: str | None) -> str | None:
+    # google-genai (the supported SDK). API verified against google-genai 2.28.0 signatures;
+    # a live call needs a real key and is UNVERIFIED. Model is configurable: the old
+    # "gemini-1.5-pro-latest" is retired.
+    try:
+        import base64
+
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        contents: list = [prompt]
         if base64_image:
-            parts.append({"mime_type": _mime_type(), "data": base64_image})
-        response = model.generate_content(parts)
-        return response.text.strip()
+            contents.insert(0, types.Part.from_bytes(data=base64.b64decode(base64_image), mime_type=_mime_type()))
+        response = client.models.generate_content(model=discover_gemini_model(client), contents=contents)
+        return (response.text or "").strip()
     except Exception as e:
         print(f"[Gemini Error] {e}")
         return None

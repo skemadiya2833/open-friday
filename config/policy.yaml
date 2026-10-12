@@ -1,0 +1,24 @@
+# Friday tool policy. Loaded at startup and on demand from the Control Center.
+# Decision per tool = tools[<name>] if present, otherwise tiers[<tool risk tier>].
+# Values: allow | ask | deny.   Unknown values are rejected at load time (fail closed).
+version: 1
+
+tiers:
+  safe: allow        # read-only / confined tools
+  confirm: ask       # state-changing tools wait for owner approval in the Control Center
+  dangerous: deny    # code execution and destructive tools are off unless enabled below
+
+# Per-tool overrides.
+tools:
+  # Writes are confined to the workspace sandbox (data/workspace); allowed without a prompt.
+  write_file: allow
+  # run_shell stays denied unless SHELL_TOOLS_ENABLED=true in .env, in which case it becomes "ask".
+  # Do not set it to "allow" here.
+
+shell:
+  mode: ask               # ask: approve every command | allowlist: auto-approve matching commands only
+  timeout_seconds: 30
+  max_timeout_seconds: 120
+  max_output_chars: 4000
+  # Full-match regular expressions, only used when mode: allowlist (anything else is still "ask").
+  allowlist: []

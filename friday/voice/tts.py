@@ -1,8 +1,14 @@
-"""Local text-to-speech: edge-tts (preferred) → pyttsx3 → plain text."""
+"""Text-to-speech: edge-tts neural (preferred) → pyttsx3 → plain text.
+
+Speaker+mic setups (monitor speakers + desk mic) cannot rely on browser AEC —
+half-duplex in the UI mutes STT while we play. Keep synthesis at a natural rate
+(+0% by default); only nudge rate when the owner asks to slow down / speed up.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import subprocess
 import tempfile
@@ -11,9 +17,17 @@ from pathlib import Path
 from friday.config import VOICE_TTS_VOICE
 from friday.persona import DEFAULT_EDGE_VOICE
 
+# Natural conversational females first; Emily kept as a late fallback only.
+_EDGE_FALLBACKS = (
+    "en-US-AvaNeural",
+    "en-US-JennyNeural",
+    "en-US-AriaNeural",
+    "en-GB-SoniaNeural",
+    "en-IE-EmilyNeural",
+)
+
 
 def _resolve_edge_voice(configured: str) -> str:
-    """Map Piper-style names / blanks to a female MCU-Friday-like edge voice."""
     v = (configured or "").strip()
     if not v or "en_US" in v or v.endswith("-medium") or v.endswith(".onnx"):
         return DEFAULT_EDGE_VOICE
@@ -22,22 +36,32 @@ def _resolve_edge_voice(configured: str) -> str:
     return DEFAULT_EDGE_VOICE
 
 
-def _edge_tts(text: str, out: Path) -> bool:
+def _normalize_rate(rate: str | None) -> str:
+    """Edge expects e.g. +0%, -15%, +20%. Reject weird values → natural."""
+    r = (rate or "+0%").strip()
+    if re.fullmatch(r"[+-]?\d{1,3}%", r):
+        n = int(r.rstrip("%"))
+        n = max(-50, min(50, n))
+        return f"{n:+d}%"
+    return "+0%"
+
+
+def _edge_tts(text: str, out: Path, rate: str | None = None) -> bool:
     try:
         import edge_tts
     except ImportError:
         return False
 
-    # Prefer Irish female (MCU Friday vibe); fall back to British female.
-    candidates = []
+    rate_s = _normalize_rate(rate)
+    candidates: list[str] = []
     primary = _resolve_edge_voice(VOICE_TTS_VOICE)
     candidates.append(primary)
-    for alt in ("en-IE-EmilyNeural", "en-GB-SoniaNeural", "en-US-AriaNeural"):
+    for alt in _EDGE_FALLBACKS:
         if alt not in candidates:
             candidates.append(alt)
 
     async def _run(voice: str, dest: Path) -> None:
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=rate_s)
         await communicate.save(str(dest))
 
     last_err = None
@@ -46,13 +70,9 @@ def _edge_tts(text: str, out: Path) -> bool:
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
                 raw = Path(tmp.name)
-            # Fresh event loop per attempt avoids flaky Windows edge-tts runs.
             asyncio.run(_run(voice, raw))
             if not (raw.exists() and raw.stat().st_size > 44):
                 raise RuntimeError("empty audio")
-            # Slightly slower delivery (~10%) via ffmpeg time-stretch.
-            if _slow_audio(raw, out, tempo=0.90):
-                return True
             raw.replace(out)
             return out.exists() and out.stat().st_size > 44
         except Exception as exc:
@@ -66,34 +86,10 @@ def _edge_tts(text: str, out: Path) -> bool:
     return False
 
 
-def _slow_audio(src: Path, dest: Path, *, tempo: float = 0.90) -> bool:
-    """Time-stretch speech a bit (atempo range 0.5–2.0)."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        return False
-    tempo = max(0.5, min(2.0, float(tempo)))
-    try:
-        subprocess.run(
-            [
-                ffmpeg, "-y", "-loglevel", "error",
-                "-i", str(src),
-                "-filter:a", f"atempo={tempo}",
-                str(dest),
-            ],
-            check=True,
-            timeout=60,
-        )
-        return dest.exists() and dest.stat().st_size > 44
-    except Exception as exc:
-        print(f"[TTS] atempo slowdown failed: {exc}")
-        return False
-
-
 def _piper_tts(text: str, out: Path) -> bool:
     piper = shutil.which("piper")
     if not piper:
         return False
-    # Piper only if an explicit piper model path/name was configured.
     model = VOICE_TTS_VOICE
     if model.startswith("en-") and "Neural" in model:
         return False
@@ -115,7 +111,6 @@ def _pyttsx3_tts(text: str, out: Path) -> bool:
 
         wav = out if out.suffix.lower() == ".wav" else out.with_suffix(".wav")
         engine = pyttsx3.init()
-        # Prefer a female SAPI voice when available.
         try:
             for voice in engine.getProperty("voices") or []:
                 name = f"{getattr(voice, 'name', '')} {getattr(voice, 'id', '')}".lower()
@@ -124,7 +119,7 @@ def _pyttsx3_tts(text: str, out: Path) -> bool:
                     break
         except Exception:
             pass
-        engine.setProperty("rate", 155)
+        engine.setProperty("rate", 175)  # closer to natural speech than 195
         engine.save_to_file(text, str(wav.resolve()))
         engine.runAndWait()
         if wav.exists() and wav.stat().st_size > 44:
@@ -136,16 +131,27 @@ def _pyttsx3_tts(text: str, out: Path) -> bool:
     return False
 
 
-def synthesize_to_file(text: str, out_path: str | Path) -> Path:
+def synthesize_to_file(text: str, out_path: str | Path, rate: str | None = None) -> Path:
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     clean = (text or "").strip()
     if not clean:
         out.write_bytes(b"")
         return out
+    # Scan before speech (not post-hoc) — never speak raw secrets.
+    try:
+        from friday.security.content_scan import scan_speech
+
+        spoken = scan_speech(clean)
+        if spoken.blocked:
+            clean = "I can't say that out loud — it looked like a secret."
+        else:
+            clean = spoken.text.strip() or clean
+    except Exception:
+        pass
 
     mp3 = out.with_suffix(".mp3")
-    if _edge_tts(clean, mp3):
+    if _edge_tts(clean, mp3, rate=rate):
         return mp3
 
     wav = out.with_suffix(".wav")
@@ -159,9 +165,9 @@ def synthesize_to_file(text: str, out_path: str | Path) -> Path:
     return txt
 
 
-def synthesize_bytes(text: str) -> tuple[bytes, str]:
+def synthesize_bytes(text: str, rate: str | None = None) -> tuple[bytes, str]:
     with tempfile.TemporaryDirectory() as tmp:
-        path = synthesize_to_file(text, Path(tmp) / "speech.wav")
+        path = synthesize_to_file(text, Path(tmp) / "speech.wav", rate=rate)
         data = path.read_bytes()
         if path.suffix == ".mp3":
             mime = "audio/mpeg"

@@ -101,6 +101,10 @@ class ActionStep:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> ActionStep:
+        raw = dict(raw or {})
+        nested = raw.get("args") or raw.get("arguments") or raw.get("params")
+        if isinstance(nested, dict):
+            raw = {**raw, **nested}
         known = {
             "action", "description", "risky", "x", "y", "x2", "y2",
             "text", "key", "keys", "button", "direction", "amount",
@@ -142,7 +146,14 @@ class ActionStep:
             y=_maybe_int(raw.get("y")),
             x2=_maybe_int(raw.get("x2")),
             y2=_maybe_int(raw.get("y2")),
-            text=_maybe_str(raw.get("text")),
+            text=_maybe_str(
+                raw.get("text")
+                or raw.get("content")
+                or raw.get("value")
+                or raw.get("input")
+                or raw.get("body")
+                or raw.get("code")
+            ),
             key=key,
             keys=keys,
             button=str(raw.get("button") or "left"),

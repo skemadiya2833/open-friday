@@ -174,6 +174,17 @@ def normalize_step_dict(step: dict, image_size: tuple[int, int]) -> dict:
     action = str(normalized.get("action", "")).upper()
     normalized["action"] = action
 
+    nested = normalized.get("args") or normalized.get("arguments") or normalized.get("params")
+    if isinstance(nested, dict):
+        for k, v in nested.items():
+            normalized.setdefault(k, v)
+
+    if action in ("TYPE", "PASTE") and not str(normalized.get("text") or "").strip():
+        for key in ("content", "value", "input", "body", "code", "payload"):
+            if str(normalized.get(key) or "").strip():
+                normalized["text"] = str(normalized[key])
+                break
+
     if action == "WIN_SEARCH" and not str(normalized.get("text") or "").strip():
         normalized["text"] = extract_win_search_text(normalized)
 

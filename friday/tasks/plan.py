@@ -42,7 +42,9 @@ def _load() -> dict[str, Any]:
 
 
 def _save(data: dict[str, Any]) -> None:
-    _plan_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
+    from friday.atomic import write_text_atomic
+
+    write_text_atomic(_plan_path(), json.dumps(data, indent=2))
 
 
 def get_plan() -> dict[str, Any]:

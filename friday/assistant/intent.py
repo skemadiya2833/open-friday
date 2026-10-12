@@ -42,7 +42,19 @@ _QUESTION = re.compile(
 )
 _IMPERATIVE = re.compile(
     r"\b(open|launch|start|click|type|write|save|close|delete|install|download|"
-    r"create|rename|move|copy|paste|run|execute|press|drag|scroll)\b",
+    r"create|rename|move|copy|paste|run|execute|press|drag|scroll|"
+    r"show|display|put|bring up|pull up)\b",
+    re.I,
+)
+# "Put my system specs / resources on screen" — act (direct tools → HTML), never chat hallucination.
+_SHOW_ON_SCREEN = re.compile(
+    r"\b(show|display|put|bring up|pull up|open|list)\b.{"
+    r"0,100}\b(on (my |the )?(screen|desktop|monitor|display)|in (a |my )?notepad|"
+    r"system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?|resources?)|"
+    r"pc specs?|computer specs?|resources?.{0,40}on (the )?system)\b|"
+    r"\b(system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?)|pc specs?|"
+    r"computer specs?|device specs?|resources?.{0,40}on (the )?system)\b.{"
+    r"0,60}\b(on (my |the )?(screen|desktop)|in notepad|html|browser)\b",
     re.I,
 )
 
@@ -201,7 +213,11 @@ def apply_policy(intent: Intent, message: str) -> Intent:
 
     # 2) Act requires imperative language OR high confidence + imperative objective.
     if intent.mode == "act" or intent.skill_id == "computer_use":
-        has_imperative = bool(_IMPERATIVE.search(msg) or _IMPERATIVE.search(intent.objective))
+        has_imperative = bool(
+            _IMPERATIVE.search(msg)
+            or _IMPERATIVE.search(intent.objective)
+            or _SHOW_ON_SCREEN.search(msg)
+        )
         if not has_imperative:
             # Downgrade: question without action verbs → look if screen-related else talk
             if re.search(r"\b(screen|desktop|monitor|display|window|open apps?)\b", msg, re.I):
@@ -251,7 +267,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
     return intent
 
 
-def _deterministic_intent(message: str) -> Intent | None:
+def _deterministic_intent(message: str, history: list[dict[str, str]] | None = None) -> Intent | None:
     """
     Decide without the LLM when the utterance is unambiguous.
     This is the architectural fix: never ask a confused model a solved question.
@@ -290,6 +306,26 @@ def _deterministic_intent(message: str) -> Intent | None:
             source="policy",
         )
 
+    # Reminders / timers / recurring tasks: parsed locally and scheduled without asking.
+    from friday.tasks.reminders import INTENT as _REMIND
+
+    if _REMIND.search(msg) or re.search(r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b", msg, re.I):
+        return Intent(mode="schedule", skill_id="tasks", confidence=0.95, objective=msg,
+                      reason="deterministic: reminder", source="policy")
+    if history:
+        last_a = next((t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
+        if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
+            from friday.tasks import reminders as _RM2
+
+            # Mic often re-hears Friday's own ask; only continue if the user gave a time.
+            echo = bool(re.search(
+                r"when should I remind|say something like|sure,? boss",
+                msg, re.I,
+            ))
+            if not echo and (_RM2.parse_when(msg) or _RM2.INTENT.search(msg)):
+                return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
+                              reason="deterministic: reminder follow-up", source="policy")
+
     # Today's agenda phrases → tasks skill without waiting on the classifier.
     if re.search(
         r"\b(we('?ll| will) be doing|for today|today'?s (plan|agenda)|"
@@ -303,6 +339,47 @@ def _deterministic_intent(message: str) -> Intent | None:
             confidence=0.92,
             objective=msg,
             reason="deterministic: today agenda",
+            source="policy",
+        )
+
+    # Open latest research report on screen.
+    if re.search(r"\bopen (the |my )?(research )?report\b", msg, re.I):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: open report",
+            source="policy",
+        )
+
+    # Web lookup (news, google, "what's the weather") is research — not desktop control.
+    if _RESEARCH.search(msg) and not _DESKTOP_TARGET.search(msg):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.93,
+            objective=msg,
+            reason="deterministic: web lookup",
+            source="policy",
+        )
+
+    # Put/show specs/resources on screen → computer_use (tools-first HTML/PowerShell, not vision).
+    if _SHOW_ON_SCREEN.search(msg) or (
+        re.search(
+            r"\b(system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?|resources?)|"
+            r"pc specs?|resources?.{0,40}on (the )?system)\b",
+            msg,
+            re.I,
+        )
+        and re.search(r"\b(screen|desktop|notepad|display|monitor|html|browser|show|list|bring)\b", msg, re.I)
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.94,
+            objective=msg,
+            reason="deterministic: show on screen",
             source="policy",
         )
 
@@ -322,7 +399,32 @@ def _deterministic_intent(message: str) -> Intent | None:
             source="policy",
         )
 
+    # Plain conversation: nothing here needs a tool, so skip the classifier round-trip (saves seconds per turn).
+    if not _NEEDS_LLM.search(msg) and len(msg) < 500:
+        return Intent(mode="talk", skill_id="chat", confidence=0.85, objective=msg,
+                      reason="deterministic: conversation", source="policy")
+
     return None
+
+
+_RESEARCH = re.compile(
+    r"\b(search( the web| google| online)?|google\b|look ?up|research|find out|"
+    r"what('?s| is) (the |today'?s )?(news|weather)|how('?s| is) the weather|"
+    r"headlines|breaking news|latest news|weather (today|now|in)|who won)\b",
+    re.I,
+)
+_DESKTOP_TARGET = re.compile(
+    r"\b(notepad|chrome|edge|firefox|browser window|desktop|click|type in|"
+    r"open (the )?(chrome|browser|edge|notepad))\b",
+    re.I,
+)
+_NEEDS_LLM = re.compile(
+    r"\b(screen|desktop|monitor|display|window|windows|app|apps|open|launch|start|click|type|write|save|close|delete|"
+    r"file|files|folder|search|google|look ?up|research|browse|website|find|plan|agenda|task|tasks|memory|forget|download|"
+    r"install|run|play|send|email|e-?mail|message|whatsapp|rename|move|copy|paste|scroll|press|drag|"
+    r"notepad|chrome|excel|word|discord|spotify|settings|pc|computer)\b",
+    re.I,
+)
 
 
 def classify_intent(
@@ -349,7 +451,7 @@ def classify_intent(
         return apply_policy(proposed, message)
 
     # 1) Solved cases never reach the LLM.
-    proposed = _deterministic_intent(message)
+    proposed = _deterministic_intent(message, history)
     if proposed is None:
         try:
             data = _llm_classify(message, history)

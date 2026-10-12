@@ -1,0 +1,21 @@
+# Direct runtime dependencies. Versions are pinned by requirements/core.lock.txt.
+mss
+pillow
+httpx
+pyautogui
+pyperclip
+python-dotenv
+google-genai
+numpy
+fastapi
+uvicorn[standard]
+pydantic
+pyyaml
+chromadb
+apscheduler
+pystray
+pyttsx3
+python-multipart
+jsonschema
+mcp==2.3.0
+webauthn>=2.0,<3
