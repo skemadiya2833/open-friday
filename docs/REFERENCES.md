@@ -27,5 +27,9 @@ Licenses recorded as read from each project’s `LICENSE` (or published docs) at
 | **Leon** | https://github.com/leon-ai/leon | GPL-3.0 (verify) | **Ideas only**: skill/status overview — no code copied. | survey |
 | **OpenClaw** | https://github.com/openclaw/openclaw | Check upstream | **Ideas only**: pre-flight before agent runs. | survey |
 | **OpenVoiceOS (OVOS)** | https://github.com/OpenVoiceOS/OVOS | Apache-2.0 (typical) | **Ideas only**: readiness messaging. | survey |
+| **OpenAI Realtime VAD** | https://developers.openai.com/api/docs/guides/realtime-vad | Docs (API product) | **Ideas only**: semantic vs silence turn detection, eagerness timeouts — local heuristics in `web/public/turn.js`. | docs 2026 |
+| **Deepgram endpointing** | https://developers.deepgram.com/docs/understanding-end-of-speech-detection | Docs | **Ideas only**: utterance-end word-gap ≥1s; VAD+transcript. | docs |
+| **Azure Speech recognition** | https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech | Docs | **Ideas only**: segmentation silence timeout tradeoffs. | docs |
+| **Chrome Web Speech API** | https://developer.chrome.com/blog/voice-driven-web-apps-introduction-to-the-web-speech-api | Docs | **Ideas only**: continuous + interimResults; finals ≠ end of thought. | blog |
 
-Also see: `docs/THIRD_PARTY_NOTICES.md`, `docs/design/research_reports.md`, `docs/ENV_FLAGS.md`.
+Also see: `docs/THIRD_PARTY_NOTICES.md`, `docs/design/research_reports.md`, `docs/design/voice_turntaking.md`, `docs/ENV_FLAGS.md`.

@@ -11,10 +11,10 @@
   const STYLES = {
     // Monitor speakers + desk mic: industry default is half-duplex (Hold) + echo tail.
     // Realtime streams Edge neural sentence-by-sentence; Relaxed speaks after the full reply.
-    // pauseMs = silence after the *last* SpeechRecognition final before we start thinking.
-    // Chrome often finalizes mid-thought after a short breath — keep these long enough to finish a clause.
-    realtime: { pauseMs: 1200, fillerMs: 650, streamSpeech: true, label: "Realtime" },
-    relaxed: { pauseMs: 1800, fillerMs: 1800, streamSpeech: false, label: "Relaxed" },
+    // eagerness mirrors OpenAI semantic_vad bands (ideas only) — see turn.js + docs/design/voice_turntaking.md
+    // pauseMs kept as a legacy fallback if turn.js fails to load.
+    realtime: { pauseMs: 900, fillerMs: 450, streamSpeech: true, label: "Realtime", eagerness: "medium" },
+    relaxed: { pauseMs: 1600, fillerMs: 1400, streamSpeech: false, label: "Relaxed", eagerness: "low" },
   };
   const PACE_RATE = { slow: "-18%", normal: "+0%", fast: "+18%" };
   const Voice = {
@@ -41,6 +41,7 @@
     isHold() { return Voice.duplex() === "hold"; },
     cfg() { return STYLES[Voice.style()]; },
     pauseMs() { return Voice.cfg().pauseMs; },
+    eagerness() { return Voice.cfg().eagerness || "medium"; },
     // Natural 1× playback; pace adjusts Edge synthesis rate (say "speak slower/faster").
     pace() {
       const p = localStorage.getItem(K_PACE);
@@ -229,6 +230,11 @@
     isSpeaking() { return state === "speaking"; },
     stateName() { return state; },
     lastSpoken() { return Live._lastSpoken || ""; },
+    /** RMS mic level 0..1 for turn-taking (Web Audio Analyser). */
+    micLevel() {
+      if (!micAnalyser) return 0;
+      return levelOf(micAnalyser);
+    },
     state(s) {
       const m = { thinking: "thinking", acting: "acting", listening: "listening", idle: open ? "listening" : "idle", speaking: "speaking", running: "acting" };
       const next = m[s] || state;

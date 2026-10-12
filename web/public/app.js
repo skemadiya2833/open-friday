@@ -1,18 +1,43 @@
 const API = "";
 const SPEAK_KEY = "friday.speakReplies";
 const SESSION_KEY = "friday.sessionId";
-const pauseMs = () => (window.FridayVoice ? FridayVoice.pauseMs() : 1200); // silence before we process speech
-// Trailing words that usually mean the speaker is still mid-thought (give more silence).
-const _TRAIL_OPEN = /\b(and|or|but|so|because|if|when|while|then|that|which|who|a|an|the|to|of|for|with|my|your|i|i'm|i'll|i've|it's|there's|um|uh|like)\s*$/i;
-const _ENDS_COMPLETE = /[.!?…]"?$/;
+const pauseMs = () => (window.FridayVoice ? FridayVoice.pauseMs() : 1200); // legacy fallback if turn.js missing
 
-function endOfTurnDelayMs(text) {
-  const base = pauseMs();
-  const t = (text || "").trim();
-  if (!t) return base;
-  if (_ENDS_COMPLETE.test(t)) return base;
-  if (_TRAIL_OPEN.test(t) || t.split(/\s+/).length < 4) return base + 700;
-  return base + 350; // no terminal punctuation — likely still talking
+let turnDetector = null;
+let lastHoldReason = "";
+
+function ensureTurnDetector() {
+  if (turnDetector || !window.FridayTurn) return turnDetector;
+  turnDetector = new FridayTurn.TurnDetector({
+    getEagerness: () => (window.FridayVoice && FridayVoice.eagerness ? FridayVoice.eagerness() : "medium"),
+    onHold: (info) => {
+      if (!voiceMode || voiceBusy) return;
+      // Stay on listening — never flash thinking while we are still deciding the turn.
+      if (uiState !== "listening") setState("listening");
+      const r = info.reason || "";
+      if (r !== lastHoldReason && (r === "trailing_open" || r === "mic_hot" || r === "interim")) {
+        lastHoldReason = r;
+        if (r === "mic_hot" || r === "interim") {
+          pushActivity("Still listening…", { live: true });
+        } else if (r === "trailing_open") {
+          pushActivity("Go on — I'm still listening", { live: true });
+        }
+      }
+    },
+    onCommit: (info) => {
+      lastHoldReason = "";
+      const text = (info.text || "").trim();
+      if (!text || voiceBusy) return;
+      // Lock the turn immediately so a late interim cannot double-commit.
+      finalBuffer = "";
+      interimText = "";
+      if (turnDetector) turnDetector.reset();
+      pushActivity(`Turn ready · ${info.reason || "ok"}`, { live: false });
+      setListeningLine(text, { interim: false });
+      sendMessage(text, { fromVoice: true });
+    },
+  });
+  return turnDetector;
 }
 
 let sessionId = localStorage.getItem(SESSION_KEY) || null;
@@ -546,6 +571,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
 
   if (useVoice) {
     voiceBusy = true;
+    clearPauseTimer();
+    if (turnDetector) turnDetector.reset();
     // Hold (default): mute mic for the whole turn so speaker audio can't re-trigger.
     if (voiceHoldMode()) suspendMic();
     setState("thinking", { force: true });
@@ -842,18 +869,23 @@ function clearPauseTimer() {
     clearTimeout(pauseTimer);
     pauseTimer = null;
   }
+  if (turnDetector) turnDetector.cancel();
 }
 
 function scheduleProcess(delay) {
+  // Prefer semantic + mic-energy turn detector (turn.js). delay only used for barge-in / stop words.
+  const det = ensureTurnDetector();
+  if (det && delay == null) {
+    det.noteResult({ finalText: finalBuffer, interimText: interimText });
+    return;
+  }
+  // Legacy / forced-delay path (interrupt stop-words, or turn.js not loaded).
   clearPauseTimer();
   const textNow = (finalBuffer || interimText || "").trim();
-  // Never use a sub-300ms fire — Chrome finals mid-phrase and that felt like "listens too little".
-  const wait = Math.max(300, delay != null ? delay : endOfTurnDelayMs(textNow));
+  const wait = Math.max(300, delay != null ? delay : pauseMs());
   pauseTimer = setTimeout(() => {
-    // If new interim/final arrived, another scheduleProcess already replaced this timer.
     const text = (finalBuffer || interimText || "").trim();
     if (!text || voiceBusy) return;
-    // Still receiving interim → keep listening (timer should have been reset; belt-and-suspenders).
     if (interimText && interimText.trim()) {
       scheduleProcess();
       return;
@@ -889,11 +921,16 @@ function stopVoiceMode() {
   voiceBusy = false;
   micSuspended = false;
   listenCooldownUntil = 0;
+  lastHoldReason = "";
   if (releaseMicTimer) {
     clearTimeout(releaseMicTimer);
     releaseMicTimer = null;
   }
   clearPauseTimer();
+  if (turnDetector) {
+    turnDetector.stopEnergyWatch();
+    turnDetector.reset();
+  }
   pauseRecognition();
   recognition = null;
   $("#btnMic").classList.remove("hot");
@@ -1014,6 +1051,19 @@ async function startVoiceMode() {
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.lang = "en-US";
+  ensureTurnDetector();
+  if (turnDetector) turnDetector.reset();
+
+  // Browser speech lifecycle — use as hints, never as hard commits (Chrome finals ≠ end of thought).
+  recognition.onspeechstart = () => {
+    if (micSuspended || voiceBusy) return;
+    ensureTurnDetector()?.noteSpeechStart();
+    if (uiState !== "listening") setState("listening");
+  };
+  recognition.onspeechend = () => {
+    if (micSuspended || voiceBusy) return;
+    ensureTurnDetector()?.noteSpeechEnd();
+  };
 
   recognition.onresult = (event) => {
     // Hold mode / cool-down: ignore everything — speaker bleed must not open a turn.
@@ -1048,12 +1098,13 @@ async function startVoiceMode() {
       if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) {
         finalBuffer = "";
         interimText = "";
+        if (turnDetector) turnDetector.reset();
         return;
       }
       setListeningLine(shown, { interim: !finalBuffer || !!interim });
       // Stay on listening visually — don't poke setState every interim (flicker source).
       if (uiState !== "listening") setState("listening");
-      // Always use end-of-turn delay (was: realtime fired in 140ms on first final — cut people off).
+      // Semantic + energy turn detector — Chrome isFinal alone never commits.
       scheduleProcess();
     }
   };
