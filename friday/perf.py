@@ -25,6 +25,7 @@ class GpuSample:
     vram_used_mb: float | None = None
     vram_total_mb: float | None = None
     power_w: float | None = None
+    temp_c: float | None = None
     util_pct: float | None = None
     source: str = "none"
 
@@ -54,7 +55,7 @@ def _nvidia_smi() -> GpuSample:
         out = subprocess.check_output(
             [
                 exe,
-                "--query-gpu=name,memory.used,memory.total,power.draw,utilization.gpu",
+                "--query-gpu=name,memory.used,memory.total,power.draw,temperature.gpu,utilization.gpu",
                 "--format=csv,noheader,nounits",
             ],
             text=True,
@@ -67,7 +68,7 @@ def _nvidia_smi() -> GpuSample:
     if not lines:
         return GpuSample(source="nvidia-smi-empty")
     parts = [p.strip() for p in lines[0].split(",")]
-    if len(parts) < 5:
+    if len(parts) < 6:
         return GpuSample(name=parts[0] if parts else "", source="nvidia-smi-partial")
 
     def _f(v: str) -> float | None:
@@ -81,7 +82,8 @@ def _nvidia_smi() -> GpuSample:
         vram_used_mb=_f(parts[1]),
         vram_total_mb=_f(parts[2]),
         power_w=_f(parts[3]),
-        util_pct=_f(parts[4]),
+        temp_c=_f(parts[4]),
+        util_pct=_f(parts[5]),
         source="nvidia-smi",
     )
 
@@ -100,6 +102,7 @@ def _try_pynvml() -> GpuSample | None:
         mem = pynvml.nvmlDeviceGetMemoryInfo(h)
         power = None
         util = None
+        temp = None
         try:
             power = pynvml.nvmlDeviceGetPowerUsage(h) / 1000.0
         except Exception:
@@ -108,11 +111,16 @@ def _try_pynvml() -> GpuSample | None:
             util = float(pynvml.nvmlDeviceGetUtilizationRates(h).gpu)
         except Exception:
             pass
+        try:
+            temp = float(pynvml.nvmlDeviceGetTemperature(h, pynvml.NVML_TEMPERATURE_GPU))
+        except Exception:
+            pass
         return GpuSample(
             name=str(name),
             vram_used_mb=mem.used / (1024 * 1024),
             vram_total_mb=mem.total / (1024 * 1024),
             power_w=power,
+            temp_c=temp,
             util_pct=util,
             source="pynvml",
         )
@@ -174,11 +182,49 @@ def finish_request(ctx: dict[str, Any]) -> RequestMetrics:
     return m
 
 
+def thermal_advice(gpu: GpuSample | None = None) -> list[str]:
+    """Owner-facing hints only — no fan or power changes."""
+    g = gpu or sample_gpu()
+    tips: list[str] = []
+    if g.temp_c is not None:
+        if g.temp_c >= 85:
+            tips.append("GPU ≥85°C: check case airflow; expect throttling during long agent runs.")
+        elif g.temp_c >= 75:
+            tips.append("GPU warm (>75°C): normal under load; avoid stacking vision + coder without unload.")
+    if g.power_w is not None and g.power_w > 200:
+        tips.append("High GPU draw: background tasks defer to CPU when util > FRIDAY_GPU_IDLE_UTIL_PCT.")
+    if g.vram_used_mb is not None and g.vram_total_mb is not None:
+        used_pct = 100.0 * g.vram_used_mb / max(g.vram_total_mb, 1)
+        if used_pct > 90:
+            tips.append("VRAM >90%: unload coder (keep_alive=0) before vision; see resource_policy.")
+    if not tips:
+        tips.append("Thermals look nominal for idle/light use.")
+    return tips
+
+
 def snapshot() -> dict[str, Any]:
     with _lock:
         rows = [asdict(r) for r in list(_recent)]
+    gpu = sample_gpu()
+    hw_summary: dict[str, Any] = {}
+    try:
+        from friday.diagnostics.hardware import inventory_summary_for_panel
+
+        hw_summary = inventory_summary_for_panel()
+    except Exception as exc:  # noqa: BLE001
+        hw_summary = {"error": str(exc)}
+    policy: dict[str, Any] = {}
+    try:
+        from friday.runtime.resource_policy import gpu_is_idle, residency_policy_doc
+
+        policy = {**residency_policy_doc(), "gpu_idle_now": gpu_is_idle()}
+    except Exception as exc:  # noqa: BLE001
+        policy = {"error": str(exc)}
     return {
-        "gpu_now": asdict(sample_gpu()),
+        "gpu_now": asdict(gpu),
+        "hardware": hw_summary,
+        "resource_policy": policy,
+        "thermal_advice": thermal_advice(gpu),
         "recent": rows,
         "note": "Local only — no network telemetry. GPU via nvidia-smi (or optional pynvml if installed).",
     }

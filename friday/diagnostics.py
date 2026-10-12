@@ -244,7 +244,9 @@ Promise.all([
   o.textContent=JSON.stringify(j,null,2);
   const g=p.gpu_now||(j.performance&&j.performance.gpu_now)||{};
   const rows=(p.recent||(j.performance&&j.performance.recent)||[]).slice(0,12);
-  let html=`<p>GPU: <strong>${g.name||'—'}</strong> · VRAM ${g.vram_used_mb??'—'} / ${g.vram_total_mb??'—'} MB · power ${g.power_w??'—'} W · util ${g.util_pct??'—'}% <span class=muted>(${g.source||'?'})</span></p>`;
+  let html=`<p>GPU: <strong>${g.name||'—'}</strong> · VRAM ${g.vram_used_mb??'—'} / ${g.vram_total_mb??'—'} MB · ${g.temp_c??'—'}°C · power ${g.power_w??'—'} W · util ${g.util_pct??'—'}% <span class=muted>(${g.source||'?'})</span></p>`;
+  const tips=p.thermal_advice||[];
+  if (tips.length) html+=`<p class=muted>Thermal: ${tips.join(' ')}</p>`;
   html+='<table><thead><tr><th>kind</th><th>model</th><th>TTFT ms</th><th>tok/s</th><th>tokens</th></tr></thead><tbody>';
   for (const r of rows){
     html+=`<tr><td>${r.kind||''}</td><td>${r.model||''}</td><td>${r.ttft_ms??'—'}</td><td>${r.tokens_per_s??'—'}</td><td>${r.tokens??0}</td></tr>`;
