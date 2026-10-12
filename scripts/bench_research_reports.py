@@ -1,6 +1,11 @@
-"""Run 10 fixed research prompts in quick mode (mocked web + live/mocked model).
+"""Research-report *validator* suite (mocked by default).
 
-Writes docs/research/research_reports_bench.json with times and validation survival.
+Default: mocked web + mocked model with exactly one planted fabricated claim
+per prompt. Asserts the validator drops fabrications. This is NOT a quality
+benchmark of live model claim survival.
+
+Pass --live to call Ollama (slower; writes a separate live JSON under .internal/).
+Outputs always go to .internal/benches/ (gitignored).
 """
 
 from __future__ import annotations
@@ -151,9 +156,11 @@ def main() -> int:
 
     payload = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "suite": "validator" if not live else "live_claim_survival",
         "mode": "quick",
         "live_model": live,
         "n_prompts": len(PROMPTS),
+        "planted_fabricated_claims_per_prompt": 0 if live else 1,
         "total_elapsed_s": round(time.monotonic() - t_all, 2),
         "avg_elapsed_s": round(sum(r["elapsed_s"] for r in rows) / len(rows), 3),
         "claims_emitted_pre_validation": pre,
@@ -162,13 +169,33 @@ def main() -> int:
         "rows": rows,
         "spot_check_claims": claim_samples[:20],
         "note": (
-            "Default run uses mocked web + mocked model with one fabricated claim per prompt "
-            "to exercise the validator. Pass --live to call Ollama (slower)."
+            "VALIDATOR suite (default): mocked web + mocked model with one fabricated "
+            "claim per prompt; survival rate should be ~0.5 (1 of 2 kept). "
+            "Pass --live for real model claim survival (separate file)."
         ),
     }
-    out = ROOT / "docs/research/research_reports_bench.json"
+    out_dir = ROOT / ".internal" / "benches"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / (
+        "research_validator.json" if not live else "research_live_claim_survival.json"
+    )
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    # Keep legacy path as a pointer only (not a full dump) for docs that still link it
+    legacy = ROOT / "docs/research/research_reports_bench.json"
+    if legacy.parent.is_dir():
+        legacy.write_text(
+            json.dumps(
+                {
+                    "relocated": str(out.relative_to(ROOT)).replace("\\", "/"),
+                    "suite": payload["suite"],
+                    "note": payload["note"],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
     print(json.dumps({
+        "suite": payload["suite"],
         "avg_elapsed_s": payload["avg_elapsed_s"],
         "validation_survival_rate": rate,
         "claims_surviving": post,
