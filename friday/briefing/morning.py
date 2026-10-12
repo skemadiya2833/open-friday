@@ -122,6 +122,24 @@ def collect_local_digest(*, fetch_world: bool = True) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         sections["reminders_error"] = str(exc)[:120]
 
+    try:
+        from friday.calendar.load import calendar_load
+
+        cal = calendar_load(force_fetch=False, horizon_days=2)
+        if cal.get("available"):
+            sections["calendar"] = cal
+            plan_texts = sections.get("plan") or []
+            sections["proposed_top_three"] = [
+                {"text": t, "source": "plan", "editable": True} for t in plan_texts[:3]
+            ]
+            today_events = cal.get("events_today") or []
+            sections["meeting_prep"] = _meeting_prep_stubs(today_events)
+            sections["suggested_focus_block"] = _suggested_focus_block(today_events)
+        else:
+            sections["calendar"] = cal
+    except Exception as exc:  # noqa: BLE001
+        sections["calendar_error"] = str(exc)[:120]
+
     if fetch_world:
         try:
             from friday.knowledge.search import fetch_web_results
@@ -143,6 +161,83 @@ def collect_local_digest(*, fetch_world: bool = True) -> dict[str, Any]:
     return sections
 
 
+def _meeting_prep_stubs(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Light prep hints — optional, never mandatory."""
+    stubs: list[dict[str, Any]] = []
+    for ev in events[:6]:
+        if ev.get("all_day"):
+            continue
+        title = (ev.get("title") or "Meeting")[:80]
+        stubs.append(
+            {
+                "event": title,
+                "when": ev.get("when") or "",
+                "optional_prep": [
+                    "If you want, skim notes or the last thread on this.",
+                    "Optional: decide the one outcome that would make it worth the time.",
+                ],
+                "tone": "offer",
+            }
+        )
+    return stubs
+
+
+def _suggested_focus_block(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Suggest a focus window when the calendar shows a gap (soft language)."""
+    from datetime import datetime, timedelta
+
+    if not events:
+        return {
+            "suggestion": "If it fits your day, a 45–90 minute focus block this morning could help.",
+            "reason": "no_meetings_listed",
+            "optional": True,
+        }
+    now = datetime.now().astimezone()
+    timed: list[tuple[datetime, datetime, str]] = []
+    for ev in events:
+        if ev.get("all_day"):
+            continue
+        start_s = ev.get("start_iso")
+        end_s = ev.get("end_iso")
+        if not start_s or not end_s:
+            continue
+        try:
+            start = datetime.fromisoformat(start_s)
+            end = datetime.fromisoformat(end_s)
+        except ValueError:
+            continue
+        if end <= now:
+            continue
+        timed.append((start, end, str(ev.get("title") or "")))
+    timed.sort(key=lambda x: x[0])
+    if not timed:
+        return None
+    first_start = timed[0][0]
+    gap_min = int((first_start - now).total_seconds() // 60)
+    if gap_min >= 45:
+        return {
+            "suggestion": f"You have roughly {gap_min} minutes before '{timed[0][2][:40]}' — "
+            "a focus block could fit there if you want one.",
+            "minutes_available": gap_min,
+            "optional": True,
+        }
+    for i in range(len(timed) - 1):
+        gap_start = timed[i][1]
+        gap_end = timed[i + 1][0]
+        mins = int((gap_end - gap_start).total_seconds() // 60)
+        if mins >= 45 and gap_start > now:
+            return {
+                "suggestion": f"There is about {mins} minutes between meetings later — "
+                "you could treat that as a focus block if it helps.",
+                "minutes_available": mins,
+                "optional": True,
+            }
+    return {
+        "suggestion": "The calendar looks fairly full; even a short 25-minute focus sprint might still help if you choose it.",
+        "optional": True,
+    }
+
+
 def compose_spoken_briefing(digest: dict[str, Any] | None = None) -> str:
     """Friday-persona spoken script from local digest (no model required)."""
     from friday.persona import owner_name
@@ -153,10 +248,37 @@ def compose_spoken_briefing(digest: dict[str, Any] | None = None) -> str:
     parts = [f"Good morning, {boss}. It's {now.strftime('%A')}, {now.strftime('%d %B')}."]
 
     plan = [p for p in (digest.get("plan") or []) if p]
-    if plan:
+    top_three = digest.get("proposed_top_three") or []
+    if top_three:
+        labels = [t.get("text") or "" for t in top_three if t.get("text")]
+        if labels:
+            parts.append(
+                "If you want a starting trio, I'd tentatively suggest: "
+                + "; ".join(labels[:3])
+                + " — you can reshuffle anytime."
+            )
+    elif plan:
         parts.append("On today's plan: " + "; ".join(plan[:5]) + ".")
     else:
         parts.append("Your plan for today is clear so far.")
+
+    cal = digest.get("calendar") or {}
+    if cal.get("available") and cal.get("summary"):
+        parts.append("Calendar snapshot: " + str(cal["summary"]))
+    elif cal.get("available") is False and cal.get("reason") == "not_configured":
+        pass  # stay quiet — no nag to connect calendar
+
+    focus = digest.get("suggested_focus_block") or {}
+    if focus.get("suggestion"):
+        parts.append(str(focus["suggestion"]))
+
+    prep = digest.get("meeting_prep") or []
+    if prep:
+        first = prep[0]
+        ev = first.get("event") or "your next meeting"
+        parts.append(
+            f"Before '{ev}', you could optionally skim context — only if that feels useful."
+        )
 
     rems = digest.get("reminders") or []
     if rems:

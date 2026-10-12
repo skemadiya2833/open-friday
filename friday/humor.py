@@ -58,16 +58,16 @@ def set_humor_override(level: str | None):
         _humor_override.set(None)
         return
     v = level.strip().lower()
-    _humor_override.set(v if v in {"off", "dry", "full"} else None)
+    _humor_override.set(v if v in {"off", "dry", "full", "roast"} else None)
 
 
 def humor_level() -> str:
     ov = _humor_override.get()
-    if ov in {"off", "dry", "full"}:
+    if ov in {"off", "dry", "full", "roast"}:
         return ov
-    # Feedback can nudge dry→off when many recent downs
+    # Feedback can nudge dry→off when many recent downs. Roast is opt-in only (explicit env).
     base = (os.environ.get("FRIDAY_HUMOR") or "dry").strip().lower()
-    if base not in {"off", "dry", "full"}:
+    if base not in {"off", "dry", "full", "roast"}:
         base = "dry"
     try:
         freq = feedback_store().suggested_level(base)
@@ -185,7 +185,7 @@ def maybe_append_quip(
         return reply
     quip = None
     # Model-generated quips only when not blocked AND roles enabled — still after the gate.
-    if humor_level() in {"dry", "full"} and (os.environ.get("FRIDAY_MODEL_ROLES") or "").lower() in {
+    if humor_level() in {"dry", "full", "roast"} and (os.environ.get("FRIDAY_MODEL_ROLES") or "").lower() in {
         "1", "true", "yes", "on",
     }:
         try:

@@ -194,6 +194,14 @@ class TaskScheduler:
                 from friday.briefing.morning import run_morning_briefing
 
                 run_morning_briefing()
+            elif (job.get("skill_id") or "") == "eod_shutdown":
+                from friday.briefing.eod import run_eod_shutdown
+
+                run_eod_shutdown()
+            elif (job.get("skill_id") or "") == "weekly_review":
+                from friday.briefing.weekly import run_weekly_review
+
+                run_weekly_review()
             elif (job.get("skill_id") or "") == "reminder":
                 RM.add_notification(job["prompt"], note, job_id=job_id, kind="reminder")
             else:

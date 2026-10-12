@@ -26,6 +26,9 @@ from friday.server.routes_tools import router as tools_router
 from friday.server.routes_auth import router as auth_router
 from friday.server.routes_feedback import router as feedback_router
 from friday.server.routes_reports import router as reports_router
+from friday.server.routes_assistant import router as assistant_router
+from friday.server.routes_calendar import router as calendar_router
+from friday.server.routes_activity import router as activity_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
 ensure_data_dirs()
@@ -64,6 +67,11 @@ async def lifespan(_app: FastAPI):
             from friday.briefing.morning import sync_builtin_job
 
             sync_builtin_job()
+            from friday.briefing.eod import sync_builtin_job as sync_eod
+            from friday.briefing.weekly import sync_builtin_job as sync_weekly
+
+            sync_eod()
+            sync_weekly()
         except Exception as exc:  # noqa: BLE001
             print(f"[Briefing] sync skipped: {exc}")
     except Exception as exc:  # noqa: BLE001
@@ -114,6 +122,9 @@ app.include_router(reminders_router)
 app.include_router(auth_router)
 app.include_router(feedback_router)
 app.include_router(reports_router)
+app.include_router(assistant_router)
+app.include_router(calendar_router)
+app.include_router(activity_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -366,10 +377,10 @@ def tasks_create(body: TaskCreate) -> dict[str, Any]:
     from friday.tasks.scheduler import get_scheduler
 
     skill = (body.skill_id or "reminder").strip()
-    if skill == "morning_briefing":
+    if skill in ("morning_briefing", "eod_shutdown", "weekly_review"):
         raise HTTPException(
             400,
-            "morning_briefing is a built-in owner job — enable it in Settings, not via tasks API",
+            f"{skill} is a built-in owner job — enable it in Settings, not via tasks API",
         )
     return get_scheduler().add_job(
         prompt=body.prompt,
