@@ -3,7 +3,7 @@
 Usage:
   python scripts/eval_persona.py [--humor off|dry] [--limit N]
 
-Writes docs/research/persona_eval.json. Uses the chat skill path when Ollama is up;
+Writes data/benchmarks/persona_eval.json. Uses the chat skill path when Ollama is up;
 otherwise scores rubric-only fixtures and marks model answers UNVERIFIED.
 """
 

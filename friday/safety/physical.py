@@ -2,7 +2,7 @@
 
 Windows low-level hooks (WH_KEYBOARD_LL / WH_MOUSE_LL) set an "injected" flag on events created by SendInput,
 keybd_event, mouse_event and everything built on them (pyautogui, Windows-MCP). Measured on this PC
-(docs/research/injected_input_probe.json): all four synthetic paths were flagged injected.
+(data/benchmarks/injected_input_probe.json): all four synthetic paths were flagged injected.
 
 Used to gate approvals: with ``FRIDAY_REQUIRE_PHYSICAL_INPUT=true`` an approval is accepted only if a NON-injected
 key-down or mouse-button-down happened within ``window`` seconds. OFF by default because it can lock out legitimate

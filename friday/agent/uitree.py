@@ -141,7 +141,7 @@ def _parse_windows(block: str) -> list[Win]:
 
 def normalize(text: str) -> str:
     """Live Windows-MCP returns the report as a JSON array of strings inside one text block
-    (verified live 2026-10-06, docs/research/live_snapshot_sample.txt); unwrap it."""
+    (verified live 2026-10-06, data/benchmarks/live_snapshot_sample.txt); unwrap it."""
     t = text.lstrip()
     if t.startswith("[") and t.rstrip().endswith("]"):
         try:

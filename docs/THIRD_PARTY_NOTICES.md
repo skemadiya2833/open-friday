@@ -7,7 +7,7 @@
 - **Copyright:** Copyright 2025 The OpenJarvis Authors
 - **Commit adapted from:** `f9e9d5d28d9e58d7fe601c331fc15a02fad32b2c`
 - **Local clone (read-only reference):** `D:\Workspace\_reference\OpenJarvis`
-- **Borrow plan:** `docs/research/OPENJARVIS_BORROW_PLAN.md`
+- **Borrow plan:** `data/benchmarks/OPENJARVIS_BORROW_PLAN.md`
 
 Portions of Friday listed below are derived from OpenJarvis source under Apache-2.0.
 Each adapted Python file carries a header with the source path, license, and a short

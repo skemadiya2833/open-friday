@@ -1,6 +1,6 @@
 """Compare qwen3.5:4b (fast) vs qwen3.5:9b (main) on the 20-prompt persona set.
 
-Does not change defaults. Writes docs/research/fast_brain_bench.json.
+Does not change defaults. Writes data/benchmarks/fast_brain_bench.json.
 """
 
 from __future__ import annotations

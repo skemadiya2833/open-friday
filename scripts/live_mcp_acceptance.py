@@ -1,7 +1,7 @@
 """Stage A1: run the REAL Windows-MCP server through McpManager and the registry gate.
 
 Safe by design: only DisplayInventory (read-only) and one toast Notification are called.
-Writes docs/research/windows_mcp_live.json. Approvals are answered by this script playing
+Writes data/benchmarks/windows_mcp_live.json. Approvals are answered by this script playing
 the human (in-process); the HTTP-level approval path is covered by tests/test_server_guard.py.
 """
 

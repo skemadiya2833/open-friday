@@ -1,6 +1,6 @@
 """Live desktop benchmark runner.
 
-    python -m friday.bench.run --backend legacy --model qwen2.5vl:7b-q4_K_M --reps 3 --out docs/research/bench_baseline.json
+    python -m friday.bench.run --backend legacy --model qwen2.5vl:7b-q4_K_M --reps 3 --out data/benchmarks/bench_baseline.json
 
 HANDS OFF the mouse and keyboard while this runs. A red banner is shown (on the second monitor
 if present). Ctrl+Alt+F12 (the emergency stop) aborts the whole benchmark.

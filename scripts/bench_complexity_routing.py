@@ -1,9 +1,9 @@
 """Measure heuristic complexity routing on the 20-prompt persona set.
 
-Default mode: blend existing docs/research/fast_brain_bench.json rows by
+Default mode: blend existing data/benchmarks/fast_brain_bench.json rows by
 score_complexity (no new Ollama calls). Pass --live to call models.
 
-Writes docs/research/complexity_routing_bench.json.
+Writes data/benchmarks/complexity_routing_bench.json.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from scripts.eval_persona import PROMPTS  # noqa: E402
 
 
 def blend_from_prior() -> dict:
-    prior = json.loads((ROOT / "docs/research/fast_brain_bench.json").read_text(encoding="utf-8"))
+    prior = json.loads((ROOT / "data/benchmarks/fast_brain_bench.json").read_text(encoding="utf-8"))
     by4 = {r["id"]: r for r in prior["fast_4b"]["rows"]}
     by9 = {r["id"]: r for r in prior["main_9b"]["rows"]}
     rows = []
@@ -78,7 +78,7 @@ def main() -> int:
         print("Live mode not required for V4; use blend. Aborting.")
         return 2
     payload = blend_from_prior()
-    out = ROOT / "docs/research/complexity_routing_bench.json"
+    out = ROOT / "data/benchmarks/complexity_routing_bench.json"
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps({
         "always_9b": payload["always_9b"],

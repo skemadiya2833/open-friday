@@ -2,8 +2,6 @@
 
 Neutral reference for Friday configuration. Values shown are **typical defaults** when unset unless noted. See `.env.example` for a starter file.
 
-For audit history and removed flags, see `.internal/stage5/flag_audit.md` (maintainer-only).
-
 ## Server and auth
 
 | Variable | Default | Purpose |

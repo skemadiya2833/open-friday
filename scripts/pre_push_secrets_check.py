@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Paths that must never be committed (even if force-added).
 FORBIDDEN_PATH_PREFIXES = (
+    ".internal/",
     "data/tls/",
     "data/audit/",
     "data/chroma/",
@@ -33,6 +34,7 @@ FORBIDDEN_PATH_PREFIXES = (
     "data/logs/",
     "data/memory/",
     "data/tasks.sqlite",
+    "data/calendar_ical.url",
 )
 FORBIDDEN_BASENAMES = {
     ".env",

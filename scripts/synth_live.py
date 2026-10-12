@@ -1,6 +1,6 @@
 """Live check of the agent against ONE synthetic dialog, capped at 90 s. Touches only the synthetic window.
     python scripts/synth_live.py crash|save|hung
-Ctrl+Alt+F12 aborts. Result is printed as JSON (and appended to docs/research/synth_live.jsonl)."""
+Ctrl+Alt+F12 aborts. Result is printed as JSON (and appended to data/benchmarks/synth_live.jsonl)."""
 from __future__ import annotations
 
 import json

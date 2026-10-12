@@ -4,7 +4,7 @@ Run with any interpreter that has numpy, onnxruntime, openwakeword:
     python scripts/voice_plumbing_check.py
 
 Loads friday.voice.{vad,wake} without importing friday/__init__ or friday.voice/__init__ (so it does
-not need the full app environment).  Output: docs/research/voice_plumbing.json
+not need the full app environment).  Output: data/benchmarks/voice_plumbing.json
 """
 
 from __future__ import annotations

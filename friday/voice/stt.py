@@ -26,7 +26,7 @@ def _get_model():
         from faster_whisper import WhisperModel
 
         # Provisional default: large-v3-turbo, float16 on CUDA (verified to load and run on the
-        # RTX 5060 Ti; accuracy on the owner's real speech is UNVERIFIED, see docs/research/stt_bench.json).
+        # RTX 5060 Ti; accuracy on the owner's real speech is UNVERIFIED, see data/benchmarks/stt_bench.json).
         # Falls back to CPU int8 if CUDA or the model cannot be loaded. Override with
         # VOICE_STT_DEVICE=cpu|cuda|auto and VOICE_STT_COMPUTE=float16|int8|int8_float16.
         device = os.getenv("VOICE_STT_DEVICE", "auto").lower()

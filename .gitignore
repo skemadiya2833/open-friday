@@ -2,6 +2,8 @@
 .internal/
 
 data/
+data/calendar_ical.url
+**/calendar_ical.url
 .private_library/
 friday_env/
 __pycache__/

@@ -5,7 +5,7 @@ each (model, device, compute_type) combination, and records load time, decode ti
 real-time factor and word error rate against the known reference text.
 
 Usage:
-    python scripts/bench_stt.py --models base small large-v3-turbo --out docs/research/stt_bench.json
+    python scripts/bench_stt.py --models base small large-v3-turbo --out data/benchmarks/stt_bench.json
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="+", default=["base", "small"])
     ap.add_argument("--repeats", type=int, default=3)
-    ap.add_argument("--out", default="docs/research/stt_bench.json")
+    ap.add_argument("--out", default="data/benchmarks/stt_bench.json")
     ns = ap.parse_args()
 
     with tempfile.TemporaryDirectory() as tmp:

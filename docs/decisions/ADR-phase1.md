@@ -1,6 +1,6 @@
 # Phase 1 decisions (tool layer v2 and MCP client)
 
-Format: context, decision, consequences. Evidence for each is in `docs/ARCHITECTURE_AUDIT.md`.
+Format: context, decision, consequences. System overview: `docs/ARCHITECTURE.md`.
 
 ## ADR-0001: One registry, one gate, one audit trail
 Context: tools were reachable from three code paths (ReAct loop, agent executor, skills) with different safety checks. The `read_file`/`write_file` path check was a string-prefix test that a junction escaped (reproduced in Phase 0).

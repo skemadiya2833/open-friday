@@ -5,7 +5,7 @@
 2. Config scan: well-known per-app hotkey stores (OBS, VS Code/Cursor keybindings, NVIDIA/AMD/Intel overlays can not
    be read reliably, so they are listed as "unknown", not "free").
 
-    python scripts/hotkey_collision_check.py --out docs/research/hotkey_collision.json
+    python scripts/hotkey_collision_check.py --out data/benchmarks/hotkey_collision.json
 """
 
 from __future__ import annotations

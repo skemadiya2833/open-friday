@@ -281,7 +281,7 @@ def write_npu_research_md(*, web_notes: str | None = None) -> Path:
         "",
         "## Local repo notes",
         "",
-        "- `docs/research/PHASE5_OPTIONS.md` §9: skip NPU for LLM/Whisper; RTX is faster; "
+        "- Skip NPU for LLM/Whisper on this stack; discrete GPU is faster; "
         "8700G NPU aimed at vision preprocessing per AMD forum/issue #122 on gaia.",
         "- Friday runs Python 3.14; Ryzen AI ONNX stack historically targets 3.10–3.12 (would need an isolated worker).",
         "",

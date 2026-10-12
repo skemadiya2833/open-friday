@@ -5,7 +5,7 @@ What this proves on THIS PC:
 - A real key press from the owner DOES (interactively).
 
 Windows-MCP clicks were previously measured as injected
-(docs/research/injected_input_probe.json). This script re-checks SendInput and
+(data/benchmarks/injected_input_probe.json). This script re-checks SendInput and
 keybd_event without requiring MCP.
 
 If you are on Remote Desktop / some accessibility stacks, Windows may mark your
@@ -95,7 +95,7 @@ def main() -> int:
             "set FRIDAY_PAIR_APPROVE=hello and approve pairing with Windows Hello on the PC "
             "instead of the physical-input gate."
         ),
-        "windows_mcp": "UNVERIFIED this run — see docs/research/injected_input_probe.json (prior PASS)",
+        "windows_mcp": "UNVERIFIED this run — see data/benchmarks/injected_input_probe.json (prior PASS)",
     }
 
     # Synthetic SendInput

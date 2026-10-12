@@ -3,7 +3,7 @@
 Used to base tool-risk mappings on what a server actually exposes instead of its README.
 
 Usage (from repo root, inside friday_env):
-    python scripts/probe_mcp_server.py --out docs/research/windows_mcp_tools.json -- \
+    python scripts/probe_mcp_server.py --out data/benchmarks/windows_mcp_tools.json -- \
         uv tool run --python 3.14 --from windows-mcp==0.8.7 windows-mcp serve \
         --exclude-tools PowerShell,Registry
 """

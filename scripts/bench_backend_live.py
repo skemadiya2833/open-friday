@@ -1,7 +1,7 @@
 """15-minute live legacy vs hybrid comparison on five simple tasks (3 reps).
 
 Scratch only. Prefers tools-first/direct actions; falls back to a short agent run.
-E-stop: Ctrl+Alt+F12. Writes docs/research/backend_live_stu.json.
+E-stop: Ctrl+Alt+F12. Writes data/benchmarks/backend_live_stu.json.
 """
 
 from __future__ import annotations

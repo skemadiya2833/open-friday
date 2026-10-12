@@ -6,7 +6,7 @@
 
 Reads <dir>/manifest.json (list of {id, text}) and <dir>/<id>.wav (16 kHz mono).
 For each model: load time, per-clip decode time, WER/CER after normalisation, peak VRAM (nvidia-smi delta).
-Writes docs/research/stt_wer_<label>.json. Only clips recorded by the OWNER count as the accuracy result;
+Writes data/benchmarks/stt_wer_<label>.json. Only clips recorded by the OWNER count as the accuracy result;
 synthetic clips are a plumbing check and say nothing about real speech.
 """
 

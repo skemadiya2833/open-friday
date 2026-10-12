@@ -1,7 +1,7 @@
 """G1 diagnosis: why does the hybrid agent see nothing in Chrome pages?
 
 Launches a scratch Chrome profile on a local test page in several ways and records what Windows-MCP's Snapshot
-returns (raw text dumped to docs/research/diag_chrome/), for different Snapshot options and over time.
+returns (raw text dumped to data/benchmarks/diag_chrome/), for different Snapshot options and over time.
 
     python scripts/diag_chrome_a11y.py
 Uses only the benchmark's local test page and a throw-away profile. Keep hands off the mouse and keyboard.

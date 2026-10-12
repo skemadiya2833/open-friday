@@ -8,7 +8,7 @@ reports the 'injected' flags the hook sees:
 Then it waits for PHYSICAL input (--wait seconds): press any key / click once, so the flags of real hardware input
 are recorded too. Without that step the 'physical' column stays empty: that part is a manual test.
 
-    python scripts/injected_input_probe.py --wait 10 --out docs/research/injected_input_probe.json
+    python scripts/injected_input_probe.py --wait 10 --out data/benchmarks/injected_input_probe.json
 Only F15 key events and a 0-net mouse nudge are generated. Nothing is typed or clicked.
 """
 

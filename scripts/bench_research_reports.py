@@ -181,7 +181,7 @@ def main() -> int:
     )
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     # Keep legacy path as a pointer only (not a full dump) for docs that still link it
-    legacy = ROOT / "docs/research/research_reports_bench.json"
+    legacy = ROOT / "data/benchmarks/research_reports_bench.json"
     if legacy.parent.is_dir():
         legacy.write_text(
             json.dumps(

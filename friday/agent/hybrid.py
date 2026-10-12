@@ -404,7 +404,7 @@ def execute(desk: Desktop, plan: Plan, *, imap: _ImageMap | None, force_ask: boo
 
 def _settle_browser_tree(desk: "Desktop", snap: U.Snapshot, dom: bool, cfg: HybridConfig) -> U.Snapshot:
     """Chromium builds its accessibility tree lazily: the first UI-Automation query only wakes it up, and the page
-    content appears a second or two later (measured: docs/research/diag_chrome/, 9 elements without the page at 2 s,
+    content appears a second or two later (measured: data/benchmarks/diag_chrome/, 9 elements without the page at 2 s,
     page present at 5 s). If a browser window is in front and shows no page document yet, look again a few times
     instead of letting the model act on the taskbar."""
     if not BROWSER_TITLE.search(snap.focused_title()) or cfg.browser_wait_tries <= 0:

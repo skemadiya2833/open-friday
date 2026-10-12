@@ -1,7 +1,7 @@
 """Live check of the Snapshot parser against the real Windows-MCP (read-only: only calls Snapshot).
 
     python scripts/live_snapshot_check.py
-Writes docs/research/live_snapshot_sample.txt (the raw text) and prints what the parser found.
+Writes data/benchmarks/live_snapshot_sample.txt (the raw text) and prints what the parser found.
 """
 
 from __future__ import annotations

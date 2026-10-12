@@ -1,6 +1,6 @@
 """Stage P: measure installed models for role assignment. No downloads.
 
-Writes docs/research/model_roles_bench.json
+Writes data/benchmarks/model_roles_bench.json
 """
 
 from __future__ import annotations

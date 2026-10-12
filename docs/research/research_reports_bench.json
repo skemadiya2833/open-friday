@@ -1,5 +1,0 @@
-{
-  "relocated": ".internal/benches/research_validator.json",
-  "suite": "validator",
-  "note": "VALIDATOR suite (default): mocked web + mocked model with one fabricated claim per prompt; survival rate should be ~0.5 (1 of 2 kept). Pass --live for real model claim survival (separate file)."
-}

@@ -3,7 +3,7 @@ Optional: --cloud adds edge-tts (CLOUD: sends text to Microsoft).
 
 Measures per engine: worker start + model load, first-audio latency (cold and warm), real-time factor.
 Writes WAV samples to data/voice_lab/tts_samples/ so the owner can LISTEN (quality is subjective and is
-NOT scored here: UNVERIFIED until a human listens) and docs/research/tts_eval.json.
+NOT scored here: UNVERIFIED until a human listens) and data/benchmarks/tts_eval.json.
 Never opens an audio device. Run with the main interpreter:  python scripts/tts_eval.py
 """
 

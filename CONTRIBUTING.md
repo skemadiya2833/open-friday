@@ -56,12 +56,13 @@ There is **no CI**. Run everything locally:
 pip install -r requirements/dev.lock.txt
 pytest -q                                  # add -k "not real_hotkey and not hotkey_conflict" if the e-stop hotkey is in use
 ruff check friday tests main.py scripts --select F,E9
-python scripts/pre_push_secrets_check.py   # required before any push — scans for secrets / data/tls / audit dumps
+python scripts/pre_push_secrets_check.py   # required before any push — secrets / data/tls / audit dumps
+python scripts/pre_push_guard.py           # blocks .internal/ and non-public branch names
 ```
 
 Rules that keep this project safe:
 
-- New dependencies go in `requirements/*.in`, are locked with `uv pip compile`, and need a licence and Python 3.14 wheel check (see `docs/decisions/DEPENDENCY_MATRIX.md`).
+- New dependencies go in `requirements/*.in`, are locked with `uv pip compile`, and need a licence and Python 3.14 wheel check documented in the PR.
 - Anything that changes the system, sends data out, or controls the desktop is a `confirm`-tier tool at minimum and goes through `friday/tools/registry.py` (policy, approval, audit). No direct `subprocess`/`os.system` from skills.
 - Screen text, web pages and tool output are untrusted data; never concatenate them into instructions (see `friday/agent/guard.py`).
 - Write state files with `friday.atomic.write_text_atomic`.

@@ -1,7 +1,7 @@
 """Measure planner/tool-call parse failure rate with vs without JSON schema.
 
 Uses a fixed prompt set against the installed main model. Writes
-docs/research/parse_schema_bench.json.
+data/benchmarks/parse_schema_bench.json.
 """
 
 from __future__ import annotations

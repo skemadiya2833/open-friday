@@ -5,7 +5,7 @@ Usage:
   # Terminal B:
   python scripts/lan_auth_probe.py [--base http://127.0.0.1:8787]
 
-Writes docs/research/lan_auth_probe.json with raw results.
+Writes data/benchmarks/lan_auth_probe.json with raw results.
 Does NOT need a phone — uses forged Host/Origin from this machine (second "device" view).
 """
 

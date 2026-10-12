@@ -4,7 +4,7 @@
 
 For each model: STT stays loaded; the hybrid agent runs "Open Notepad." (one launch, then done) while a thread samples
 nvidia-smi; `ollama ps` shows whether Ollama split the model between GPU and CPU. Finally the cost of a model swap
-(unload + cold reload through ModelManager) is timed. Result: docs/research/vram_coload.json. Touches only Notepad
+(unload + cold reload through ModelManager) is timed. Result: data/benchmarks/vram_coload.json. Touches only Notepad
 windows it opened itself (closed afterwards). Ctrl+Alt+F12 aborts.
 """
 

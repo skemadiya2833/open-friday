@@ -95,7 +95,7 @@ class WorkerEngine:
         if self._p and self._p.poll() is None:
             return
         if not self.python.is_file():
-            raise FileNotFoundError(f"TTS worker interpreter not found: {self.python} (see docs/research/voice.md)")
+            raise FileNotFoundError(f"TTS worker interpreter not found: {self.python} (see docs/VOICE_SAMPLES.md)")
         env = {k: v for k, v in os.environ.items() if k in ("PATH", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA")}
         self._p = subprocess.Popen([str(self.python), str(Path(__file__).with_name("tts_worker.py"))], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)

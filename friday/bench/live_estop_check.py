@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="qwen2.5vl:7b-q4_K_M")
-    ap.add_argument("--out", default="docs/research/live_estop_check.json")
+    ap.add_argument("--out", default="data/benchmarks/live_estop_check.json")
     a = ap.parse_args()
     os.environ.update({"MODEL": a.model, "LOCAL_MODEL": a.model, "VISION_MODEL": a.model, "CHAT_MODEL": a.model,
                        "MODEL_NUM_CTX": "32768", "MAX_ITERATIONS": "200", "SHELL_TOOLS_ENABLED": "false",
