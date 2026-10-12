@@ -201,16 +201,24 @@ def _press(*vks: int) -> None:
         time.sleep(0.03)
 
 
+# Test-only chord — avoids fighting a live Friday that holds ctrl+alt+f12.
+_TEST_HOTKEY = "ctrl+alt+shift+f9"
+_VK_CTRL, _VK_ALT, _VK_SHIFT, _VK_F9 = 0x11, 0x12, 0x10, 0x78
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Win32 hotkey")
 def test_real_hotkey_halts_a_running_agent(mgr):
-    """Registers the real global hotkey and injects the key chord; the run must halt."""
-    es = EmergencyStop("ctrl+alt+f12", on_trigger=lambda reason: emergency_stop(reason, stop_mcp=False))
+    """Registers a test-only global hotkey and injects the key chord; the run must halt."""
+    es = EmergencyStop(_TEST_HOTKEY, on_trigger=lambda reason: emergency_stop(reason, stop_mcp=False))
     try:
-        assert es.start(), es.error
+        ok = es.start()
+        if not ok and "in use" in (es.error or "").lower():
+            pytest.skip(f"test hotkey unavailable: {es.error}")
+        assert ok, es.error
         r = mgr.start("a", _spinner("A"))
         time.sleep(0.3)
         t0 = time.time()
-        _press(0x11, 0x12, 0x7B)                    # Ctrl, Alt, F12
+        _press(_VK_CTRL, _VK_ALT, _VK_SHIFT, _VK_F9)
         assert r.wait(5), "agent was not halted by the hotkey"
         assert r.status == "halted"
         assert es.trigger_count == 1
@@ -242,10 +250,14 @@ def test_trigger_log_says_the_hotkey_was_synthetic(mgr, tmp_path, monkeypatch):
     monkeypatch.setattr(cfg, "DATA_DIR", str(tmp_path))
     mon = PhysicalInputMonitor()
     set_monitor(mon)
-    es = EmergencyStop("ctrl+alt+f12", on_trigger=lambda reason: emergency_stop(reason, stop_mcp=False))
+    es = EmergencyStop(_TEST_HOTKEY, on_trigger=lambda reason: emergency_stop(reason, stop_mcp=False))
     try:
-        assert mon.start() and es.start(), es.error
-        _press(0x11, 0x12, 0x7B)
+        ok_mon = mon.start()
+        ok_es = es.start()
+        if not ok_es and "in use" in (es.error or "").lower():
+            pytest.skip(f"test hotkey unavailable: {es.error}")
+        assert ok_mon and ok_es, es.error
+        _press(_VK_CTRL, _VK_ALT, _VK_SHIFT, _VK_F9)
         deadline = time.time() + 5
         log = tmp_path / "logs" / "estop_triggers.jsonl"
         while time.time() < deadline and not log.exists():

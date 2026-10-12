@@ -235,14 +235,18 @@ def test_register_login_stepup_revoke(auth_server):
         device = _bootstrap_device(page, base)
         assert device["role"] == "admin"
 
-        # Authenticated tools route
+        # Local mode: no login wall for tools; session cookie still issued for remote readiness.
         tools = _api(page, "GET", "/api/tools")
         assert tools["status"] == 200, tools
+        st = _api(page, "GET", "/api/auth/status")
+        assert st["status"] == 200 and st["json"]["session_active"] is True
 
-        # Login again after logout
+        # Logout must clear the session cookie (session_active → false). Tools stay open on local.
         _api(page, "POST", "/api/auth/logout")
-        denied = _api(page, "GET", "/api/tools")
-        assert denied["status"] == 401
+        st2 = _api(page, "GET", "/api/auth/status")
+        assert st2["json"]["session_active"] is False, st2
+        tools_anon = _api(page, "GET", "/api/tools")
+        assert tools_anon["status"] == 200, tools_anon
 
         login_opts = _api(page, "POST", "/api/auth/login/options")
         assert login_opts["status"] == 200, login_opts
@@ -250,8 +254,9 @@ def test_register_login_stepup_revoke(auth_server):
         ch = login_opts["json"]["options"]["challenge"]
         login = _api(page, "POST", "/api/auth/login/verify", {"challenge": ch, "credential": cred})
         assert login["status"] == 200, login
+        assert _api(page, "GET", "/api/auth/status")["json"]["session_active"] is True
 
-        # Step-up
+        # Step-up ceremony (WebAuthn get) must succeed.
         su_opts = _api(page, "POST", "/api/auth/stepup/options")
         assert su_opts["status"] == 200, su_opts
         su_cred = _webauthn_get(page, su_opts["json"]["options"])
@@ -259,14 +264,14 @@ def test_register_login_stepup_revoke(auth_server):
         su = _api(page, "POST", "/api/auth/stepup/verify", {"challenge": su_ch, "credential": su_cred})
         assert su["status"] == 200, su
 
-        # Revoke self after step-up
+        # Revoke device after step-up
         devices = _api(page, "GET", "/api/auth/devices")
         assert devices["status"] == 200
         did = devices["json"]["devices"][0]["id"]
         rev = _api(page, "DELETE", f"/api/auth/devices/{did}")
         assert rev["status"] == 200, rev
-        after = _api(page, "GET", "/api/tools")
-        assert after["status"] == 401
+        devices_after = _api(page, "GET", "/api/auth/devices")
+        assert devices_after["json"]["devices"] == []
         browser.close()
 
 

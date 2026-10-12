@@ -101,7 +101,9 @@ def auth_status(request: Request) -> dict[str, Any]:
         "origin": cfg.origin,
         "public_host": cfg.public_host,
         "bind_loopback_only": cfg.bind_loopback_only,
+        # UI may treat local as usable without a passkey session; session_active is the cookie truth.
         "authenticated": bool(sess) or cfg.mode in ("off", "local"),
+        "session_active": bool(sess),
         "role": (sess or {}).get("role") if sess else ("admin" if cfg.mode in ("off", "local") else None),
         "device_count": len(get_store().list_devices()),
         "passkeys_required": cfg.mode == "remote",

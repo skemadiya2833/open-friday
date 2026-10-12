@@ -76,8 +76,14 @@ def _run_cli(task: str | None) -> None:
 
 def _run_control_center(*, tray: bool) -> None:
     from friday.config import SERVER_PORT, ensure_data_dirs, ui_host
+    from friday.runtime.singleton import SingleInstanceError, acquire_instance_lock
 
     ensure_data_dirs()
+    try:
+        acquire_instance_lock()
+    except SingleInstanceError as exc:
+        print(f"[Friday] {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
     print(f"[Friday] Control Center → http://{ui_host()}:{SERVER_PORT}/")
 
     def _serve() -> None:
