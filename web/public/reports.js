@@ -62,8 +62,50 @@
     const w = 320, h = 160, pad = 28;
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
     svg.setAttribute("role", "img");
-    const max = Math.max(1, ...series.map((p) => Number(p.value) || 0));
     const kind = chart.kind || "bar";
+    if (kind === "heatmap" && chart.grid && (chart.grid.cells || []).length) {
+      const rows = Number(chart.grid.rows) || 7;
+      const cols = Number(chart.grid.cols) || 24;
+      const cw = (w - pad * 2) / cols;
+      const ch = (h - pad * 2) / rows;
+      const cells = chart.grid.cells || [];
+      const max = Math.max(0.01, ...cells.map((c) => Number(c.value) || 0));
+      cells.forEach((c) => {
+        const v = Number(c.value) || 0;
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", String(pad + (Number(c.col) || 0) * cw));
+        rect.setAttribute("y", String(pad + (Number(c.row) || 0) * ch));
+        rect.setAttribute("width", String(Math.max(1, cw - 1)));
+        rect.setAttribute("height", String(Math.max(1, ch - 1)));
+        const t = v / max;
+        rect.setAttribute("fill", `color-mix(in srgb, var(--cyan) ${Math.round(t * 85 + 10)}%, transparent)`);
+        svg.appendChild(rect);
+      });
+      return;
+    }
+    if (kind === "timeline" && (chart.blocks || []).length) {
+      const blocks = chart.blocks.slice(0, 24);
+      const laneH = Math.max(8, (h - pad * 2) / Math.max(1, blocks.length));
+      const t0 = Date.parse(blocks[0].start) || 0;
+      const t1 = Date.parse(blocks[blocks.length - 1].end || blocks[blocks.length - 1].start) || t0 + 1;
+      const span = Math.max(1, t1 - t0);
+      blocks.forEach((b, i) => {
+        const a = Date.parse(b.start) || t0;
+        const z = Date.parse(b.end) || a + 1;
+        const x = pad + ((a - t0) / span) * (w - pad * 2);
+        const bw = Math.max(2, ((z - a) / span) * (w - pad * 2));
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", String(x));
+        rect.setAttribute("y", String(pad + i * laneH));
+        rect.setAttribute("width", String(bw));
+        rect.setAttribute("height", String(laneH - 2));
+        rect.setAttribute("fill", "var(--accent, var(--cyan))");
+        rect.setAttribute("opacity", "0.85");
+        svg.appendChild(rect);
+      });
+      return;
+    }
+    const max = Math.max(1, ...series.map((p) => Number(p.value) || 0));
     if (kind === "pie") {
       let ang = -Math.PI / 2;
       const cx = w / 2, cy = h / 2, r = 54;
@@ -134,10 +176,27 @@
 
     const sum = doc.summary || {};
     const card = el("div", "report-card");
-    card.appendChild(el("h3", null, "TL;DR"));
-    card.appendChild(el("p", null, sum.tldr || ""));
+    card.appendChild(el("h3", null, doc.kind === "productivity" ? "Summary" : "TL;DR"));
+    const bodyText = sum.tldr || doc.commentary || "";
+    card.appendChild(el("p", null, bodyText));
     card.appendChild(el("p", "muted", `Confidence ${sum.confidence ?? "—"} — ${sum.rationale || ""}`));
+    if (doc.commentary_valid === false) {
+      card.appendChild(el("p", "warn", (doc.commentary_issues || []).join("; ")));
+    }
     root.appendChild(card);
+
+    if (doc.metrics && typeof doc.metrics === "object") {
+      const mbox = el("div", "report-card");
+      mbox.appendChild(el("h3", null, "Computed metrics"));
+      mbox.appendChild(el("pre", "muted", JSON.stringify(doc.metrics, null, 2)));
+      root.appendChild(mbox);
+    }
+    if ((doc.open_loops || []).length) {
+      const ob = el("div", "report-card");
+      ob.appendChild(el("h3", null, "Open loops"));
+      (doc.open_loops || []).forEach((t) => ob.appendChild(el("p", null, t)));
+      root.appendChild(ob);
+    }
 
     const filt = el("div", "report-toolbar");
     filt.appendChild(el("span", "muted", "Min confidence"));
