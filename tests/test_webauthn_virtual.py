@@ -24,16 +24,9 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
-def _have_playwright() -> bool:
-    try:
-        from playwright.sync_api import sync_playwright  # noqa: F401
+from tests.pw_util import requires_chromium
 
-        return True
-    except Exception:
-        return False
-
-
-pytestmark = pytest.mark.skipif(not _have_playwright(), reason="playwright not installed")
+pytestmark = requires_chromium
 
 
 @pytest.fixture(scope="module")

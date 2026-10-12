@@ -9,7 +9,7 @@ jobs:
   test:
     name: pytest + ruff
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +28,9 @@ jobs:
           pip install -r requirements/core.lock.txt
           pip install -r requirements/dev.lock.txt
           pip install -e .
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium
 
       - name: Ruff (F, E9)
         run: ruff check friday tests main.py scripts --select F,E9

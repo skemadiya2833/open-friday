@@ -196,8 +196,9 @@ def fill_type_text(step: ActionStep, plan: dict | None = None, objective: str = 
         return step
     obj = (objective or str((plan or {}).get("_objective") or "")).strip()
     if obj:
+        # Allow "type exactly: \"...\"" (no space before colon) and "type the word '...'".
         m = re.search(
-            r"""(?:type|write|enter)\s+(?:exactly\s+)?(?:the\s+)?(?:word|text|string)?\s*:?\s*["'](.+?)["']""",
+            r"""(?:type|write|enter)\s+(?:exactly\s*)?(?:the\s+)?(?:word|text|string)?\s*:?\s*["'](.+?)["']""",
             obj,
             re.I,
         )

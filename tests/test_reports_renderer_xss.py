@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from tests.pw_util import requires_chromium
+
 pytest.importorskip("playwright")
+pytestmark = requires_chromium
 
 
 @pytest.fixture(scope="module")

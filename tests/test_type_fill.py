@@ -28,3 +28,7 @@ def test_quoted_text_in_objective():
     s = ActionStep(action="TYPE")
     fill_type_text(s, objective='Open Notepad, type exactly: "hello friday"')
     assert s.text == "hello friday"
+    # Same pattern with a space before the colon
+    s2 = ActionStep(action="TYPE")
+    fill_type_text(s2, objective="type exactly : 'second'")
+    assert s2.text == "second"

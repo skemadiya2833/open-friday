@@ -58,6 +58,7 @@ GitHub Actions runs the same suite on push/PR (`.github/workflows/ci.yml`). Stil
 ```powershell
 pip install -r requirements/dev.lock.txt
 pip install -e .
+playwright install chromium                 # once; needed for webauthn/XSS browser tests
 pytest -q -k "not real_hotkey and not hotkey_conflict"
 ruff check friday tests main.py scripts --select F,E9
 friday doctor --json --no-hardware
