@@ -41,6 +41,15 @@ def test_imperative_can_act():
     assert intent.skill_id == "computer_use"
 
 
+def test_open_google_calendar_acts_not_research():
+    from friday.assistant.intent import classify_intent
+
+    intent = classify_intent("open google calendar")
+    assert intent.mode == "act"
+    assert intent.skill_id == "computer_use"
+    assert "calendar" in intent.reason
+
+
 def test_greeting_is_talk():
     from friday.assistant.intent import classify_intent
 

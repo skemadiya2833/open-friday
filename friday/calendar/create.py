@@ -104,13 +104,22 @@ def _find_chrome() -> str | None:
 
 
 def open_in_chrome(url: str) -> dict[str, Any]:
-    """Open URL in Chrome if found, else default browser. Does not submit forms."""
+    """Open URL in a new Chrome tab (never navigate the active Friday tab).
+
+    Uses ``--new-tab`` so an existing Chrome window keeps the HUD page and opens
+    the target beside it. Falls back to ``webbrowser.open(..., new=2)``.
+    """
     chrome = _find_chrome()
     if chrome:
-        subprocess.Popen([chrome, url], close_fds=True)  # noqa: S603
-        return {"opened": True, "browser": "chrome", "url": url}
+        # --new-tab is required: bare ``chrome.exe <url>`` can replace the
+        # foreground tab (often the Friday HUD) on Windows.
+        subprocess.Popen(  # noqa: S603
+            [chrome, "--new-tab", url],
+            close_fds=True,
+        )
+        return {"opened": True, "browser": "chrome", "url": url, "new_tab": True}
     webbrowser.open(url, new=2)
-    return {"opened": True, "browser": "default", "url": url}
+    return {"opened": True, "browser": "default", "url": url, "new_tab": True}
 
 
 def google_calendar_day_url(day: date | None = None) -> str:

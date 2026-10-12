@@ -1,0 +1,2 @@
+-c core.lock.txt
+opencv-python-headless>=4.10,<5

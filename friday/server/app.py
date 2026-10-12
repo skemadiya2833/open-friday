@@ -29,6 +29,7 @@ from friday.server.routes_reports import router as reports_router
 from friday.server.routes_assistant import router as assistant_router
 from friday.server.routes_calendar import router as calendar_router
 from friday.server.routes_activity import router as activity_router
+from friday.server.routes_camera import router as camera_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback
 
 ensure_data_dirs()
@@ -125,6 +126,7 @@ app.include_router(reports_router)
 app.include_router(assistant_router)
 app.include_router(calendar_router)
 app.include_router(activity_router)
+app.include_router(camera_router)
 
 _ws_clients: list[WebSocket] = []
 

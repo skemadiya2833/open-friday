@@ -37,6 +37,7 @@ Status of every control below is stated as TESTED (automated test exists), REVIE
 | T12 | Resource exhaustion | Voice upload capped at 25 MB (added in this review); run manager keeps 50 runs | REVIEWED |
 | T13 | Supply chain | Pinned lock files with `uv pip compile`, dependency matrix and licence review in `docs/decisions/`; installs only from the lock files | REVIEWED; hashes are NOT enforced (`--require-hashes` NOT BUILT) |
 | T14 | Cloud data leakage | Cloud fallback only if a key is set and provider chosen; edge-tts and Gemini/OpenAI are cloud and labelled; benchmark blanks cloud keys | REVIEWED |
+| T15 | Webcam / desk camera | Off by default (`FRIDAY_CAMERA`); owner arm-grant required; one-shot frames in memory only; `CAMERA_DATA` fence; e-stop disarms; audit logs sizes not pixels; never written to memory/reports | TESTED (`tests/test_camera.py`); live device UNVERIFIED |
 
 ## Web-server review: findings
 1. FIXED: `/api/voice/transcribe` read an unbounded upload into memory and wrote it to disk. Now limited to 25 MB (HTTP 413) and the file suffix is whitelisted.
@@ -53,3 +54,4 @@ Status of every control below is stated as TESTED (automated test exists), REVIE
 - Windows-MCP is third-party code with the user's desktop rights; we pin it but did not audit its source beyond reading the package layout and tool list.
 - E-stop works only while the Friday process is alive and the hotkey is not taken by another program (`/health` shows registration).
 - Voice: a TV or a neighbour saying the wake word starts listening; speech from speakers can trigger the barge-in path in `vad` mode (no echo cancellation).
+- Camera: while armed, anyone who can use the Control Center can request a snap; keep arm TTL short and prefer e-stop when leaving the desk.

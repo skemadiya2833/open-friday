@@ -34,6 +34,12 @@ _OPEN_URL = re.compile(
     r"(?P<url>https?://[^\s]+|www\.[^\s]+)\s*$",
     re.I,
 )
+_OPEN_GCAL = re.compile(
+    r"^\s*(?:please\s+|hey\s+friday[,:]?\s*)?(?:open|launch|show|bring up|pull up)\s+"
+    r"(?:(?:my|the)\s+)?(?:google\s+)?calendar(?:\s+(?P<view>day|week|agenda|today))?\s*"
+    r"(?:(?:in|with)\s+(?:chrome|the\s+browser))?\s*[.!]?\s*$",
+    re.I,
+)
 _OPEN_APP = re.compile(
     r"^\s*(?:please\s+)?open\s+(?P<app>notepad|calculator|calc|settings|explorer|paint|cmd|powershell|"
     r"file explorer|windows settings)\b(?P<rest>.*)$",
@@ -385,8 +391,38 @@ def try_direct(objective: str, *, workspace: str | None = None,
         url = m.group("url")
         if url.lower().startswith("www."):
             url = "https://" + url
-        webbrowser.open(url)
+        from friday.calendar.create import open_in_chrome
+
+        open_in_chrome(url)
         return DirectResult(True, True, f"Opened {url}", "open_url")
+
+    m = _OPEN_GCAL.match(obj)
+    if m:
+        from friday.calendar.create import (
+            google_calendar_agenda_url,
+            google_calendar_day_url,
+            google_calendar_week_url,
+            open_in_chrome,
+        )
+
+        view = (m.group("view") or "week").lower()
+        if view in {"day", "today"}:
+            url = google_calendar_day_url()
+            label = "day"
+        elif view == "agenda":
+            url = google_calendar_agenda_url()
+            label = "agenda"
+        else:
+            url = google_calendar_week_url()
+            label = "week"
+        info = open_in_chrome(url)
+        browser = info.get("browser") or "browser"
+        return DirectResult(
+            True,
+            True,
+            f"Opened Google Calendar ({label}) in {browser}.",
+            "open_calendar",
+        )
 
     m = _OPEN_FOLDER.match(obj)
     if m:

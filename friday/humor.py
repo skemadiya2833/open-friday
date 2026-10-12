@@ -143,14 +143,21 @@ def pick_fallback_quip(*, context: str = "") -> str | None:
         timed = "Morning efficiency: still online, still unimpressed by chaos."
     elif 22 <= hour or hour < 5:
         timed = "Late shift. I'll keep it sharp so you can sleep eventually."
-    candidates = ([timed] if timed and _rubric_ok(timed) else []) + [
-        q for q in _BANK if _rubric_ok(q)
-    ]
-    if context and "retry" in context.lower():
-        candidates.insert(0, "Second try. Persistence is underrated.")
+
+    def _candidates() -> list[str]:
+        pool = ([timed] if timed and _rubric_ok(timed) else []) + [q for q in _BANK if _rubric_ok(q)]
+        if context and "retry" in context.lower():
+            pool.insert(0, "Second try. Persistence is underrated.")
+        if context and "day_plan" in context.lower():
+            pool.insert(0, "Chaos respectfully declined. Structure it is.")
+        return [q for q in pool if q]
+
+    candidates = _candidates()
+    # Recycle when the short bank is exhausted so dry humor does not go silent.
+    if not candidates and _recent:
+        _recent.clear()
+        candidates = _candidates()
     for q in candidates:
-        if not q or not _rubric_ok(q):
-            continue
         if any(d in q.lower() for d in disliked):
             continue
         _recent.append(q)
@@ -178,29 +185,37 @@ def maybe_append_quip(
     )
     if reason is not None:
         return reply
-    if len((reply or "").split()) > 80:
+    # Keep quips on short/medium replies; long briefs still get a trailing aside.
+    if len((reply or "").split()) > 220:
         return reply
     # Frequency throttle from feedback
     if not feedback_store().allow_quip_now():
         return reply
-    quip = None
-    # Model-generated quips only when not blocked AND roles enabled — still after the gate.
-    if humor_level() in {"dry", "full", "roast"} and (os.environ.get("FRIDAY_MODEL_ROLES") or "").lower() in {
-        "1", "true", "yes", "on",
-    }:
+    # Prefer the local bank first (reliable, no model needed). Optional model quip when roles on.
+    quip = pick_fallback_quip(context=context)
+    from_bank = bool(quip)
+    if (
+        not quip
+        and humor_level() in {"dry", "full", "roast"}
+        and (os.environ.get("FRIDAY_MODEL_ROLES") or "").lower() in {"1", "true", "yes", "on"}
+    ):
         try:
             quip = _generate_quip(user_text=user_text, reply=reply, context=context)
         except Exception:
             quip = None
+        from_bank = False
     if not quip:
-        quip = pick_fallback_quip(context=context)
-    if not quip or not _rubric_ok(quip):
+        return reply
+    # Bank quips are already in _recent from pick_fallback_quip — a second
+    # _rubric_ok() used to reject them and silently kill all humor.
+    if not from_bank and not _rubric_ok(quip):
         return reply
     # Final hard stop: never attach if the combined reply trips security/error
     combined = f"{reply.rstrip()}\n\n{quip}"
     if blocked_context(user_text=user_text, reply=combined, is_security=is_security):
         return reply
-    _recent.append(quip)
+    if not from_bank:
+        _recent.append(quip)
     return combined
 
 

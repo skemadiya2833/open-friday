@@ -6,14 +6,24 @@ import re
 
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
+# Meta: build/organise the day — never store the utterance as an agenda item.
+_PLAN_DAY = re.compile(
+    r"\b((help (me )?)?(plan|organise|organize|schedule|map out)\s+(my |the |a )?(day|today|agenda)"
+    r"|make (me )?(a )?(day )?plan|organize my day|plan my day)\b",
+    re.I,
+)
+# Add a concrete item — requires add-like language (bare "plan" alone is NOT enough).
 _ADD_TODAY = re.compile(
-    r"\b(today|agenda|plan|we'll be doing|we will be doing|for today|"
-    r"add (this )?to (my )?(plan|agenda|list)|remind me today)\b",
+    r"\b((add|put|set)\b.{0,60}\b(to )?(my )?(plan|agenda|list|today)\b|"
+    r"we('?ll| will) be doing\b|"
+    r"for today\s*[:\-]|today\s*[:\-]\s+\S|"
+    r"remind me today|"
+    r"lock(ed)? in for today)\b",
     re.I,
 )
 _LIST_TODAY = re.compile(
     r"\b(what('?s| is) (on )?(my )?(plan|agenda|today)|show (my )?plan|"
-    r"today'?s (plan|agenda|tasks)|list (my )?(plan|agenda))\b",
+    r"today'?s (plan|agenda|tasks)|list (my )?(plan|agenda)|what('?s| is) the plan)\b",
     re.I,
 )
 _DONE = re.compile(r"\b(done|finished|completed|check off)\b", re.I)
@@ -89,12 +99,24 @@ class SkillHandler(Skill):
                 lines.append(f"• {j['title']} — {when}")
             return SkillResult(reply="Here's what's coming up:\n" + "\n".join(lines), skill_id="tasks")
 
+        from friday.humor import maybe_append_quip
+        from friday.tasks.day_plan import compose_day_plan_reply, is_meta_plan_request
+
+        # "Plan my day" / organise today — propose an outline; never save the request as a task.
+        if _PLAN_DAY.search(msg) or is_meta_plan_request(msg):
+            built = compose_day_plan_reply(user_text=msg)
+            reply = maybe_append_quip(built["reply"], user_text=msg, context="day_plan")
+            return SkillResult(reply=reply, skill_id="tasks", metadata={k: v for k, v in built.items() if k != "reply"})
+
         # Fast path: today's agenda without a full ReAct loop.
         if _LIST_TODAY.search(msg) and not _ADD_TODAY.search(msg):
+            from friday.tasks.day_plan import scrub_meta_items
             from friday.tasks.plan import format_for_prompt, get_plan
 
+            scrub_meta_items()
             data = get_plan()
             reply = f"Today's plan ({data.get('date')}):\n{format_for_prompt()}"
+            reply = maybe_append_quip(reply, user_text=msg, context="agenda_list")
             return SkillResult(reply=reply, skill_id="tasks", metadata={"plan": data})
 
         if _ADD_TODAY.search(msg):
@@ -112,12 +134,21 @@ class SkillHandler(Skill):
                 text = re.sub(pat, "", text).strip(" .,-")
             if not text or len(text) < 3:
                 text = msg
+            if is_meta_plan_request(text) or is_meta_plan_request(msg):
+                built = compose_day_plan_reply(user_text=msg)
+                reply = maybe_append_quip(built["reply"], user_text=msg, context="day_plan")
+                return SkillResult(
+                    reply=reply,
+                    skill_id="tasks",
+                    metadata={k: v for k, v in built.items() if k != "reply"},
+                )
             item = add_item(text)
             data = get_plan()
             reply = (
                 f"Got it, boss — locked in for today:\n• {item['text']}\n\n"
                 f"Full agenda:\n{format_for_prompt()}"
             )
+            reply = maybe_append_quip(reply, user_text=msg, context="agenda_add")
             return SkillResult(reply=reply, skill_id="tasks", metadata={"added": item, "plan": data})
 
         if _DONE.search(msg):

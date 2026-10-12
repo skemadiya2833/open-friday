@@ -1,0 +1,23 @@
+id: camera
+name: Camera Look
+description: >-
+  Look through the owner's local webcam (desk camera), not the desktop screen.
+  Use for what am I looking at, what's on my desk, look at me, what's in front of me.
+triggers:
+  - what am i looking at
+  - what am I looking at
+  - what's on my desk
+  - whats on my desk
+  - what's in front of me
+  - whats in front of me
+  - look at my desk
+  - look at me
+  - use the camera
+  - through the camera
+  - webcam
+tools: []
+priority: 92
+requires_vision: true
+enabled: true
+system_overlay: |
+  Answer only from the attached webcam frame. This is not a screenshot of the desktop.

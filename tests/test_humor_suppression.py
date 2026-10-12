@@ -66,6 +66,18 @@ def test_allowed_context_may_quip():
     assert "All set" in out
 
 
+def test_allowed_context_does_append_quip(monkeypatch):
+    """Regression: bank quips must survive the second rubric pass (no double-recent)."""
+    import friday.humor as H
+
+    H._recent.clear()
+    monkeypatch.setenv("FRIDAY_HUMOR", "dry")
+    out = maybe_append_quip("All set for the afternoon.", user_text="thanks")
+    assert "All set for the afternoon." in out
+    assert "\n\n" in out
+    assert len(out) > len("All set for the afternoon.")
+
+
 def test_feedback_throttle_and_clear(tmp_path):
     store = FeedbackStore(tmp_path / "f.json")
     set_feedback_store(store)

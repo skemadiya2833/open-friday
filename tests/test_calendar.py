@@ -47,6 +47,23 @@ def test_redact_url():
     assert red.endswith("789") or "…" in red
 
 
+def test_open_in_chrome_uses_new_tab(monkeypatch):
+    from friday.calendar import create as cal_create
+
+    calls = []
+    monkeypatch.setattr(cal_create, "_find_chrome", lambda: r"C:\fake\chrome.exe")
+    monkeypatch.setattr(
+        cal_create.subprocess,
+        "Popen",
+        lambda args, **_k: calls.append(list(args)) or type("P", (), {})(),
+    )
+    out = cal_create.open_in_chrome("https://calendar.google.com/")
+    assert out["opened"] and out.get("new_tab") is True
+    assert calls and calls[0][0].endswith("chrome.exe")
+    assert "--new-tab" in calls[0]
+    assert calls[0][-1] == "https://calendar.google.com/"
+
+
 def test_build_template_url_params():
     from friday.calendar.create import build_template_url
 

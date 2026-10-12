@@ -252,6 +252,40 @@ def _check_toasts() -> Check:
     )
 
 
+def _check_camera() -> Check:
+    from friday.camera.capture import opencv_available
+    from friday.camera.session import camera_feature_enabled, camera_index, get_camera_session
+
+    enabled = camera_feature_enabled()
+    ocv = opencv_available()
+    detail = {
+        "enabled": enabled,
+        "opencv": ocv,
+        "index": camera_index(),
+        "armed": get_camera_session().is_armed(),
+    }
+    if not enabled:
+        return Check(
+            "camera",
+            "skip",
+            "Camera off (default). Set FRIDAY_CAMERA=on + camera.lock.txt to enable",
+            detail,
+        )
+    if not ocv:
+        return Check(
+            "camera",
+            "warn",
+            "FRIDAY_CAMERA=on but OpenCV missing — pip install -r requirements/camera.lock.txt",
+            detail,
+        )
+    return Check(
+        "camera",
+        "pass",
+        f"Camera enabled (index {camera_index()}); arm in Systems before use",
+        detail,
+    )
+
+
 def _build_next_steps(checks: list[Check], required: dict[str, str], missing: dict[str, str]) -> list[str]:
     steps: list[str] = []
     by_id = {c.id: c for c in checks}
@@ -388,6 +422,7 @@ def run_doctor(*, probe_hardware: bool = True) -> dict[str, Any]:
     checks.append(_check_mcp(agent_backend))
     checks.append(_check_voice())
     checks.append(_check_toasts())
+    checks.append(_check_camera())
 
     next_steps = _build_next_steps(checks, required, missing if up else dict(required))
 

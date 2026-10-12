@@ -68,4 +68,22 @@ def system_prompt(kind: str = "chat") -> str:
         "observe_voice": PERSONA_OBSERVE_VOICE,
         "agent": PERSONA_AGENT,
     }
-    return format_persona(mapping.get(kind, PERSONA_CHAT))
+    text = format_persona(mapping.get(kind, PERSONA_CHAT))
+    try:
+        from friday.humor import humor_level
+
+        humor = humor_level()
+    except Exception:  # noqa: BLE001
+        humor = (os.environ.get("FRIDAY_HUMOR") or "dry").strip().lower()
+    if humor in {"dry", "full", "roast"} and kind in {"chat", "voice"}:
+        aside = (
+            "Personality: slip in light dry wit when the moment is easy — "
+            "one short aside max, never during errors/security/stress, never film quotes."
+        )
+        if humor == "full":
+            aside = (
+                "Personality: dry wit is on — add one short playful aside when it fits "
+                "(still never during errors/security/stress, never film quotes)."
+            )
+        text += "\n" + aside
+    return text

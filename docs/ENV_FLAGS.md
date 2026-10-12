@@ -109,6 +109,9 @@ Neutral reference for Friday configuration. Values shown are **typical defaults*
 | FRIDAY_SKILLS_DIR | builtin skills path | manifest.yaml skills |
 | SKILL_PROPOSALS | `false` | Agent-drafted SKILL.md proposals |
 | FRIDAY_SENSORS | `false` | Read-only sensor tool |
+| FRIDAY_CAMERA | `off` | Opt-in desk webcam (`on`/`true` to enable) |
+| FRIDAY_CAMERA_INDEX | `0` | OpenCV device index |
+| FRIDAY_CAMERA_ARM_TTL | `300` | Arm grant TTL in seconds (30–3600) |
 | SKILL_EMBED_ROUTE | `false` | Embedding-based skill routing |
 | CHAT_RAG_ENABLED | `false` | RAG on every chat turn |
 | INDEX_CHAT_TURNS | `false` | Index chat into Chroma |

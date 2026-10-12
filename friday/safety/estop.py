@@ -181,7 +181,14 @@ def emergency_stop(reason: str = "manual", *, stop_mcp: bool = True, source: dic
 
         return revoke_all()
 
+    def _camera() -> int:
+        from friday.camera.session import get_camera_session
+
+        get_camera_session().disarm(reason=f"estop:{reason}")
+        return 1
+
     step("grants", _grants)   # first: nothing may act on a grant after this point
+    step("camera", _camera)   # disarm webcam arm-grant; release live flag
     rep.controllers_cancelled = step("controllers", _ctrls)
     rep.runs_cancelled = step("runs", _runs)
     rep.approvals_denied = step("approvals", _approvals)

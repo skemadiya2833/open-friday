@@ -13,8 +13,8 @@
     // Realtime streams Edge neural sentence-by-sentence; Relaxed speaks after the full reply.
     // eagerness mirrors OpenAI semantic_vad bands (ideas only) — see turn.js + docs/design/voice_turntaking.md
     // pauseMs kept as a legacy fallback if turn.js fails to load.
-    realtime: { pauseMs: 900, fillerMs: 450, streamSpeech: true, label: "Realtime", eagerness: "medium" },
-    relaxed: { pauseMs: 1600, fillerMs: 1400, streamSpeech: false, label: "Relaxed", eagerness: "low" },
+    realtime: { pauseMs: 900, fillerMs: 280, streamSpeech: true, label: "Realtime", eagerness: "medium" },
+    relaxed: { pauseMs: 1600, fillerMs: 900, streamSpeech: false, label: "Relaxed", eagerness: "low" },
   };
   const PACE_RATE = { slow: "-18%", normal: "+0%", fast: "+18%" };
   const Voice = {
@@ -297,27 +297,59 @@
       if (open) Live.state("listening");
     },
 
-    // ---------------------------------------------------------------- fillers
+    // ---------------------------------------------------------------- fillers (spoken + captions)
     FILLERS: {
-      thinking: ["Let me think about that.", "One moment.", "Let me grab a few details.", "Give me a second.", "Let me check on that."],
-      acting: ["On it. I'll take care of that on your screen.", "Okay, working on that now.", "Sure. Give me a moment while I do that."],
-      lookup: ["Let me look that up.", "Checking that now."],
+      thinking: [
+        "Hold on boss, let me look into that.",
+        "One moment.",
+        "Give me a second.",
+        "Let me check on that.",
+        "On it — thinking.",
+      ],
+      acting: [
+        "On it. I'll take care of that on your screen.",
+        "Okay boss, working on that now.",
+        "Sure — give me a moment while I do that.",
+      ],
+      lookup: [
+        "Let me look that up.",
+        "Checking that now.",
+        "Hold on, pulling that up.",
+      ],
+      looking: [
+        "Hold on boss, let me look into that.",
+        "One sec — checking the camera.",
+        "Alright, eyes on your desk.",
+        "Lemme take a look.",
+      ],
     },
     fillers(speaker, kind) {
       let timer = 0, spoken = 0, stopped = false, idx = Math.floor(Math.random() * 5);
+      let audioChain = Promise.resolve();
       const say = (type) => {
         if (stopped || spoken >= 2) return;
         const list = Live.FILLERS[type] || Live.FILLERS.thinking;
         const text = list[idx++ % list.length];
         spoken++;
         Live.friday(text, { filler: true });
-        // Captions only — speaking the filler then a greeting is what felt "stuck".
+        // Prefer dedicated speakFiller (real Edge/browser TTS). Speaker-chain
+        // fillers were captions-only when window TTS helpers were missing.
+        audioChain = audioChain.then(async () => {
+          if (typeof window.speakFiller === "function") {
+            await window.speakFiller(text);
+          } else if (speaker && typeof speaker.say === "function") {
+            speaker.say(text, { filler: true });
+            if (typeof speaker.done === "function") await speaker.done();
+          }
+        }).catch(() => {});
       };
       return {
         start() { timer = setTimeout(() => say(kind || "thinking"), Voice.cfg().fillerMs); },
-        agent() { clearTimeout(timer); say("acting"); },  // desktop work starts: announce it right away
+        agent() { clearTimeout(timer); say("acting"); },
         lookup() { if (!spoken) { clearTimeout(timer); timer = setTimeout(() => say("lookup"), 400); } },
+        looking() { clearTimeout(timer); say("looking"); },
         stop() { stopped = true; clearTimeout(timer); },
+        ready() { return audioChain; },
         count() { return spoken; },
       };
     },

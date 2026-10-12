@@ -67,6 +67,26 @@ function voiceHoldMode() {
   return !(window.FridayVoice && FridayVoice.duplex && FridayVoice.duplex() === "interrupt");
 }
 
+/** Show / hide global "CAMERA LIVE" while Friday is looking through the webcam. */
+function setCameraLooking(on, phase) {
+  const hud = $("#cameraHudPill");
+  const voice = $("#cameraVoiceBadge");
+  const settings = $("#cameraLivePill");
+  const show = !!on;
+  if (hud) {
+    hud.classList.toggle("hidden", !show);
+    if (show && phase === "describe") hud.textContent = "CAMERA · LOOKING";
+    else if (show) hud.textContent = "CAMERA LIVE";
+  }
+  if (voice) {
+    voice.classList.toggle("hidden", !show);
+    if (show && phase === "describe") voice.textContent = "CAMERA · LOOKING";
+    else if (show) voice.textContent = "CAMERA LIVE";
+  }
+  if (settings) settings.style.display = show ? "inline-flex" : "none";
+  document.body.classList.toggle("camera-looking", show);
+}
+
 function setState(state, { force = false } = {}) {
   // During a turn, never flash back to listening/idle (yellow↔blue flicker).
   if (!force && voiceMode && voiceBusy && (state === "listening" || state === "idle")) return;
@@ -585,8 +605,17 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   const speaker = useVoice && speakEnabled() && window.FridayLive
     ? FridayLive.speaker({ onFirst: () => setState("speaking", { force: true }) })
     : null;
-  const filler = useVoice && window.FridayLive ? FridayLive.fillers(speaker) : null;
+  const filler = useVoice && speakEnabled() && window.FridayLive
+    ? FridayLive.fillers(speaker)
+    : null;
   filler && filler.start();
+  let fillerAwaitDone = false;
+  const awaitFillerAudio = async () => {
+    if (fillerAwaitDone || !filler || typeof filler.ready !== "function") return;
+    fillerAwaitDone = true;
+    filler.stop();
+    try { await filler.ready(); } catch (_) { /* ignore */ }
+  };
 
   const live = document.createElement("div");
   live.className = "bubble assistant";
@@ -648,6 +677,19 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           chip.classList.remove("hidden");
           liveMeta.textContent = `skill:${ev.skill_id}`;
           if (ev.skill_id === "computer_use") setState("acting");
+          if (ev.skill_id === "camera") {
+            setCameraLooking(true, "capture");
+            filler && filler.looking && filler.looking();
+          }
+        }
+        if (ev.type === "camera") {
+          setCameraLooking(!!ev.live, ev.phase || (ev.live ? "capture" : ""));
+          if (ev.live) {
+            pushActivity(
+              ev.phase === "describe" ? "Looking through camera…" : "Webcam open…",
+              { live: true },
+            );
+          }
         }
         if (ev.type === "status" && ev.status) {
           // Don't let stream status yank us back to listening mid-turn.
@@ -656,8 +698,13 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           }
         }
         if (ev.type === "observation") {
-          const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
-          pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
+          if (ev.source === "camera") {
+            const sz = Array.isArray(ev.size) ? `${ev.size[0]}×${ev.size[1]}` : "";
+            pushActivity(`Webcam frame${sz ? ` · ${sz}` : ""}`);
+          } else {
+            const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
+            pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
+          }
         }
         if (ev.type === "memory_saved") pushActivity(`Remembered · ${(ev.text || "").slice(0, 80)}`, { live: false });
         if (ev.type === "chat_cleared") {
@@ -699,14 +746,17 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           streamed += ev.text;
           fridayReply = streamed;
           liveBody.textContent = streamed;
-          if (speaker && vcfg.streamSpeech) { filler && filler.stop(); speaker.push(ev.text); }
-          else if (window.FridayLive && FridayLive.isOpen()) FridayLive.friday(streamed);
+          if (speaker && vcfg.streamSpeech) {
+            await awaitFillerAudio();
+            speaker.push(ev.text);
+          } else if (window.FridayLive && FridayLive.isOpen()) FridayLive.friday(streamed);
           $("#messages").scrollTop = $("#messages").scrollHeight;
         }
         if (ev.type === "warning" && ev.message) {
           pushActivity(`⚠ ${ev.message}`, { live: false });
         }
         if (ev.type === "done") {
+          setCameraLooking(false);
           finalReply = ev.reply;
           skillId = ev.skill_id || skillId;
           sessionId = ev.session_id || sessionId;
@@ -722,6 +772,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           }
         }
         if (ev.type === "error") {
+          setCameraLooking(false);
           liveBody.textContent = ev.message || "Error";
           pushActivity(`Error · ${ev.message || "failed"}`, { live: false });
           document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "error" } }));
@@ -744,7 +795,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       fb.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(live, "down"));
     }
     if (skillId) liveMeta.textContent = `skill:${skillId}`;
-    filler && filler.stop();
+    await awaitFillerAudio();
     if (speaker && vcfg.streamSpeech && speaker.spoken() > 0) {
       speaker.finish();
       await speaker.done();
@@ -1453,11 +1504,12 @@ function humorSetting() {
 function bindHumorControls() {
   const cur = humorSetting();
   document.querySelectorAll("#humorSeg [data-humor]").forEach((btn) => {
-    btn.classList.toggle("active", btn.getAttribute("data-humor") === cur);
+    // Match voice seg buttons: CSS highlights `.seg button.on`, not `.active`.
+    btn.classList.toggle("on", btn.getAttribute("data-humor") === cur);
     btn.addEventListener("click", () => {
-      localStorage.setItem("friday_humor", btn.getAttribute("data-humor"));
+      localStorage.setItem("friday_humor", btn.getAttribute("data-humor") || "dry");
       document.querySelectorAll("#humorSeg [data-humor]").forEach((b) => {
-        b.classList.toggle("active", b === btn);
+        b.classList.toggle("on", b === btn);
       });
     });
   });
@@ -1538,11 +1590,22 @@ async function refreshSettings() {
         </label>
         <p class="muted" style="margin:8px 0 0">Owner-only built-in job (default 08:00). Agents cannot schedule this. No Gmail/Calendar OAuth.</p>
         <button type="button" class="btn ghost" id="morningBriefingRun" style="margin-top:8px">Run once now</button>
+      </div>
+      <div class="setting"><label>Camera</label>
+        <p class="muted" id="cameraStatusLine" style="margin:0 0 8px">Checking…</p>
+        <label class="speak-toggle">
+          <input type="checkbox" id="cameraArmToggle" />
+          <span>Arm camera (timed grant)</span>
+        </label>
+        <p class="muted" style="margin:8px 0 0">Requires <code>FRIDAY_CAMERA=on</code> + camera extras. One-shot desk look only — not always-on. E-stop disarms. Frames stay on this PC.</p>
+        <button type="button" class="btn ghost" id="cameraSnapBtn" style="margin-top:8px">Snap once now</button>
+        <span class="pill" id="cameraLivePill" style="display:none;margin-left:8px">CAMERA LIVE</span>
       </div>`;
     bindVoiceControls();
     syncSpeakToggles();
     bindHumorControls();
     bindMorningBriefing();
+    bindCameraControls();
     $("#speakToggleSettings")?.addEventListener("change", (e) => {
       setSpeakEnabled(e.target.checked);
     });
@@ -1551,6 +1614,72 @@ async function refreshSettings() {
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · LOST";
   }
+}
+
+async function refreshCameraStatus() {
+  const line = $("#cameraStatusLine");
+  const toggle = $("#cameraArmToggle");
+  try {
+    const st = await (await apiFetch("/api/camera/status")).json();
+    if (line) {
+      line.textContent = st.detail || (st.enabled ? (st.armed ? "Armed" : "Disarmed") : "Disabled");
+    }
+    if (toggle) toggle.checked = !!st.armed;
+    if (st && typeof st.live === "boolean") setCameraLooking(!!st.live);
+    return st;
+  } catch (_) {
+    if (line) line.textContent = "Camera status unavailable";
+    return null;
+  }
+}
+
+async function bindCameraControls() {
+  const toggle = $("#cameraArmToggle");
+  const snapBtn = $("#cameraSnapBtn");
+  if (!toggle) return;
+  await refreshCameraStatus();
+  toggle.addEventListener("change", async () => {
+    try {
+      if (toggle.checked) {
+        const res = await apiFetch("/api/camera/arm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!res.ok) {
+          toggle.checked = false;
+          const err = await res.json().catch(() => ({}));
+          addBubble("assistant", err.detail || "Could not arm camera (is FRIDAY_CAMERA=on?)");
+        }
+      } else {
+        await apiFetch("/api/camera/disarm", { method: "POST" });
+      }
+    } catch (_) {
+      toggle.checked = false;
+    }
+    await refreshCameraStatus();
+  });
+  snapBtn?.addEventListener("click", async () => {
+    setCameraLooking(true, "capture");
+    try {
+      const res = await apiFetch("/api/camera/snap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: "What do you see in front of the camera?" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addBubble("assistant", data.detail || "Camera snap failed — arm the camera first.");
+      } else {
+        addBubble("assistant", data.reply || "(no description)");
+      }
+    } catch (_) {
+      addBubble("assistant", "Camera snap failed (offline).");
+    } finally {
+      setCameraLooking(false);
+      await refreshCameraStatus();
+    }
+  });
 }
 
 async function bindMorningBriefing() {
@@ -1713,6 +1842,32 @@ async function speak(text) {
   const ok = await speakBrowser(clean);
   if (!ok) console.warn("[Friday] browser TTS unavailable");
 }
+
+/** Pause-line TTS for voice mode. Does not cancel an in-flight reply. */
+async function speakFiller(text) {
+  const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
+  if (!clean) return;
+  window.FridayLive && FridayLive.state("speaking");
+  try {
+    const url = await ttsFetchUrl(clean);
+    if (url) {
+      await playUrl(url);
+      return;
+    }
+    window.FridayLive && FridayLive.synthSpeaking(true);
+    await speakBrowser(clean);
+  } catch (err) {
+    console.warn("[Friday] filler TTS failed:", err);
+  }
+}
+
+// live.js speaks via window.* — classic scripts usually hoist, but set explicitly.
+window.ttsFetchUrl = ttsFetchUrl;
+window.playUrl = playUrl;
+window.speakBrowser = speakBrowser;
+window.stopSpeech = stopSpeech;
+window.speak = speak;
+window.speakFiller = speakFiller;
 
 // ---------------------------------------------------------------- reminders + notifications
 const shownReminders = new Set(JSON.parse(sessionStorage.getItem("friday.shownReminders") || "[]"));

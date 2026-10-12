@@ -191,6 +191,7 @@ def handle_message(
     skill_labels = {
         "chat": "Chatting…",
         "observe": "Looking at your screen…",
+        "camera": "Looking through the camera…",
         "computer_use": "Controlling the desktop…",
         "memory": "Checking memory…",
         "research": "Researching…",
@@ -203,7 +204,7 @@ def handle_message(
     })
     if intent.skill_id == "computer_use":
         emit("status", {"status": "acting"})
-    elif intent.skill_id == "observe":
+    elif intent.skill_id in ("observe", "camera"):
         emit("status", {"status": "thinking"})
 
     ctx = SkillContext(
@@ -217,7 +218,13 @@ def handle_message(
     )
     result = skill.run(ctx)
     # Voice mode: keep spoken replies punchy even if a skill was wordy.
-    reply = result.reply
+    reply = (result.reply or "").strip()
+    if not reply:
+        # Never hand the UI an empty string — voice treats that as "(no reply)" and re-arms the mic.
+        reply = (
+            "I finished that step but had nothing useful to say out loud. "
+            "Try once more, or check the desktop."
+        )
     if voice_mode and reply:
         reply = _clip_voice_reply(reply)
     emit("activity", {"step": "done", "message": "Done"})

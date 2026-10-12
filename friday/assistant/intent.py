@@ -35,6 +35,13 @@ _LOOK_ONLY = re.compile(
     r"tell me what you see|is (my )?(screen|desktop))\b",
     re.I,
 )
+# Webcam / desk camera (not screen). Checked before observe.
+_CAMERA_LOOK = re.compile(
+    r"^\s*(what am i looking at|what('?s| is) on my desk|what('?s| is) in front of me|"
+    r"look at (my )?desk|look at me|use the (web)?camera|through the (web)?camera|"
+    r"(web)?camera\b.*\?|(can you|could you) (see|look) (at )?(me|my desk|in front))\b",
+    re.I,
+)
 _QUESTION = re.compile(
     r"^\s*(who|what|when|where|why|how|can you|could you|would you|is there|"
     r"are there|do you)\b.*\?\s*$",
@@ -198,7 +205,20 @@ def apply_policy(intent: Intent, message: str) -> Intent:
     """
     msg = message.strip()
 
-    # 1) Pure look-questions can never become Act.
+    # 1) Webcam look-questions → camera skill (never Act).
+    if _CAMERA_LOOK.search(msg) and not _IMPERATIVE.search(msg):
+        return Intent(
+            mode="look",
+            skill_id="camera",
+            confidence=max(intent.confidence, 0.9),
+            objective=msg,
+            reason=f"policy: camera-look utterance (was {intent.mode}/{intent.skill_id})",
+            needs_confirmation=False,
+            source="policy",
+            raw=intent.raw,
+        )
+
+    # 2) Pure screen look-questions can never become Act.
     if _LOOK_ONLY.search(msg) and not _IMPERATIVE.search(msg):
         return Intent(
             mode="look",
@@ -211,7 +231,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
             raw=intent.raw,
         )
 
-    # 2) Act requires imperative language OR high confidence + imperative objective.
+    # 3) Act requires imperative language OR high confidence + imperative objective.
     if intent.mode == "act" or intent.skill_id == "computer_use":
         has_imperative = bool(
             _IMPERATIVE.search(msg)
@@ -279,6 +299,17 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             objective=msg, reason="empty", source="policy",
         )
 
+    # Webcam / desk camera before screen observe.
+    if _CAMERA_LOOK.search(msg) and not _IMPERATIVE.search(msg):
+        return Intent(
+            mode="look",
+            skill_id="camera",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: camera-look",
+            source="policy",
+        )
+
     # Look-only questions → observe. No LLM vote.
     if _LOOK_ONLY.search(msg) and not _IMPERATIVE.search(msg):
         return Intent(
@@ -326,10 +357,13 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
                 return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
                               reason="deterministic: reminder follow-up", source="policy")
 
-    # Today's agenda phrases → tasks skill without waiting on the classifier.
+    # Plan / organise my day (meta) + concrete agenda phrases → tasks skill.
     if re.search(
-        r"\b(we('?ll| will) be doing|for today|today'?s (plan|agenda)|"
-        r"add .{0,40}\b(to )?(my )?(plan|agenda)|what('?s| is) (on )?my (plan|agenda))\b",
+        r"\b((help (me )?)?(plan|organise|organize|schedule)\s+(my |the |a )?(day|today|agenda)"
+        r"|plan my day|make (me )?(a )?(day )?plan|"
+        r"we('?ll| will) be doing|for today|today'?s (plan|agenda)|"
+        r"add .{0,40}\b(to )?(my )?(plan|agenda)|what('?s| is) (on )?my (plan|agenda)|"
+        r"what('?s| is) the plan)\b",
         msg,
         re.I,
     ):
@@ -353,8 +387,28 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Open Google Calendar (must beat the research "google" keyword).
+    if re.search(
+        r"\b(open|launch|show|bring up|pull up)\b.{0,40}\b(google\s+)?calendar\b",
+        msg,
+        re.I,
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.96,
+            objective=msg,
+            reason="deterministic: open calendar",
+            source="policy",
+        )
+
     # Web lookup (news, google, "what's the weather") is research — not desktop control.
-    if _RESEARCH.search(msg) and not _DESKTOP_TARGET.search(msg):
+    # Do not treat "open google calendar/maps/…" as a search.
+    if (
+        _RESEARCH.search(msg)
+        and not _DESKTOP_TARGET.search(msg)
+        and not re.search(r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b", msg, re.I)
+    ):
         return Intent(
             mode="research",
             skill_id="research",
@@ -415,7 +469,8 @@ _RESEARCH = re.compile(
 )
 _DESKTOP_TARGET = re.compile(
     r"\b(notepad|chrome|edge|firefox|browser window|desktop|click|type in|"
-    r"open (the )?(chrome|browser|edge|notepad))\b",
+    r"calendar|google calendar|"
+    r"open (the )?(chrome|browser|edge|notepad|calendar))\b",
     re.I,
 )
 _NEEDS_LLM = re.compile(

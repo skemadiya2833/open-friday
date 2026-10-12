@@ -97,6 +97,7 @@ Optional extras:
 | Need | Install |
 |------|---------|
 | Voice | `pip install -r requirements/voice.lock.txt` |
+| Camera (webcam) | `pip install -r requirements/camera.lock.txt` then `FRIDAY_CAMERA=on` + Arm in Systems |
 | Dev / tests | `pip install -r requirements/dev.lock.txt` then `pytest` |
 | Windows-MCP tools | Enable `windows` in `config/mcp_servers.yaml`; requires `uv` |
 
@@ -141,7 +142,7 @@ Legacy entry points: `python main.py --gui` · `python main.py --cli "Open Notep
 - Optional SearXNG-backed research provider (design in `docs/design/searxng_provider.md`)
 - Continued hybrid-agent hardening and benchmark coverage
 - Community skill import with quarantine and hash-bound approval (see threat model)
-- Opt-in local camera context (design only: [`docs/design/camera_assistant.md`](docs/design/camera_assistant.md))
+- Opt-in local camera (v1 one-shot): [`docs/design/camera_assistant.md`](docs/design/camera_assistant.md)
 - Releases: [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)
 
 ---

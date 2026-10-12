@@ -8,10 +8,37 @@ from friday.agent import router as RT
 
 def test_open_url_pattern(monkeypatch):
     opened = []
-    monkeypatch.setattr(DT.webbrowser, "open", lambda u: opened.append(u) or True)
+    monkeypatch.setattr(
+        "friday.calendar.create.open_in_chrome",
+        lambda u: opened.append(u) or {"opened": True, "browser": "chrome", "url": u},
+    )
     r = DT.try_direct("open https://example.com")
     assert r.handled and r.tool == "open_url" and r.ok
     assert opened == ["https://example.com"]
+
+
+def test_open_google_calendar(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "friday.calendar.create.open_in_chrome",
+        lambda url: calls.append(url) or {"ok": True, "browser": "chrome", "url": url},
+    )
+    r = DT.try_direct("open google calendar")
+    assert r.handled and r.ok and r.tool == "open_calendar"
+    assert "Opened Google Calendar" in r.message
+    assert calls and "calendar.google.com" in calls[0]
+
+
+def test_open_calendar_day_view(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "friday.calendar.create.open_in_chrome",
+        lambda url: calls.append(url) or {"ok": True, "browser": "chrome", "url": url},
+    )
+    r = DT.try_direct("open my calendar day")
+    assert r.handled and r.tool == "open_calendar"
+    assert "day" in r.message.lower()
+    assert calls
 
 
 def test_open_app_notepad_only(monkeypatch):
