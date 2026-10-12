@@ -57,7 +57,8 @@ class EndpointConfig:
     start_prob: float = 0.5
     end_prob: float = 0.35
     start_frames: int = 3            # ~96 ms of speech to open an utterance
-    min_silence_ms: int = 700        # silence that ends an utterance
+    # Silence that ends an utterance. Override with FRIDAY_VAD_MIN_SILENCE_MS.
+    min_silence_ms: int = int(os.getenv("FRIDAY_VAD_MIN_SILENCE_MS", "1100"))
     pre_roll_ms: int = 320
     max_utterance_s: float = 20.0
     min_utterance_ms: int = 300

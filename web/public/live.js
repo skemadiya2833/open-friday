@@ -11,8 +11,10 @@
   const STYLES = {
     // Monitor speakers + desk mic: industry default is half-duplex (Hold) + echo tail.
     // Realtime streams Edge neural sentence-by-sentence; Relaxed speaks after the full reply.
-    realtime: { pauseMs: 160, fillerMs: 650, streamSpeech: true, label: "Realtime" },
-    relaxed: { pauseMs: 700, fillerMs: 1800, streamSpeech: false, label: "Relaxed" },
+    // pauseMs = silence after the *last* SpeechRecognition final before we start thinking.
+    // Chrome often finalizes mid-thought after a short breath — keep these long enough to finish a clause.
+    realtime: { pauseMs: 1200, fillerMs: 650, streamSpeech: true, label: "Realtime" },
+    relaxed: { pauseMs: 1800, fillerMs: 1800, streamSpeech: false, label: "Relaxed" },
   };
   const PACE_RATE = { slow: "-18%", normal: "+0%", fast: "+18%" };
   const Voice = {

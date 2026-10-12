@@ -1,7 +1,19 @@
 const API = "";
 const SPEAK_KEY = "friday.speakReplies";
 const SESSION_KEY = "friday.sessionId";
-const pauseMs = () => (window.FridayVoice ? FridayVoice.pauseMs() : 1100); // silence before we process speech
+const pauseMs = () => (window.FridayVoice ? FridayVoice.pauseMs() : 1200); // silence before we process speech
+// Trailing words that usually mean the speaker is still mid-thought (give more silence).
+const _TRAIL_OPEN = /\b(and|or|but|so|because|if|when|while|then|that|which|who|a|an|the|to|of|for|with|my|your|i|i'm|i'll|i've|it's|there's|um|uh|like)\s*$/i;
+const _ENDS_COMPLETE = /[.!?…]"?$/;
+
+function endOfTurnDelayMs(text) {
+  const base = pauseMs();
+  const t = (text || "").trim();
+  if (!t) return base;
+  if (_ENDS_COMPLETE.test(t)) return base;
+  if (_TRAIL_OPEN.test(t) || t.split(/\s+/).length < 4) return base + 700;
+  return base + 350; // no terminal punctuation — likely still talking
+}
 
 let sessionId = localStorage.getItem(SESSION_KEY) || null;
 let mediaRecorder = null;
@@ -834,13 +846,22 @@ function clearPauseTimer() {
 
 function scheduleProcess(delay) {
   clearPauseTimer();
+  const textNow = (finalBuffer || interimText || "").trim();
+  // Never use a sub-300ms fire — Chrome finals mid-phrase and that felt like "listens too little".
+  const wait = Math.max(300, delay != null ? delay : endOfTurnDelayMs(textNow));
   pauseTimer = setTimeout(() => {
+    // If new interim/final arrived, another scheduleProcess already replaced this timer.
     const text = (finalBuffer || interimText || "").trim();
     if (!text || voiceBusy) return;
+    // Still receiving interim → keep listening (timer should have been reset; belt-and-suspenders).
+    if (interimText && interimText.trim()) {
+      scheduleProcess();
+      return;
+    }
     pushActivity("Pause detected · processing…");
     setListeningLine(text, { interim: false });
     sendMessage(text, { fromVoice: true });
-  }, delay || pauseMs());
+  }, wait);
 }
 
 function pauseRecognition() {
@@ -1032,8 +1053,8 @@ async function startVoiceMode() {
       setListeningLine(shown, { interim: !finalBuffer || !!interim });
       // Stay on listening visually — don't poke setState every interim (flicker source).
       if (uiState !== "listening") setState("listening");
-      const quick = window.FridayVoice && FridayVoice.style() === "realtime" && finalBuffer && !interim;
-      scheduleProcess(quick ? 140 : undefined);
+      // Always use end-of-turn delay (was: realtime fired in 140ms on first final — cut people off).
+      scheduleProcess();
     }
   };
 
