@@ -46,44 +46,62 @@ def _normalize_rate(rate: str | None) -> str:
     return "+0%"
 
 
-def _edge_tts(text: str, out: Path, rate: str | None = None) -> bool:
+def _edge_voice_candidates() -> list[str]:
+    voice_name = VOICE_TTS_VOICE
     try:
-        import edge_tts
+        from friday.runtime.prefs import get as pref
+
+        voice_name = str(pref("tts_voice") or VOICE_TTS_VOICE)
+    except Exception:  # noqa: BLE001
+        pass
+    primary = _resolve_edge_voice(voice_name)
+    out = [primary]
+    for alt in _EDGE_FALLBACKS:
+        if alt not in out:
+            out.append(alt)
+    return out
+
+
+async def _edge_bytes(text: str, voice: str, rate_s: str) -> bytes:
+    """Synthesize in memory (no tempfile) — lower TTS start latency."""
+    import edge_tts
+
+    communicate = edge_tts.Communicate(text, voice, rate=rate_s)
+    chunks: list[bytes] = []
+    async for part in communicate.stream():
+        if part.get("type") == "audio" and part.get("data"):
+            chunks.append(part["data"])
+    return b"".join(chunks)
+
+
+def _edge_tts_bytes(text: str, rate: str | None = None) -> bytes | None:
+    try:
+        import edge_tts  # noqa: F401
     except ImportError:
-        return False
+        return None
 
     rate_s = _normalize_rate(rate)
-    candidates: list[str] = []
-    primary = _resolve_edge_voice(VOICE_TTS_VOICE)
-    candidates.append(primary)
-    for alt in _EDGE_FALLBACKS:
-        if alt not in candidates:
-            candidates.append(alt)
-
-    async def _run(voice: str, dest: Path) -> None:
-        communicate = edge_tts.Communicate(text, voice, rate=rate_s)
-        await communicate.save(str(dest))
-
     last_err = None
-    for voice in candidates:
-        raw: Path | None = None
+    for voice in _edge_voice_candidates():
         try:
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                raw = Path(tmp.name)
-            asyncio.run(_run(voice, raw))
-            if not (raw.exists() and raw.stat().st_size > 44):
-                raise RuntimeError("empty audio")
-            raw.replace(out)
-            return out.exists() and out.stat().st_size > 44
-        except Exception as exc:
+            data = asyncio.run(_edge_bytes(text, voice, rate_s))
+            if data and len(data) > 44:
+                return data
+            raise RuntimeError("empty audio")
+        except Exception as exc:  # noqa: BLE001
             last_err = exc
             print(f"[TTS] edge-tts {voice} failed: {exc}")
-        finally:
-            if raw is not None:
-                raw.unlink(missing_ok=True)
     if last_err:
         print(f"[TTS] edge-tts exhausted: {last_err}")
-    return False
+    return None
+
+
+def _edge_tts(text: str, out: Path, rate: str | None = None) -> bool:
+    data = _edge_tts_bytes(text, rate=rate)
+    if not data:
+        return False
+    out.write_bytes(data)
+    return out.exists() and out.stat().st_size > 44
 
 
 def _piper_tts(text: str, out: Path) -> bool:
@@ -166,8 +184,27 @@ def synthesize_to_file(text: str, out_path: str | Path, rate: str | None = None)
 
 
 def synthesize_bytes(text: str, rate: str | None = None) -> tuple[bytes, str]:
+    clean = (text or "").strip()
+    if not clean:
+        return b"", "text/plain"
+    try:
+        from friday.security.content_scan import scan_speech
+
+        spoken = scan_speech(clean)
+        if spoken.blocked:
+            clean = "I can't say that out loud — it looked like a secret."
+        else:
+            clean = spoken.text.strip() or clean
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Fast path: Edge MP3 in memory (skips tempfile round-trip).
+    edge = _edge_tts_bytes(clean, rate=rate)
+    if edge:
+        return edge, "audio/mpeg"
+
     with tempfile.TemporaryDirectory() as tmp:
-        path = synthesize_to_file(text, Path(tmp) / "speech.wav", rate=rate)
+        path = synthesize_to_file(clean, Path(tmp) / "speech.wav", rate=rate)
         data = path.read_bytes()
         if path.suffix == ".mp3":
             mime = "audio/mpeg"

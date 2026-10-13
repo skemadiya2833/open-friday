@@ -51,8 +51,14 @@ Listener = Callable[[str, dict[str, Any]], None]
 def _default_attention(item: dict[str, Any]) -> None:
     """Audible nudge. Voice is optional: install a hook with ``set_attention_hook`` (UNVERIFIED on this machine)."""
     import os
-    if os.getenv("FRIDAY_APPROVAL_BEEP", "true").lower() in ("0", "false", "no"):
-        return
+    try:
+        from friday.runtime.prefs import get as pref
+
+        if not bool(pref("approval_beep")):
+            return
+    except Exception:  # noqa: BLE001
+        if os.getenv("FRIDAY_APPROVAL_BEEP", "true").lower() in ("0", "false", "no"):
+            return
     try:
         import ctypes
         ctypes.windll.user32.MessageBeep(0x30)           # MB_ICONEXCLAMATION
@@ -208,7 +214,14 @@ def get_approval_service() -> ApprovalService:
 
             _service = ApprovalService(APPROVAL_TIMEOUT_SECONDS)
             import os
-            if os.getenv("FRIDAY_APPROVAL_MODE", "attended").lower() == "unattended":
+            mode = "attended"
+            try:
+                from friday.runtime.prefs import get as pref
+
+                mode = str(pref("approval_mode") or "attended")
+            except Exception:  # noqa: BLE001
+                mode = os.getenv("FRIDAY_APPROVAL_MODE", "attended").lower()
+            if mode == "unattended":
                 _service.set_mode("unattended")
         return _service
 

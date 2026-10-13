@@ -223,17 +223,20 @@ def test_list_cameras_stops_after_consecutive_misses(monkeypatch):
 
     calls: list[tuple[str, int]] = []
 
-    def fake_probe(backend, api, *, limit, friendly):
+    def fake_probe(backend, api, *, limit):
         for i in range(min(2, limit)):
             calls.append((backend, i))
         return []
 
     monkeypatch.setattr("friday.camera.capture.opencv_available", lambda: True)
+    # Force OpenCV probe path (skip live ffmpeg DirectShow enumeration).
+    monkeypatch.setattr(cam_dev, "_list_cameras_ffmpeg_first", lambda: None)
     monkeypatch.setattr(cam_dev, "_windows_friendly_names", lambda: [])
     monkeypatch.setattr(cam_dev, "_backend_apis", lambda: [("msmf", 0), ("dshow", 1)])
     monkeypatch.setattr(cam_dev, "_probe_backend", fake_probe)
     monkeypatch.setattr(cam_dev, "_silence_opencv_logs", lambda: None)
     monkeypatch.setattr(cam_dev, "_restore_opencv_logs", lambda _p: None)
+    monkeypatch.setattr(cam_dev, "_match_ffmpeg_names", lambda _devs: None)
     try:
         import cv2  # noqa: F401
     except Exception:

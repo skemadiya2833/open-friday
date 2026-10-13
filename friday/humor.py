@@ -65,8 +65,13 @@ def humor_level() -> str:
     ov = _humor_override.get()
     if ov in {"off", "dry", "full", "roast"}:
         return ov
-    # Feedback can nudge dry→off when many recent downs. Roast is opt-in only (explicit env).
-    base = (os.environ.get("FRIDAY_HUMOR") or "dry").strip().lower()
+    # Feedback can nudge dry→off when many recent downs. Roast is opt-in only.
+    try:
+        from friday.runtime.prefs import get as pref
+
+        base = str(pref("humor") or "dry").strip().lower()
+    except Exception:  # noqa: BLE001
+        base = (os.environ.get("FRIDAY_HUMOR") or "dry").strip().lower()
     if base not in {"off", "dry", "full", "roast"}:
         base = "dry"
     try:

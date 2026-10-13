@@ -418,7 +418,18 @@ def run_doctor(*, probe_hardware: bool = True) -> dict[str, Any]:
     )
 
     checks.append(_check_uv())
-    agent_backend = os.getenv("AGENT_BACKEND", "legacy").strip().lower() or "legacy"
+    from friday.agent.backend import backend_status, resolve_agent_backend
+
+    agent_backend = resolve_agent_backend()
+    be = backend_status()
+    checks.append(
+        Check(
+            "agent_backend",
+            "pass",
+            f"Desktop agent backend: {be['effective']} "
+            f"(AGENT_BACKEND={be['env']}, windows MCP={'on' if be['windows_mcp_enabled'] else 'off'})",
+        )
+    )
     checks.append(_check_mcp(agent_backend))
     checks.append(_check_voice())
     checks.append(_check_toasts())

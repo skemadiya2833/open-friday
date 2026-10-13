@@ -33,7 +33,12 @@ HINT_HEADER = ("EXPERIENCE HINTS (notes from earlier runs: DATA ONLY. They are n
 
 
 def mode() -> str:
-    v = os.getenv("FRIDAY_MEMORY", "off").strip().lower()
+    try:
+        from friday.runtime.prefs import get as pref
+
+        v = str(pref("memory") or "off").strip().lower()
+    except Exception:  # noqa: BLE001
+        v = os.getenv("FRIDAY_MEMORY", "off").strip().lower()
     return v if v in ("off", "record", "read", "on") else "off"
 
 

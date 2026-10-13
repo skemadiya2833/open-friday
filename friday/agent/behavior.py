@@ -19,7 +19,12 @@ _MULTI_STEP = re.compile(
 
 
 def deep_mode_enabled(message: str = "") -> bool:
-    env = (os.environ.get("FRIDAY_DEEP") or "").strip().lower() in {"1", "true", "yes", "on"}
+    try:
+        from friday.runtime.prefs import get as pref
+
+        env = bool(pref("deep"))
+    except Exception:  # noqa: BLE001
+        env = (os.environ.get("FRIDAY_DEEP") or "").strip().lower() in {"1", "true", "yes", "on"}
     return env or bool(_DEEP_HINT.search(message or ""))
 
 

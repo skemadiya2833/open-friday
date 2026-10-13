@@ -30,6 +30,7 @@ from friday.server.routes_assistant import router as assistant_router
 from friday.server.routes_calendar import router as calendar_router
 from friday.server.routes_activity import router as activity_router
 from friday.server.routes_camera import router as camera_router
+from friday.server.routes_systems import router as systems_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback, set_listen_host
 
 ensure_data_dirs()
@@ -138,6 +139,7 @@ app.include_router(assistant_router)
 app.include_router(calendar_router)
 app.include_router(activity_router)
 app.include_router(camera_router)
+app.include_router(systems_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -584,13 +586,23 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
 
 def _mount_frontend(application: FastAPI) -> None:
+    """Serve Control Center UI.
+
+    Default is ``web/public`` (vanilla, always current). Vite ``web/dist`` only when
+    ``FRIDAY_UI=dist`` so a stale build cannot shadow live edits.
+    """
+    import os
+
     root = Path(__file__).resolve().parents[2]
     dist = root / "web" / "dist"
-    static_fallback = root / "web" / "public"
-    if dist.exists():
+    public = root / "web" / "public"
+    prefer = (os.getenv("FRIDAY_UI") or "public").strip().lower()
+    if prefer == "dist" and dist.exists() and (dist / "index.html").exists():
         application.mount("/", StaticFiles(directory=str(dist), html=True), name="ui")
-    elif (static_fallback / "index.html").exists():
-        application.mount("/", StaticFiles(directory=str(static_fallback), html=True), name="ui")
+    elif (public / "index.html").exists():
+        application.mount("/", StaticFiles(directory=str(public), html=True), name="ui")
+    elif dist.exists() and (dist / "index.html").exists():
+        application.mount("/", StaticFiles(directory=str(dist), html=True), name="ui")
 
 
 _mount_frontend(app)

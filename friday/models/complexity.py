@@ -129,12 +129,17 @@ def score_complexity(query: str) -> ComplexityResult:
 
 
 def complexity_routing_enabled() -> bool:
-    return os.getenv("FRIDAY_COMPLEXITY_ROUTING", "false").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    try:
+        from friday.runtime.prefs import get as pref
+
+        return bool(pref("complexity_routing"))
+    except Exception:  # noqa: BLE001
+        return os.getenv("FRIDAY_COMPLEXITY_ROUTING", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
 
 
 def select_chat_role(query: str, *, urgency: float = 0.5) -> str:

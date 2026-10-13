@@ -28,6 +28,7 @@ class Issue:
 _BOOLS = {"1", "0", "true", "false", "yes", "no", "on", "off", ""}
 _INTS = {"FRIDAY_PORT": (1, 65535), "MAX_ITERATIONS": (1, 1000)}
 _BOOL_KEYS = ("VOICE_ENABLED", "FRIDAY_SENSORS", "SKILL_PROPOSALS", "OVERLAY_ENABLED")
+# Empty AGENT_BACKEND = auto (hybrid if Windows-MCP enabled, else legacy).
 _CHOICES = {"CLOUD_PROVIDER": {"gemini", "openai", "none", ""}, "AGENT_BACKEND": {"legacy", "hybrid", ""}}
 
 

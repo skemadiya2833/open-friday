@@ -15,7 +15,14 @@ def test_forget_conversation_turn(tmp_path, monkeypatch):
 
 
 def test_forget_plan_item(tmp_path, monkeypatch):
+    db = str(tmp_path / "tasks.sqlite")
+    monkeypatch.setattr("friday.config.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("friday.config.TASKS_DB", db)
+    monkeypatch.setattr("friday.store.db.TASKS_DB", db)
     monkeypatch.setattr("friday.tasks.plan.DATA_DIR", str(tmp_path))
+    import friday.tasks.plan as plan_mod
+
+    plan_mod._migrated = False
     from friday.tasks.plan import add_item, get_plan
 
     item = add_item("buy milk")

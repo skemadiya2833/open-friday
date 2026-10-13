@@ -100,6 +100,8 @@ def test_token_is_script_fallback_for_api(monkeypatch):
     from friday.server.security import RequestGuard, default_allowed_hosts
 
     monkeypatch.setenv("FRIDAY_AUTH", "local")
+    # Phone-access prefs promote local→lan and skip the token wall on loopback.
+    monkeypatch.setattr("friday.auth.prefs.phone_access_enabled", lambda: False)
     reset_auth_config()
 
     async def inner(scope, receive, send):

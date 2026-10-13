@@ -1,11 +1,19 @@
-"""Enumerate connected webcams and persist the owner's selected index."""
+"""Enumerate connected webcams and persist the owner's selected device + resolution.
+
+Windows note: OpenCV MSMF/DSHOW indices are *not* interchangeable, and PnP name
+order does **not** match OpenCV probe order (that bug made \"SNAP U2\" open Snap Camera).
+We label DSHOW devices by fingerprint-matching ffmpeg's DirectShow name list when available.
+"""
 
 from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +21,32 @@ from typing import Any
 
 _prefs_lock = threading.Lock()
 _MAX_PROBE = 8
+
+# Virtual / software cameras — deprioritize for desk look defaults.
+_VIRTUAL_HINTS = (
+    "snap camera",
+    "obs virtual",
+    "obs-camera",
+    "manycam",
+    "nvidia broadcast",
+    "xsplit",
+    "iriun",
+    "epoccam",
+    "droidcam",
+    "unity capture",
+    "ndi",
+    "virtual camera",
+    "virtual cam",
+)
+
+# Systems UI resolution presets. "auto" = driver default.
+RESOLUTION_PRESETS: dict[str, tuple[int, int]] = {
+    "auto": (0, 0),
+    "480p": (640, 480),
+    "720p": (1280, 720),
+    "1080p": (1920, 1080),
+}
+DEFAULT_RESOLUTION = "720p"
 
 
 def _prefs_path() -> Path:
@@ -72,6 +106,40 @@ def load_camera_enabled() -> bool | None:
     return bool(prefs.get("enabled"))
 
 
+def load_resolution() -> str:
+    raw = str(load_prefs().get("resolution") or DEFAULT_RESOLUTION).strip().lower()
+    return raw if raw in RESOLUTION_PRESETS else DEFAULT_RESOLUTION
+
+
+def load_resolution_wh() -> tuple[int, int]:
+    return RESOLUTION_PRESETS.get(load_resolution(), RESOLUTION_PRESETS[DEFAULT_RESOLUTION])
+
+
+def load_selected_name() -> str:
+    """Clean DirectShow device name from prefs (used for ffmpeg capture)."""
+    import re
+
+    raw = str(load_prefs().get("name") or "").strip()
+    if " · " in raw:
+        raw = raw.split(" · ", 1)[0].strip()
+    if re.fullmatch(r"Camera\s+\d+", raw, re.I):
+        return ""
+    return raw[:120]
+
+
+def clean_device_name(name: str) -> str:
+    """Strip UI label decorations down to the device name."""
+    import re
+
+    raw = (name or "").strip()
+    if " · " in raw:
+        raw = raw.split(" · ", 1)[0].strip()
+    raw = re.sub(r"\s+", " ", raw).strip()
+    if re.fullmatch(r"Camera\s+\d+", raw, re.I):
+        return ""
+    return raw[:120]
+
+
 def save_camera_enabled(enabled: bool) -> dict[str, Any]:
     data = _write_prefs({"enabled": bool(enabled)})
     os.environ["FRIDAY_CAMERA"] = "on" if enabled else "off"
@@ -91,11 +159,19 @@ def save_camera_enabled(enabled: bool) -> dict[str, Any]:
     return {"ok": True, "enabled": bool(data.get("enabled"))}
 
 
-def save_selected_index(index: int, *, backend: str = "") -> dict[str, Any]:
+def save_selected_index(
+    index: int,
+    *,
+    backend: str = "",
+    name: str = "",
+    resolution: str | None = None,
+) -> dict[str, Any]:
     idx = max(0, min(int(index), 31))
     be = (backend or "").strip().lower()
     if be not in ("msmf", "dshow", "default"):
         be = ""
+    label = clean_device_name(name) or (name or "").strip()[:120]
+    # Never persist a virtual cam as the desk default when a better name was intended.
     path = _prefs_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with _prefs_lock:
@@ -105,6 +181,11 @@ def save_selected_index(index: int, *, backend: str = "") -> dict[str, Any]:
             data["backend"] = be
         else:
             data.pop("backend", None)
+        if label:
+            data["name"] = label
+        if resolution is not None:
+            res = str(resolution).strip().lower()
+            data["resolution"] = res if res in RESOLUTION_PRESETS else DEFAULT_RESOLUTION
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.environ["FRIDAY_CAMERA_INDEX"] = str(idx)
     try:
@@ -112,15 +193,26 @@ def save_selected_index(index: int, *, backend: str = "") -> dict[str, Any]:
 
         get_audit_log().record(
             tool="camera_select",
-            args={"index": idx, "backend": be},
+            args={"index": idx, "backend": be, "resolution": data.get("resolution")},
             outcome="ok",
             risk="confirm",
             caller="camera",
-            detail=f"index={idx} backend={be or 'auto'}",
+            detail=f"index={idx} backend={be or 'auto'} name={label[:40]}",
         )
     except Exception:  # noqa: BLE001
         pass
-    return {"ok": True, "index": idx, "backend": be}
+    return {
+        "ok": True,
+        "index": idx,
+        "backend": be,
+        "name": label,
+        "resolution": data.get("resolution") or DEFAULT_RESOLUTION,
+    }
+
+
+def is_virtual_name(name: str) -> bool:
+    n = (name or "").strip().lower()
+    return any(h in n for h in _VIRTUAL_HINTS)
 
 
 @dataclass
@@ -131,6 +223,9 @@ class CameraDevice:
     height: int = 0
     backend: str = ""
     available: bool = True
+    virtual: bool = False
+    mean_luma: float = 0.0
+    named_via: str = ""  # ffmpeg | generic
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -140,13 +235,17 @@ class CameraDevice:
             "height": self.height,
             "backend": self.backend,
             "available": self.available,
+            "virtual": self.virtual,
             "label": self.label(),
             "key": self.selection_key(),
+            "named_via": self.named_via,
         }
 
     def label(self) -> str:
         res = f"{self.width}×{self.height}" if self.width and self.height else ""
         bits = [self.name or f"Camera {self.index}"]
+        if self.virtual:
+            bits.append("virtual")
         if res:
             bits.append(res)
         bits.append(f"{self.backend or 'cv'}:{self.index}")
@@ -155,9 +254,13 @@ class CameraDevice:
     def selection_key(self) -> str:
         return f"{self.backend or 'default'}:{self.index}"
 
+    def sort_key(self) -> tuple:
+        # Physical first, higher res first, then index.
+        return (1 if self.virtual else 0, -(self.width * self.height), self.backend, self.index)
+
 
 def _windows_friendly_names() -> list[str]:
-    """Best-effort PnP camera names (order may not match OpenCV indices)."""
+    """Best-effort PnP camera names (order may NOT match OpenCV — do not map by index)."""
     if sys.platform != "win32":
         return []
     ps = (
@@ -175,7 +278,6 @@ def _windows_friendly_names() -> list[str]:
             check=False,
         )
         names = [ln.strip() for ln in (out.stdout or "").splitlines() if ln.strip()]
-        # De-dupe preserving order
         seen: set[str] = set()
         uniq: list[str] = []
         for n in names:
@@ -186,6 +288,129 @@ def _windows_friendly_names() -> list[str]:
         return uniq
     except Exception:  # noqa: BLE001
         return []
+
+
+def _ffmpeg_dshow_names() -> list[str]:
+    """DirectShow video device names via ffmpeg (order ≠ OpenCV — match by fingerprint)."""
+    ff = shutil.which("ffmpeg")
+    if not ff or sys.platform != "win32":
+        return []
+    try:
+        proc = subprocess.run(  # noqa: S603
+            [ff, "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        err = proc.stderr or ""
+        names: list[str] = []
+        for ln in err.splitlines():
+            # [in#0 @ ...] "SNAP U2" (video)
+            m = re.search(r'"([^"]+)"\s*\(video\)', ln, re.I)
+            if m:
+                names.append(m.group(1).strip())
+        return names
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _fingerprint(frame: Any) -> tuple[int, int, int]:
+    h, w = int(frame.shape[0]), int(frame.shape[1])
+    mean = int(round(float(frame.mean())))
+    return w, h, mean
+
+
+def _ffmpeg_fingerprint(name: str) -> tuple[int, int, int] | None:
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        return None
+    try:
+        import cv2
+    except Exception:  # noqa: BLE001
+        return None
+    tmp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            tmp = Path(f.name)
+        # video=<name> — quotes handled by list argv (no shell).
+        proc = subprocess.run(  # noqa: S603
+            [
+                ff,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "dshow",
+                "-i",
+                f"video={name}",
+                "-frames:v",
+                "1",
+                "-y",
+                str(tmp),
+            ],
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        if proc.returncode != 0 or not tmp.is_file() or tmp.stat().st_size < 100:
+            return None
+        img = cv2.imread(str(tmp))
+        if img is None:
+            return None
+        return _fingerprint(img)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _match_ffmpeg_names(devices: list[CameraDevice]) -> None:
+    """Attach real DirectShow names to OpenCV dshow indices.
+
+    OpenCV and ffmpeg often disagree on *default resolution* for the same device, so we
+    match on mean luma (stable across stacks) with a greedy 1:1 assignment — not WxH.
+    """
+    names = _ffmpeg_dshow_names()
+    if not names:
+        return
+    dshow_devs = [d for d in devices if d.backend == "dshow"]
+    if not dshow_devs:
+        return
+
+    name_means: list[tuple[str, int]] = []
+    for name in names:
+        fp = _ffmpeg_fingerprint(name)
+        if fp:
+            name_means.append((name, int(fp[2])))
+    if not name_means:
+        return
+
+    # All candidate pairs sorted by |Δmean|, assign uniquely.
+    pairs: list[tuple[int, CameraDevice, str]] = []
+    for d in dshow_devs:
+        d_mean = int(round(d.mean_luma))
+        for name, mean in name_means:
+            pairs.append((abs(d_mean - mean), d, name))
+    pairs.sort(key=lambda p: p[0])
+
+    used_dev: set[tuple[str, int]] = set()
+    used_name: set[str] = set()
+    for dist, d, name in pairs:
+        if dist > 20:
+            break
+        key = (d.backend, d.index)
+        if key in used_dev or name in used_name:
+            continue
+        d.name = name
+        d.named_via = "ffmpeg"
+        d.virtual = is_virtual_name(name)
+        used_dev.add(key)
+        used_name.add(name)
 
 
 def _silence_opencv_logs() -> Any:
@@ -228,10 +453,13 @@ def _backend_apis() -> list[tuple[str, int | None]]:
 
 
 def _open_capture(index: int, preferred: str | None = None):
-    """Open a camera index. Prefer the Systems-selected backend (MSMF/DSHOW indices differ)."""
+    """Open a camera index. When preferred is msmf/dshow, do **not** fall across backends."""
     backends = _backend_apis()
     pref = (preferred or "").strip().lower()
-    if pref:
+    if pref in ("msmf", "dshow"):
+        only = [b for b in backends if b[0] == pref]
+        backends = only or backends
+    elif pref:
         backends = sorted(backends, key=lambda b: 0 if b[0] == pref else 1)
 
     for name, api in backends:
@@ -252,7 +480,20 @@ def _open_capture(index: int, preferred: str | None = None):
     return None, ""
 
 
-def _probe_backend(backend: str, api: int | None, *, limit: int, friendly: list[str]) -> list[CameraDevice]:
+def apply_capture_resolution(cap: Any, *, width: int = 0, height: int = 0) -> None:
+    """Request a frame size on an open capture (best-effort; drivers may ignore)."""
+    if not width or not height:
+        return
+    try:
+        import cv2
+
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(width))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, float(height))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _probe_backend(backend: str, api: int | None, *, limit: int) -> list[CameraDevice]:
     import cv2
 
     found: list[CameraDevice] = []
@@ -277,12 +518,9 @@ def _probe_backend(backend: str, api: int | None, *, limit: int, friendly: list[
             misses = 0
             if not w or not h:
                 h, w = int(frame.shape[0]), int(frame.shape[1])
-            # Match PnP names by probe order within this backend (best-effort).
-            name = (
-                friendly[len(found)]
-                if len(found) < len(friendly)
-                else (friendly[i] if i < len(friendly) else f"Camera {i}")
-            )
+            mean = float(frame.mean())
+            # Honest generic name until ffmpeg fingerprinting renames DSHOW devices.
+            name = f"Camera {i}"
             found.append(
                 CameraDevice(
                     index=i,
@@ -291,6 +529,9 @@ def _probe_backend(backend: str, api: int | None, *, limit: int, friendly: list[
                     height=h,
                     backend=backend,
                     available=True,
+                    virtual=False,
+                    mean_luma=mean,
+                    named_via="generic",
                 )
             )
         except Exception:  # noqa: BLE001
@@ -306,13 +547,81 @@ def _probe_backend(backend: str, api: int | None, *, limit: int, friendly: list[
     return found
 
 
-def list_cameras(*, max_index: int = _MAX_PROBE) -> list[CameraDevice]:
-    """Probe OpenCV indices per backend. Does not keep devices open.
+def _list_cameras_ffmpeg_first() -> list[CameraDevice] | None:
+    """Windows: DirectShow *names* are authoritative; OpenCV indices are optional hints."""
+    names = _ffmpeg_dshow_names()
+    if not names:
+        return None
 
-    On Windows, MSMF and DirectShow assign different indices to the same hardware —
-    we list both so the Systems picker (and capture) can bind the right one.
-    """
+    # Optional OpenCV slots for fallback capture when ffmpeg is busy.
+    opencv_slots: list[CameraDevice] = []
+    try:
+        from friday.camera.capture import opencv_available
+
+        if opencv_available():
+            prev_log = _silence_opencv_logs()
+            try:
+                for backend, api in _backend_apis():
+                    if backend != "dshow":
+                        continue
+                    opencv_slots.extend(_probe_backend(backend, api, limit=_MAX_PROBE))
+            finally:
+                _restore_opencv_logs(prev_log)
+    except Exception:  # noqa: BLE001
+        opencv_slots = []
+
+    used_idx: set[int] = set()
+    devices: list[CameraDevice] = []
+    for name in names:
+        fp = _ffmpeg_fingerprint(name)
+        w = h = 0
+        mean = 0.0
+        if fp:
+            w, h, mean_i = fp
+            mean = float(mean_i)
+        # Attach nearest unused OpenCV index by mean (hint only — capture prefers name).
+        idx = -1
+        if fp and opencv_slots:
+            best = None
+            for slot in opencv_slots:
+                if slot.index in used_idx:
+                    continue
+                dist = abs(int(round(slot.mean_luma)) - int(mean))
+                if best is None or dist < best[0]:
+                    best = (dist, slot)
+            if best and best[0] <= 20:
+                idx = best[1].index
+                used_idx.add(idx)
+                if not w:
+                    w, h = best[1].width, best[1].height
+                    mean = best[1].mean_luma
+        devices.append(
+            CameraDevice(
+                index=idx if idx >= 0 else 0,
+                name=name,
+                width=w,
+                height=h,
+                backend="dshow",
+                available=True,
+                virtual=is_virtual_name(name),
+                mean_luma=mean,
+                named_via="ffmpeg",
+            )
+        )
+    devices.sort(key=lambda d: d.sort_key())
+    return devices
+
+
+def list_cameras(*, max_index: int = _MAX_PROBE) -> list[CameraDevice]:
+    """List cameras. On Windows prefer ffmpeg DirectShow names (stable) over OpenCV indices."""
     from friday.camera.capture import opencv_available
+
+    try:
+        named = _list_cameras_ffmpeg_first()
+        if named:
+            return named
+    except Exception:  # noqa: BLE001
+        pass
 
     if not opencv_available():
         return []
@@ -322,17 +631,13 @@ def list_cameras(*, max_index: int = _MAX_PROBE) -> list[CameraDevice]:
     except Exception:  # noqa: BLE001
         return []
 
-    friendly = _windows_friendly_names()
-    # Probe a few more slots than PnP names — virtual cams often lack PnP Camera class.
-    soft_cap = max(len(friendly) + 2, 5)
-    limit = max(1, min(int(max_index), soft_cap, _MAX_PROBE))
-
+    limit = max(1, min(int(max_index), _MAX_PROBE))
     found: list[CameraDevice] = []
     seen: set[tuple[str, int]] = set()
     prev_log = _silence_opencv_logs()
     try:
         for backend, api in _backend_apis():
-            for dev in _probe_backend(backend, api, limit=limit, friendly=friendly):
+            for dev in _probe_backend(backend, api, limit=limit):
                 key = (dev.backend, dev.index)
                 if key in seen:
                     continue
@@ -341,10 +646,31 @@ def list_cameras(*, max_index: int = _MAX_PROBE) -> list[CameraDevice]:
     finally:
         _restore_opencv_logs(prev_log)
 
-    # Stable order: backend then index (msmf before dshow so physical cams surface first).
-    order = {"msmf": 0, "dshow": 1, "default": 2}
-    found.sort(key=lambda d: (order.get(d.backend, 9), d.index))
+    try:
+        _match_ffmpeg_names(found)
+    except Exception:  # noqa: BLE001
+        pass
+
+    for d in found:
+        if not d.virtual:
+            d.virtual = is_virtual_name(d.name)
+
+    found.sort(key=lambda d: d.sort_key())
     return found
+
+
+def pick_default_device(devices: list[CameraDevice]) -> CameraDevice | None:
+    """Best desk-look default: physical cam with a live picture (not black / virtual)."""
+    physical = [d for d in devices if not d.virtual and d.mean_luma > 5]
+    pool = physical or [d for d in devices if not d.virtual] or devices
+    if not pool:
+        return None
+    # Prefer names that look like USB webcams over anonymous "Camera N".
+    def score(d: CameraDevice) -> tuple:
+        named = 1 if d.named_via == "ffmpeg" and not d.name.lower().startswith("camera ") else 0
+        return (named, d.mean_luma, d.width * d.height)
+
+    return max(pool, key=score)
 
 
 def devices_payload() -> dict[str, Any]:
@@ -354,15 +680,66 @@ def devices_payload() -> dict[str, Any]:
     devices = list_cameras()
     selected = camera_index()
     backend = camera_backend()
-    pnp = _windows_friendly_names()
+    saved_name = load_selected_name()
+    recommended = pick_default_device(devices)
+
+    # Name wins over stale OpenCV index (fixes Snap Camera ↔ SNAP U2 mixups).
+    selected_dev = None
+    if saved_name:
+        for d in devices:
+            if d.name.lower() == saved_name.lower():
+                selected_dev = d
+                if d.index != selected or (backend and d.backend != backend):
+                    save_selected_index(
+                        d.index,
+                        backend=d.backend,
+                        name=d.name,
+                        resolution=load_resolution(),
+                    )
+                    selected = d.index
+                    backend = d.backend
+                break
+    if selected_dev is None:
+        selected_dev = next(
+            (d for d in devices if d.index == selected and (not backend or d.backend == backend)),
+            None,
+        )
+
+    warn = ""
+    if selected_dev and selected_dev.virtual and recommended and not recommended.virtual:
+        warn = (
+            f"Selected device looks virtual ({selected_dev.name}). "
+            f"Recommended desk camera: {recommended.label()}"
+        )
+    elif saved_name and is_virtual_name(saved_name) and recommended and not recommended.virtual:
+        warn = (
+            f"Saved camera '{saved_name}' is virtual. "
+            f"Recommended: {recommended.label()}"
+        )
     return {
         "ok": True,
         "enabled": camera_feature_enabled(),
         "opencv": opencv_available(),
         "selected_index": selected,
         "selected_backend": backend,
-        "selected_key": f"{backend}:{selected}" if backend else str(selected),
+        "selected_key": (
+            selected_dev.selection_key()
+            if selected_dev
+            else (f"{backend}:{selected}" if backend else str(selected))
+        ),
+        "selected_name": saved_name or (selected_dev.name if selected_dev else ""),
+        "capture_by": "ffmpeg-name" if saved_name else "opencv-index",
+        "resolution": load_resolution(),
+        "resolution_presets": [
+            {"id": "auto", "label": "Auto (driver default)"},
+            {"id": "480p", "label": "480p · 640×480"},
+            {"id": "720p", "label": "720p · 1280×720 (default)"},
+            {"id": "1080p", "label": "1080p · 1920×1080"},
+        ],
+        "recommended_key": recommended.selection_key() if recommended else "",
+        "recommended_label": recommended.label() if recommended else "",
+        "warning": warn,
         "devices": [d.to_dict() for d in devices],
         "count": len(devices),
-        "pnp_names": pnp,
+        "pnp_names": _windows_friendly_names(),
     }

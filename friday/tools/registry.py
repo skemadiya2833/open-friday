@@ -34,9 +34,14 @@ def _safe_workspace_path(rel: str) -> Path:
 
 
 def _shell_enabled() -> bool:
-    import friday.config as cfg
+    try:
+        from friday.runtime.prefs import get as pref
 
-    return bool(cfg.SHELL_TOOLS_ENABLED)
+        return bool(pref("shell_tools"))
+    except Exception:  # noqa: BLE001
+        import friday.config as cfg
+
+        return bool(cfg.SHELL_TOOLS_ENABLED)
 
 
 def _summarize(result: ToolResult) -> str:
@@ -203,7 +208,14 @@ def get_registry() -> ToolRegistry:
             reg = ToolRegistry()
             for spec in builtin_specs():
                 reg.register(spec)
-            if os.getenv("FRIDAY_SENSORS", "false").lower() in ("1", "true", "yes"):
+            sensors_on = False
+            try:
+                from friday.runtime.prefs import get as pref
+
+                sensors_on = bool(pref("sensors"))
+            except Exception:  # noqa: BLE001
+                sensors_on = os.getenv("FRIDAY_SENSORS", "false").lower() in ("1", "true", "yes")
+            if sensors_on:
                 from friday.experimental.sensors import sensor_specs   # read-only, off by default
 
                 for spec in sensor_specs():

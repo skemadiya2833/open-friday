@@ -1,4 +1,4 @@
-const API = "";
+﻿const API = "";
 const SPEAK_KEY = "friday.speakReplies";
 const SESSION_KEY = "friday.sessionId";
 const pauseMs = () => (window.FridayVoice ? FridayVoice.pauseMs() : 1200); // legacy fallback if turn.js missing
@@ -644,12 +644,13 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     ? FridayLive.fillers(speaker)
     : null;
   filler && filler.start();
-  let fillerAwaitDone = false;
-  const awaitFillerAudio = async () => {
-    if (fillerAwaitDone || !filler || typeof filler.ready !== "function") return;
-    fillerAwaitDone = true;
-    filler.stop();
-    try { await filler.ready(); } catch (_) { /* ignore */ }
+  let fillerCleared = false;
+  const clearFillerForReply = () => {
+    if (fillerCleared || !filler) return;
+    fillerCleared = true;
+    // Abort spoken filler immediately — never wait on it before reply TTS.
+    if (typeof filler.abort === "function") filler.abort();
+    else filler.stop();
   };
 
   const live = document.createElement("div");
@@ -762,7 +763,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         pushActivity(`Agent finished · ${ev.status || "done"}`, { live: false });
       }
       if (ev.type === "shell_start") {
-        pushActivity(`Shell ▸ ${ev.command || "…"}`);
+        pushActivity(`Shell ► ${ev.command || "…"}`);
         addBubble("assistant", `Running command:\n${ev.command || ""}`, "shell");
       }
       if (ev.type === "shell_end") {
@@ -787,7 +788,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           if (!(speaker && vcfg.streamSpeech)) FridayLive.friday(streamed);
         }
         if (speaker && vcfg.streamSpeech) {
-          await awaitFillerAudio();
+          clearFillerForReply();
           speaker.push(ev.text);
         }
         $("#messages").scrollTop = $("#messages").scrollHeight;
@@ -876,7 +877,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       fb.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(live, "down"));
     }
     if (skillId) liveMeta.textContent = `skill:${skillId}`;
-    await awaitFillerAudio();
+    clearFillerForReply();
     if (speaker && vcfg.streamSpeech && speaker.spoken() > 0) {
       speaker.finish();
       await speaker.done();
@@ -905,8 +906,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     finalBuffer = "";
     interimText = "";
     if (voiceMode) {
-      // Echo-tail re-arm, then force-listen. Shorter than before so Hold can't feel "deaf".
-      const cool = voiceHoldMode() ? 450 : 250;
+      // Brief echo-tail so speaker bleed doesn't re-trigger STT; keep it snappy.
+      const cool = voiceHoldMode() ? 220 : 120;
       releaseMicAfter(cool);
     } else {
       setState("idle", { force: true });
@@ -1475,7 +1476,7 @@ async function refreshPlan() {
       const row = document.createElement("div");
       row.className = `plan-item${it.done ? " done" : ""}`;
       row.innerHTML = `
-        <div class="plan-check ${it.done ? "on" : ""}" data-id="${it.id}" title="Toggle done">${it.done ? "✓" : ""}</div>
+        <div class="plan-check ${it.done ? "on" : ""}" data-id="${it.id}" title="Toggle done">${it.done ? "âœ“" : ""}</div>
         <div class="plan-text">${escapeHtml(it.text || "")}${it.note ? `<div class="muted">${escapeHtml(it.note)}</div>` : ""}</div>
         <button type="button" data-del="${it.id}">DEL</button>`;
       list.appendChild(row);
@@ -1564,423 +1565,10 @@ $("#taskForm").addEventListener("submit", async (e) => {
   refreshTasks();
 });
 
-function bindVoiceControls() {
-  document.querySelectorAll("#settingsGrid [data-voice-style]").forEach((b) =>
-    b.addEventListener("click", () => window.FridayVoice && FridayVoice.setStyle(b.dataset.voiceStyle)));
-  document.querySelectorAll("#settingsGrid [data-voice-duplex]").forEach((b) =>
-    b.addEventListener("click", () => window.FridayVoice && FridayVoice.setDuplex(b.dataset.voiceDuplex)));
-  window.FridayLive && FridayLive.syncControls();
-}
 
+/* Systems / camera UI lives in systems-ui.js (loaded after this file). */
 function humorSetting() {
   return localStorage.getItem("friday_humor") || "dry";
-}
-
-function bindHumorControls() {
-  const cur = humorSetting();
-  document.querySelectorAll("#humorSeg [data-humor]").forEach((btn) => {
-    // Match voice seg buttons: CSS highlights `.seg button.on`, not `.active`.
-    btn.classList.toggle("on", btn.getAttribute("data-humor") === cur);
-    btn.addEventListener("click", () => {
-      localStorage.setItem("friday_humor", btn.getAttribute("data-humor") || "dry");
-      document.querySelectorAll("#humorSeg [data-humor]").forEach((b) => {
-        b.classList.toggle("on", b === btn);
-      });
-    });
-  });
-}
-
-function opsSummaryHtml(ops) {
-  if (!ops || !ops.counts) return "";
-  const c = ops.counts;
-  const oll = (ops.subsystems && ops.subsystems.ollama) || {};
-  const ollLabel = oll.up ? `up${oll.version ? " · " + oll.version : ""}` : "down";
-  const drift = (ops.health && ops.health.drift_keys && ops.health.drift_keys.length)
-    ? ops.health.drift_keys.join(", ")
-    : "none";
-  const memCols = (ops.subsystems && ops.subsystems.memory_collections) || {};
-  const memDetail = Object.keys(memCols).length
-    ? Object.entries(memCols).map(([k, v]) => `${k}:${v}`).join(" · ")
-    : "";
-  return `
-      <div class="setting ops-panel"><label>Ops summary</label>
-        <p class="muted" style="margin:4px 0 8px">Local aggregate (${ops.duration_ms || "—"} ms) — no cloud telemetry.</p>
-        <table class="ops-table"><tbody>
-          <tr><td>Sessions</td><td>${c.sessions ?? "—"}</td><td>Active runs</td><td>${c.active_runs ?? "—"}</td></tr>
-          <tr><td>Skills</td><td>${c.skills_enabled ?? "—"} / ${c.skills_total ?? "—"}</td><td>SKILL.md</td><td>${c.skillmd_installed ?? "—"} inst · ${c.skillmd_quarantine ?? "—"} quarantine</td></tr>
-          <tr><td>Memory docs</td><td>${c.memory_docs ?? "—"}${memDetail ? `<br><span class="muted">${escapeHtml(memDetail)}</span>` : ""}</td><td>Reports</td><td>${c.reports ?? "—"}</td></tr>
-          <tr><td>Tasks</td><td>${c.tasks_enabled ?? "—"} / ${c.scheduled_tasks ?? "—"}</td><td>Approvals</td><td>${c.approvals_pending ?? "—"} pending</td></tr>
-          <tr><td>Ollama</td><td colspan="3">${escapeHtml(ollLabel)} · config drift: ${escapeHtml(drift)}</td></tr>
-        </tbody></table>
-        <p class="muted" style="margin:8px 0 0">CLI: <code>python main.py --doctor</code> for GPU/models/ports (never auto-downloads).</p>
-      </div>`;
-}
-
-async function refreshSettings() {
-  try {
-    const [hRes, opsRes] = await Promise.all([
-      apiFetch("/api/health"),
-      apiFetch("/api/ops/summary").catch(() => null),
-    ]);
-    const h = await hRes.json();
-    let ops = null;
-    if (opsRes && opsRes.ok) ops = await opsRes.json();
-    $("#modelPill").textContent = h.chat_model || h.vision_model || "local";
-    const uplink = $("#uplinkStatus");
-    if (uplink) uplink.textContent = "UPLINK · SECURE";
-    $("#settingsGrid").innerHTML = `
-      ${opsSummaryHtml(ops)}
-      <div class="setting"><label>Vision model</label><strong>${escapeHtml(h.vision_model || "—")}</strong></div>
-      <div class="setting"><label>Chat model</label><strong>${escapeHtml(h.chat_model || "—")}</strong></div>
-      <div class="setting"><label>Embed model</label><strong>${escapeHtml(h.embed_model || "—")}</strong></div>
-      <div class="setting"><label>Voice</label><strong>${h.voice ? "enabled" : "disabled"}</strong>
-        <label class="speak-toggle" style="margin-top:12px">
-          <input type="checkbox" id="speakToggleSettings" />
-          <span>Audio Out</span>
-        </label>
-      </div>
-      <div class="setting"><label>Voice pacing</label>
-        <div class="seg">
-          <button type="button" data-voice-style="realtime">Realtime</button>
-          <button type="button" data-voice-style="relaxed">Relaxed</button>
-        </div>
-        <div class="seg" style="margin-top:8px">
-          <button type="button" data-voice-duplex="hold">Hold</button>
-          <button type="button" data-voice-duplex="interrupt">Interrupt</button>
-        </div>
-        <p class="muted" style="margin:8px 0 0">Hold (default) is speaker-safe half-duplex: mic muted while Friday talks + echo tail — industry fix for monitor speakers + desk mic. Say “speak slower / faster / normally” to change pace (no slider). Voice: Edge Ava neural.</p>
-      </div>
-      <div class="setting"><label>Humor</label>
-        <div class="seg" id="humorSeg">
-          <button type="button" data-humor="off">Off</button>
-          <button type="button" data-humor="dry">Dry</button>
-          <button type="button" data-humor="full">Full</button>
-        </div>
-        <p class="muted" style="margin:8px 0 0">Stored as FRIDAY_HUMOR for this browser (server default still comes from .env). No quips during errors or security prompts.</p>
-      </div>
-      <div class="setting"><label>Morning briefing</label>
-        <label class="speak-toggle" style="margin-top:8px">
-          <input type="checkbox" id="morningBriefingToggle" />
-          <span>Local daily briefing (plan, reminders, weather, news)</span>
-        </label>
-        <p class="muted" style="margin:8px 0 0">Owner-only built-in job (default 08:00). Agents cannot schedule this. No Gmail/Calendar OAuth.</p>
-        <button type="button" class="ghost" id="morningBriefingRun" style="margin-top:8px">Run once now</button>
-      </div>
-      <div class="setting"><label>Camera</label>
-        <p class="muted" id="cameraStatusLine" style="margin:0 0 8px">Checking…</p>
-        <label class="speak-toggle">
-          <input type="checkbox" id="cameraEnableToggle" />
-          <span>Enable camera</span>
-        </label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
-          <label for="cameraDeviceSelect" class="muted" style="margin:0">Device</label>
-          <select id="cameraDeviceSelect" style="min-width:220px;max-width:100%">
-            <option value="">Scanning…</option>
-          </select>
-          <button type="button" class="ghost" id="cameraScanBtn" title="Re-scan connected cameras">Scan</button>
-        </div>
-        <p class="muted" id="cameraDeviceHint" style="margin:0 0 8px">Pick which webcam Friday uses for desk look.</p>
-        <label class="speak-toggle">
-          <input type="checkbox" id="cameraArmToggle" />
-          <span>Arm camera (timed grant)</span>
-        </label>
-        <p class="muted" style="margin:8px 0 0">All camera controls live here — no .env required. One-shot desk look; e-stop disarms. Frames stay on this PC.</p>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" class="ghost" id="cameraSnapBtn">Snap once now</button>
-          <button type="button" class="ghost" id="cameraPreviewBtn">Show preview</button>
-          <span class="pill" id="cameraLivePill" style="display:none">CAMERA LIVE</span>
-        </div>
-        <img id="cameraPreviewImg" alt="Camera preview" class="hidden" style="margin-top:10px;max-width:100%;max-height:240px;border:1px solid var(--line);background:#000" />
-      </div>`;
-    bindVoiceControls();
-    syncSpeakToggles();
-    bindHumorControls();
-    bindMorningBriefing();
-    bindCameraControls();
-    $("#speakToggleSettings")?.addEventListener("change", (e) => {
-      setSpeakEnabled(e.target.checked);
-    });
-  } catch (_) {
-    $("#settingsGrid").innerHTML = `<div class="setting"><strong>Uplink lost — server offline</strong></div>`;
-    const uplink = $("#uplinkStatus");
-    if (uplink) uplink.textContent = "UPLINK · LOST";
-  }
-}
-
-async function refreshCameraStatus() {
-  const line = $("#cameraStatusLine");
-  const armToggle = $("#cameraArmToggle");
-  const enableToggle = $("#cameraEnableToggle");
-  try {
-    const st = await (await apiFetch("/api/camera/status")).json();
-    if (line) {
-      const cam = st.index_label || (typeof st.index === "number" ? `Camera ${st.index}` : "");
-      const base = st.detail || (st.enabled ? (st.armed ? "Armed" : "Disarmed") : "Disabled");
-      line.textContent = cam && st.enabled ? `${base} · ${cam}` : base;
-    }
-    if (enableToggle) enableToggle.checked = !!st.enabled;
-    if (armToggle) {
-      armToggle.checked = !!st.armed;
-      armToggle.disabled = !st.enabled;
-    }
-    if (st && typeof st.live === "boolean") setCameraLooking(!!st.live);
-    return st;
-  } catch (_) {
-    if (line) line.textContent = "Camera status unavailable";
-    return null;
-  }
-}
-
-async function refreshCameraDevices() {
-  const sel = $("#cameraDeviceSelect");
-  const hint = $("#cameraDeviceHint");
-  if (!sel) return null;
-  sel.disabled = true;
-  if (hint) hint.textContent = "Scanning connected cameras…";
-  try {
-    const data = await (await apiFetch("/api/camera/devices")).json();
-    const devices = Array.isArray(data.devices) ? data.devices : [];
-    const selectedIdx = typeof data.selected_index === "number" ? data.selected_index : 0;
-    const selectedBe = (data.selected_backend || "").trim();
-    const selectedKey = data.selected_key || (selectedBe ? `${selectedBe}:${selectedIdx}` : `:${selectedIdx}`);
-    sel.innerHTML = "";
-    if (!data.opencv) {
-      sel.innerHTML = `<option value="">OpenCV missing</option>`;
-      if (hint) hint.textContent = data.error || "Install camera extras to list devices.";
-      return data;
-    }
-    if (!devices.length) {
-      sel.innerHTML = `<option value="">No cameras found</option>`;
-      if (hint) hint.textContent = "Plug in a webcam and hit Scan. Close other apps that lock the camera.";
-      return data;
-    }
-    let matched = false;
-    for (const d of devices) {
-      const opt = document.createElement("option");
-      const key = `${d.backend || "default"}:${d.index}`;
-      opt.value = key;
-      opt.textContent = d.label || d.name || `Camera ${d.index}`;
-      const exact = selectedBe && key === `${selectedBe}:${selectedIdx}`;
-      const loose = !selectedBe && !matched && d.index === selectedIdx;
-      if (exact || loose) {
-        opt.selected = true;
-        matched = true;
-      }
-      sel.appendChild(opt);
-    }
-    // If preferred index isn't in the live list, still show it as a choice.
-    if (!matched) {
-      const opt = document.createElement("option");
-      opt.value = selectedBe ? `${selectedBe}:${selectedIdx}` : `default:${selectedIdx}`;
-      opt.textContent = `Camera ${selectedIdx}${selectedBe ? ` · ${selectedBe}` : ""} (saved · not detected now)`;
-      opt.selected = true;
-      sel.appendChild(opt);
-    }
-    if (hint) {
-      const pnp = Array.isArray(data.pnp_names) ? data.pnp_names.length : 0;
-      hint.textContent = data.enabled
-        ? `${devices.length} OpenCV endpoint(s)${pnp ? ` · ${pnp} Windows PnP name(s)` : ""} — pick the exact device (MSMF/DSHOW indices differ).`
-        : `${devices.length} found — enable camera to use them.`;
-    }
-    return data;
-  } catch (_) {
-    sel.innerHTML = `<option value="">Scan failed</option>`;
-    if (hint) hint.textContent = "Could not list cameras (server offline?).";
-    return null;
-  } finally {
-    sel.disabled = false;
-  }
-}
-
-async function bindCameraControls() {
-  const toggle = $("#cameraArmToggle");
-  const enableToggle = $("#cameraEnableToggle");
-  const snapBtn = $("#cameraSnapBtn");
-  const scanBtn = $("#cameraScanBtn");
-  const sel = $("#cameraDeviceSelect");
-  if (!toggle) return;
-  await refreshCameraStatus();
-  await refreshCameraDevices();
-  enableToggle?.addEventListener("change", async () => {
-    try {
-      const res = await apiFetch("/api/camera/enable", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: !!enableToggle.checked }),
-      });
-      if (!res.ok) {
-        enableToggle.checked = !enableToggle.checked;
-        const err = await res.json().catch(() => ({}));
-        addBubble("assistant", err.detail || "Could not update camera enable.");
-      }
-    } catch (_) {
-      enableToggle.checked = !enableToggle.checked;
-    }
-    await refreshCameraStatus();
-    if (enableToggle?.checked) await refreshCameraDevices();
-  });
-  scanBtn?.addEventListener("click", async () => {
-    await refreshCameraDevices();
-    await refreshCameraStatus();
-  });
-  sel?.addEventListener("change", async () => {
-    const raw = String(sel.value || "");
-    let backend = "";
-    let idx = Number(raw);
-    if (raw.includes(":")) {
-      const [be, ix] = raw.split(":");
-      backend = (be || "").trim();
-      idx = Number(ix);
-    }
-    if (!Number.isFinite(idx)) return;
-    try {
-      const res = await apiFetch("/api/camera/select", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ index: idx, backend }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        addBubble("assistant", err.detail || "Could not save camera selection.");
-        await refreshCameraDevices();
-        return;
-      }
-      await refreshCameraStatus();
-    } catch (_) {
-      addBubble("assistant", "Could not save camera selection (offline).");
-    }
-  });
-  toggle.addEventListener("change", async () => {
-    try {
-      if (toggle.checked) {
-        const res = await apiFetch("/api/camera/arm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        });
-        if (!res.ok) {
-          toggle.checked = false;
-          const err = await res.json().catch(() => ({}));
-          addBubble("assistant", err.detail || "Could not arm camera — enable it first.");
-        }
-      } else {
-        await apiFetch("/api/camera/disarm", { method: "POST" });
-      }
-    } catch (_) {
-      toggle.checked = false;
-    }
-    await refreshCameraStatus();
-  });
-  snapBtn?.addEventListener("click", async () => {
-    setCameraLooking(true, "capture");
-    try {
-      const res = await apiFetch("/api/camera/snap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: "What do you see in front of the camera?" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        addBubble("assistant", data.detail || "Camera snap failed — arm the camera first.");
-      } else {
-        addBubble("assistant", data.reply || "(no description)");
-      }
-    } catch (_) {
-      addBubble("assistant", "Camera snap failed (offline).");
-    } finally {
-      setCameraLooking(false);
-      await refreshCameraStatus();
-    }
-  });
-  const previewBtn = $("#cameraPreviewBtn");
-  const previewImg = $("#cameraPreviewImg");
-  previewBtn?.addEventListener("click", async () => {
-    if (!previewImg) return;
-    const hint = $("#cameraDeviceHint");
-    setCameraLooking(true, "capture");
-    if (hint) hint.textContent = "Opening preview…";
-    try {
-      // Explicit enable + arm before fetch — avoids 403 "not armed" and UI/prefs desync.
-      if (enableToggle) enableToggle.checked = true;
-      const en = await apiFetch("/api/camera/enable", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: true }),
-      });
-      if (!en.ok) {
-        const detail = "Could not enable the camera.";
-        if (hint) hint.textContent = detail;
-        addBubble("assistant", detail);
-        previewImg.classList.add("hidden");
-        return;
-      }
-      await apiFetch("/api/camera/arm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ttl_seconds: 120 }),
-      });
-      if (armToggle) armToggle.checked = true;
-      const res = await apiFetch("/api/camera/preview");
-      if (!res.ok) {
-        let detail = "Preview failed.";
-        try {
-          const err = await res.json();
-          detail = err.detail || detail;
-        } catch (_) {
-          detail = `Preview failed (HTTP ${res.status}).`;
-        }
-        if (hint) hint.textContent = detail;
-        addBubble("assistant", detail);
-        previewImg.classList.add("hidden");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      if (previewImg.dataset.url) URL.revokeObjectURL(previewImg.dataset.url);
-      previewImg.dataset.url = url;
-      previewImg.src = url;
-      previewImg.classList.remove("hidden");
-      if (hint) hint.textContent = "Preview frame below — pick another device if this is the wrong camera.";
-    } catch (_) {
-      if (hint) hint.textContent = "Preview failed (offline).";
-      addBubble("assistant", "Preview failed (offline).");
-    } finally {
-      setCameraLooking(false);
-      await refreshCameraStatus();
-    }
-  });
-}
-
-async function bindMorningBriefing() {
-  const toggle = $("#morningBriefingToggle");
-  const runBtn = $("#morningBriefingRun");
-  if (!toggle) return;
-  try {
-    const st = await (await apiFetch("/api/briefing/morning")).json();
-    toggle.checked = !!st.enabled;
-  } catch (_) { /* offline */ }
-  toggle.addEventListener("change", async () => {
-    try {
-      await apiFetch("/api/briefing/morning", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: toggle.checked }),
-      });
-    } catch (_) {
-      toggle.checked = !toggle.checked;
-    }
-  });
-  runBtn?.addEventListener("click", async () => {
-    try {
-      const r = await (await apiFetch("/api/briefing/morning/run", { method: "POST" })).json();
-      if (r.script) {
-        addBubble("assistant", r.script);
-        if (speakEnabled()) speak(r.script);
-      }
-    } catch (err) {
-      addBubble("assistant", "Could not run morning briefing.");
-    }
-  });
 }
 
 function pickFemaleBrowserVoice() {
@@ -2116,8 +1704,13 @@ async function speak(text) {
   if (!parts.length) return;
   stopSpeech();
   window.FridayLive && FridayLive.state("speaking");
-  for (const part of parts) {
-    const url = await ttsFetchUrl(part);
+  // Prefetch sentence N+1 while N plays — cuts the gap between Edge fetches.
+  let next = ttsFetchUrl(parts[0]);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const urlP = next;
+    if (i + 1 < parts.length) next = ttsFetchUrl(parts[i + 1]);
+    const url = await urlP;
     if (url) {
       await playUrl(url);
       continue;

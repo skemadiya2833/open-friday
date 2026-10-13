@@ -90,7 +90,10 @@ def test_free_slots_from_fixture(sample_ics: str, tmp_path, monkeypatch):
     from friday.calendar import agenda as cal_agenda
     from friday.calendar.secrets import set_ical_url
 
+    db = str(tmp_path / "tasks.sqlite")
     monkeypatch.setattr("friday.config.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("friday.config.TASKS_DB", db)
+    monkeypatch.setattr("friday.store.db.TASKS_DB", db)
     monkeypatch.setattr("friday.calendar.secrets.DATA_DIR", str(tmp_path))
     monkeypatch.setattr("friday.calendar.fetch.DATA_DIR", str(tmp_path))
     set_ical_url("https://calendar.example.com/secret/basic.ics")
@@ -102,7 +105,7 @@ def test_free_slots_from_fixture(sample_ics: str, tmp_path, monkeypatch):
     monkeypatch.setattr("friday.calendar.agenda.fetch_ical", _fake_fetch)
 
     day = date(2030, 6, 15)
-    slots = cal_agenda.free_slots(day, 30)
+    slots = cal_agenda.free_slots(day, 30, force_fetch=True)
     assert slots
     assert any("09:00" in s["start"] or "T09:" in s["start"] for s in slots)
     gap = next(s for s in slots if "11:" in s["start"] or "T11:" in s["start"])

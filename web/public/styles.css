@@ -159,6 +159,7 @@ body {
   letter-spacing: 0.08em;
   animation: cameraPulse 1.1s ease-in-out infinite;
 }
+.hidden { display: none !important; }
 .camera-hud-pill.hidden { display: none; }
 @keyframes cameraPulse {
   0%, 100% { opacity: 0.75; }
@@ -654,6 +655,19 @@ select:focus, input:focus, textarea:focus {
   padding-bottom: 12px;
 }
 .settings-grid .ops-panel { grid-column: 1 / -1; }
+.prefs-panel .prefs-group { margin: 14px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.prefs-panel .prefs-group:first-of-type { border-top: 0; padding-top: 0; }
+.prefs-group-title {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.pref-item { margin: 0 0 14px; }
+.pref-label { font-size: 0.9rem; }
+.pref-seg button { text-transform: none; }
 .ops-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.82rem; }
 .ops-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--text); }
 .ops-table td:nth-child(odd) { color: var(--muted); width: 22%; }

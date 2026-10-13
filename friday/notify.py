@@ -23,7 +23,14 @@ $n = New-Object Windows.UI.Notifications.ToastNotification $d
 
 
 def toasts_enabled() -> bool:
-    return os.name == "nt" and os.getenv("FRIDAY_TOASTS", "on").strip().lower() not in ("0", "off", "false", "no")
+    if os.name != "nt":
+        return False
+    try:
+        from friday.runtime.prefs import get as pref
+
+        return bool(pref("toasts"))
+    except Exception:  # noqa: BLE001
+        return os.getenv("FRIDAY_TOASTS", "on").strip().lower() not in ("0", "off", "false", "no")
 
 
 def ui_url(notification_id: str = "") -> str:

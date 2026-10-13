@@ -2,6 +2,10 @@
 
 Neutral reference for Friday configuration. Values shown are **typical defaults** when unset unless noted. See `.env.example` for a starter file.
 
+## Prefer Systems → Preferences
+
+Everyday knobs (persona, agent backend, tools-first, memory, approvals, shell tools, TTS voice, model roles, low-end) are owned by **Systems → Preferences** (`data/runtime_prefs.json`). Resolution: **UI → env → optima**. Host/bind/auth/API keys/paths stay env-only (need restart). Use **Reset to optima** in Systems for recommended defaults.
+
 ## Server and auth
 
 | Variable | Default | Purpose |
@@ -53,7 +57,7 @@ Neutral reference for Friday configuration. Values shown are **typical defaults*
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| AGENT_BACKEND | `legacy` | `legacy` \| `hybrid` (MCP desktop) |
+| AGENT_BACKEND | *(auto)* | `legacy` \| `hybrid`. Empty = **auto**: hybrid when Windows-MCP is enabled in `config/mcp_servers.yaml`, else legacy screenshot loop |
 | MAX_ITERATIONS | `60` | Desktop loop cap |
 | MAX_EMPTY_DECISIONS | `4` | Empty parser tolerance |
 | MAX_TOOL_STEPS | `8` | Tool loop cap |
@@ -120,6 +124,7 @@ Neutral reference for Friday configuration. Values shown are **typical defaults*
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| FRIDAY_UI | `public` | Control Center: `public` (`web/public`, default) or `dist` (Vite). Stale `web/dist` no longer shadows live UI unless opted in |
 | FRIDAY_DATA_DIR | `./data` | State root |
 | FRIDAY_WORKSPACE | `data/workspace` | Agent workspace |
 | FRIDAY_CONFIG_DIR | `./config` | Policy and MCP yaml |

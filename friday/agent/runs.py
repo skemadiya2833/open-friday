@@ -250,11 +250,10 @@ def maybe_propose_skill(objective: str, ctrl: AgentController, status) -> str | 
 
 
 def _default_runner(objective: str, ctrl: AgentController):
-    import os
+    from friday.agent.backend import resolve_agent_backend
 
-    # AGENT_BACKEND=legacy (default) keeps the original screenshot loop. "hybrid" uses the
-    # accessibility-tree-first agent and needs the Windows-MCP server enabled in config/mcp_servers.yaml.
-    if os.getenv("AGENT_BACKEND", "legacy").strip().lower() == "hybrid":
+    # Explicit AGENT_BACKEND wins. Otherwise: hybrid when Windows-MCP is enabled, else legacy.
+    if resolve_agent_backend() == "hybrid":
         from friday.agent.hybrid import run_hybrid
 
         status = run_hybrid(objective, controller=ctrl)

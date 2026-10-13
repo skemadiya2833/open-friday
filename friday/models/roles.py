@@ -31,8 +31,17 @@ def get_model_roles() -> ModelRoles:
         vision=os.getenv("FRIDAY_MODEL_VISION", os.getenv("VISION_MODEL", "qwen3.5:9b")).strip() or "qwen3.5:9b",
         coder=os.getenv("FRIDAY_MODEL_CODER", "qwen3-coder:30b").strip(),
         embed=os.getenv("EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text",
-        enabled=os.getenv("FRIDAY_MODEL_ROLES", "false").strip().lower() in ("1", "true", "yes", "on"),
+        enabled=_roles_enabled(),
     )
+
+
+def _roles_enabled() -> bool:
+    try:
+        from friday.runtime.prefs import get as pref
+
+        return bool(pref("model_roles"))
+    except Exception:  # noqa: BLE001
+        return os.getenv("FRIDAY_MODEL_ROLES", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
 def model_for(role: str) -> str:

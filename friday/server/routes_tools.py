@@ -24,14 +24,21 @@ def tools_list() -> dict[str, Any]:
 
 @router.get("/policy")
 def policy_summary() -> dict[str, Any]:
-    from friday.config import SHELL_TOOLS_ENABLED
     from friday.safety.policy import get_policy
 
+    try:
+        from friday.runtime.prefs import get as pref
+
+        shell_on = bool(pref("shell_tools"))
+    except Exception:  # noqa: BLE001
+        from friday.config import SHELL_TOOLS_ENABLED
+
+        shell_on = bool(SHELL_TOOLS_ENABLED)
     p = get_policy()
     return {
         "tiers": p.tiers,
         "tools": p.tools,
-        "shell": {"enabled": bool(SHELL_TOOLS_ENABLED), "mode": p.shell.mode,
+        "shell": {"enabled": shell_on, "mode": p.shell.mode,
                   "timeout_seconds": p.shell.timeout_seconds, "allowlist_entries": len(p.shell.allowlist)},
     }
 

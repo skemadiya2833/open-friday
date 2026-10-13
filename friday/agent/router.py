@@ -154,4 +154,9 @@ def approval_from_service(run_id: str | None) -> Callable[[str, str], bool]:
 
 
 def enabled_by_env() -> bool:
-    return os.getenv("FRIDAY_TOOLS_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")
+    try:
+        from friday.runtime.prefs import get as pref
+
+        return bool(pref("tools_first"))
+    except Exception:  # noqa: BLE001
+        return os.getenv("FRIDAY_TOOLS_FIRST", "true").strip().lower() not in ("0", "false", "no", "off")

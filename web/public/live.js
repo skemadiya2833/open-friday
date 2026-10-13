@@ -379,15 +379,18 @@
     fillers(speaker, kind) {
       let timer = 0, spoken = 0, stopped = false, idx = Math.floor(Math.random() * 5);
       let audioChain = Promise.resolve();
+      // Realtime streams the reply ASAP — spoken fillers only add TTS delay.
+      // Captions still show so the HUD feels alive while the model thinks.
+      const audioOk = () => !Voice.cfg().streamSpeech;
       const say = (type) => {
         if (stopped || spoken >= 2) return;
         const list = Live.FILLERS[type] || Live.FILLERS.thinking;
         const text = list[idx++ % list.length];
         spoken++;
         Live.friday(text, { filler: true });
-        // Prefer dedicated speakFiller (real Edge/browser TTS). Speaker-chain
-        // fillers were captions-only when window TTS helpers were missing.
+        if (!audioOk()) return;
         audioChain = audioChain.then(async () => {
+          if (stopped) return;
           if (typeof window.speakFiller === "function") {
             await window.speakFiller(text);
           } else if (speaker && typeof speaker.say === "function") {
@@ -402,6 +405,12 @@
         lookup() { if (!spoken) { clearTimeout(timer); timer = setTimeout(() => say("lookup"), 400); } },
         looking() { clearTimeout(timer); say("looking"); },
         stop() { stopped = true; clearTimeout(timer); },
+        abort() {
+          stopped = true;
+          clearTimeout(timer);
+          try { window.stopSpeech && window.stopSpeech(); } catch (_) {}
+          audioChain = Promise.resolve();
+        },
         ready() { return audioChain; },
         count() { return spoken; },
       };
@@ -419,7 +428,7 @@
           const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
           if (!clean || aborted) return;
           if (first) { first = false; onFirst && onFirst(); }
-          const realtime = Voice.style() === "realtime";
+          // Kick Edge fetch immediately; play when prior sentence finishes (prefetch N+1).
           const pre = window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
           chain = chain.then(async () => {
             if (aborted) return;
@@ -432,7 +441,6 @@
               if (trail.length > 6) trail.shift();
               Live._spokenTrail = trail.slice();
             }
-            // Always prefer neural Edge — browser TTS is the robotic voice on speaker setups.
             const url = await pre;
             if (aborted) return;
             if (url) await window.playUrl(url);
@@ -448,13 +456,13 @@
             let m, cut = -1;
             while ((m = re.exec(pending))) {
               const end = m.index + m[0].length;
-              // Skip tiny fragments ("OK." / "Yes.") so we don't over-chop.
-              if (end >= 18 || m[0].includes("\n")) { cut = end; break; }
+              // Speak sooner: short openings ("Sure." / "On it.") used to wait for 18 chars.
+              if (end >= 8 || m[0].includes("\n")) { cut = end; break; }
             }
             // Soft overflow: only at a word boundary if a sentence never arrived.
-            if (cut < 0 && pending.length > 280) {
-              const space = pending.lastIndexOf(" ", 240);
-              if (space >= 40) cut = space + 1;
+            if (cut < 0 && pending.length > 160) {
+              const space = pending.lastIndexOf(" ", 140);
+              if (space >= 24) cut = space + 1;
             }
             if (cut < 0) break;
             sp.say(pending.slice(0, cut));

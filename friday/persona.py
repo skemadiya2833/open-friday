@@ -52,6 +52,14 @@ DEFAULT_EDGE_VOICE = "en-US-AvaNeural"
 
 
 def owner_name() -> str:
+    try:
+        from friday.runtime.prefs import get as pref
+
+        name = str(pref("owner_name") or "").strip()
+        if name:
+            return name
+    except Exception:  # noqa: BLE001
+        pass
     return (os.environ.get("FRIDAY_OWNER_NAME") or "boss").strip() or "boss"
 
 

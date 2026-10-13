@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import re
 import threading
-from typing import Any
 
 _SECRET = re.compile(r"(password|passcode|pin\b|otp|cvv|card number|credit card|api[_ -]?key|secret|token|ssn|aadhaar|\b\d{12,19}\b)", re.I)
 

@@ -131,6 +131,14 @@ class CameraSession:
             idx = camera_index()
             be = camera_backend()
             label = f"Camera {idx}" + (f" · {be}" if be else "")
+            try:
+                from friday.camera.devices import load_prefs
+
+                name = str(load_prefs().get("name") or "").strip()
+                if name:
+                    label = f"{name} · {be}:{idx}" if be else name
+            except Exception:  # noqa: BLE001
+                pass
             if not enabled:
                 detail = "disabled — turn on Enable camera in Systems"
             elif not opencv_available():

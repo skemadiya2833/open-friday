@@ -24,6 +24,8 @@ class SnapBody(BaseModel):
 class SelectBody(BaseModel):
     index: int = Field(ge=0, le=31)
     backend: str = Field(default="", max_length=16)
+    name: str = Field(default="", max_length=120)
+    resolution: str | None = Field(default=None, max_length=16)
 
 
 class EnableBody(BaseModel):
@@ -61,7 +63,12 @@ def camera_select(body: SelectBody) -> dict[str, Any]:
     from friday.camera.devices import save_selected_index
     from friday.camera.session import get_camera_session
 
-    out = save_selected_index(body.index, backend=(body.backend or "").strip())
+    out = save_selected_index(
+        body.index,
+        backend=(body.backend or "").strip(),
+        name=(body.name or "").strip(),
+        resolution=body.resolution,
+    )
     st = get_camera_session().status().to_dict()
     return {**out, "status": st}
 

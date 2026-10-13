@@ -34,17 +34,24 @@ def _serialize_event(e: Event) -> EventDict:
     }
 
 
-def load_events(*, force_fetch: bool = False) -> list[Event]:
-    """Prefer SQLite calendar cache; refresh from iCal when stale or forced."""
+def load_events(
+    *,
+    force_fetch: bool = False,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[Event]:
+    """Prefer SQLite calendar cache; refresh from iCal when stale or forced.
+
+    Optional *start*/*end* widen the SQLite query (needed for free-slots on far dates).
+    """
     try:
         from friday.calendar.cache import events_in_range, refresh_from_ical
 
         refresh_from_ical(force=force_fetch)
-        # Wide window: past day through +14d for free-slots / week views
         now = datetime.now().astimezone()
-        start = now - timedelta(days=1)
-        end = now + timedelta(days=14)
-        rows = events_in_range(start.timestamp(), end.timestamp())
+        q_start = start or (now - timedelta(days=1))
+        q_end = end or (now + timedelta(days=14))
+        rows = events_in_range(q_start.timestamp(), q_end.timestamp())
         out: list[Event] = []
         for r in rows:
             out.append(
@@ -128,7 +135,16 @@ def free_slots(day: date, duration_min: int, *, force_fetch: bool = False) -> li
     tz = datetime.now().astimezone().tzinfo
     day_start = datetime.combine(day, time(9, 0), tzinfo=tz)
     day_end = datetime.combine(day, time(18, 0), tzinfo=tz)
-    busy = _filter_range(load_events(force_fetch=force_fetch), day_start, day_end)
+    # Query the cache for this day (not only the rolling ±near-term window).
+    busy = _filter_range(
+        load_events(
+            force_fetch=force_fetch,
+            start=day_start - timedelta(hours=12),
+            end=day_end + timedelta(hours=12),
+        ),
+        day_start,
+        day_end,
+    )
     busy.sort(key=lambda e: e["start"])
 
     slots: list[dict[str, str]] = []
