@@ -351,8 +351,16 @@ def memory_search(q: str, collection: str = "memories", limit: int = 8) -> list[
 
 @app.post("/api/memory")
 def memory_add(body: MemoryAddRequest) -> dict[str, Any]:
+    # Durable notes go to SQLite (+ Chroma mirror). Other collections stay vector-only.
+    coll = (body.collection or "memories").strip()
+    if coll in ("memories", "owner_facts", ""):
+        from friday.store.facts import add_fact
+
+        row = add_fact(body.text, source="manual", kind="note", mirror_chroma=True)
+        return {"id": row["id"]}
     from friday.memory import get_memory
-    cid = get_memory().add(body.text, collection=body.collection)
+
+    cid = get_memory().add(body.text, collection=coll)
     return {"id": cid}
 
 

@@ -118,6 +118,18 @@ _LIST_CAMERAS = re.compile(
     r"\bcameras?\s+(?:list|available|connected)\b",
     re.I,
 )
+# Week / task dashboard as HTML in the browser — never the vision desktop agent.
+_WEEK_DASHBOARD = re.compile(
+    r"\b("
+    r"(?:create|make|build|show|display|open|generate)\b.{0,80}\b"
+    r"(?:dashboard|board|overview|visual)\b.{0,80}\b"
+    r"(?:week|weekly|tasks?|agenda|plan|calendar)|"
+    r"(?:week|weekly)\b.{0,60}\b(?:dashboard|overview|board|visual)|"
+    r"dashboard\b.{0,60}\b(?:week|weekly|tasks?|agenda)|"
+    r"tasks?\b.{0,40}\b(?:for the week|this week|week)\b.{0,40}\b(?:visual|html|dashboard|screen|display)"
+    r")\b",
+    re.I,
+)
 _SHOW_TEXT_ON_SCREEN = re.compile(
     r"^\s*(?:please\s+)?(?:show|display|put|write)\b.{"
     r"0,40}\b(?:on (?:my |the )?(?:screen|desktop)|in (?:a |my )?notepad)\b",
@@ -379,6 +391,13 @@ def _html_escape(s: str) -> str:
     )
 
 
+def _write_and_open_html(html: str, *, stem: str) -> Path:
+    path = Path(tempfile.gettempdir()) / f"{stem}-{int(time.time())}.html"
+    path.write_text(html, encoding="utf-8")
+    webbrowser.open(path.as_uri())
+    return path
+
+
 def _open_specs_html(text: str, *, stem: str = "friday-system-specs") -> Path:
     """Write a self-contained HTML report and open it in the default browser."""
     rows = _specs_to_rows(text)
@@ -421,10 +440,156 @@ def _open_specs_html(text: str, *, stem: str = "friday-system-specs") -> Path:
 </body>
 </html>
 """
-    path = Path(tempfile.gettempdir()) / f"{stem}-{int(time.time())}.html"
-    path.write_text(html, encoding="utf-8")
-    webbrowser.open(path.as_uri())
-    return path
+    return _write_and_open_html(html, stem=stem)
+
+
+def _collect_week_dashboard_data() -> dict:
+    """Pull plan + calendar + reminders from SQLite — no model inventing."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    days = [week_start + timedelta(days=i) for i in range(7)]
+
+    plan_items: list[dict] = []
+    try:
+        from friday.tasks.plan import get_plan
+
+        plan_items = list(get_plan().get("items") or [])
+    except Exception:  # noqa: BLE001
+        pass
+
+    cal_by_day: dict[str, list[dict]] = {d.isoformat(): [] for d in days}
+    try:
+        from friday.calendar.cache import events_for_day, refresh_from_ical
+
+        refresh_from_ical(force=False)
+        for d in days:
+            for ev in events_for_day(d):
+                start = ev.get("start")
+                when = "all day" if ev.get("all_day") else (
+                    start.strftime("%H:%M") if hasattr(start, "strftime") else ""
+                )
+                cal_by_day[d.isoformat()].append({
+                    "when": when,
+                    "title": (ev.get("summary") or "Event").strip(),
+                })
+    except Exception:  # noqa: BLE001
+        pass
+
+    jobs: list[dict] = []
+    try:
+        from friday.tasks.scheduler import get_scheduler
+
+        for j in get_scheduler().list_jobs():
+            if j.get("status") not in ("scheduled", "paused"):
+                continue
+            when = j.get("cron") and f"cron {j['cron']}" or ""
+            if j.get("run_at") and not j.get("cron"):
+                when = time.strftime("%a %d %b %H:%M", time.localtime(float(j["run_at"])))
+            jobs.append({"title": j.get("title") or "Reminder", "when": when})
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "today": today.isoformat(),
+        "week_start": week_start.isoformat(),
+        "days": [{"iso": d.isoformat(), "label": d.strftime("%a %d %b"), "is_today": d == today} for d in days],
+        "plan": plan_items,
+        "calendar": cal_by_day,
+        "reminders": jobs[:12],
+    }
+
+
+def _open_week_dashboard_html() -> Path:
+    data = _collect_week_dashboard_data()
+    plan_lis = "".join(
+        f"<li class=\"{'done' if it.get('done') else ''}\">"
+        f"<span class=\"mark\">{'✓' if it.get('done') else '○'}</span> "
+        f"{_html_escape(str(it.get('text') or ''))}</li>"
+        for it in data["plan"]
+    ) or "<li class=\"empty\">No agenda items yet — say what to lock in.</li>"
+
+    day_cols = []
+    for d in data["days"]:
+        evs = data["calendar"].get(d["iso"]) or []
+        ev_html = "".join(
+            f"<div class=\"ev\"><span class=\"t\">{_html_escape(e['when'])}</span> "
+            f"{_html_escape(e['title'])}</div>"
+            for e in evs
+        ) or "<div class=\"empty\">—</div>"
+        day_cols.append(
+            f"<section class=\"day{' today' if d['is_today'] else ''}\">"
+            f"<h3>{_html_escape(d['label'])}</h3>{ev_html}</section>"
+        )
+
+    rem_lis = "".join(
+        f"<li><strong>{_html_escape(j['title'])}</strong> "
+        f"<span class=\"muted\">{_html_escape(j['when'])}</span></li>"
+        for j in data["reminders"]
+    ) or "<li class=\"empty\">No reminders scheduled.</li>"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Friday — Week dashboard</title>
+<style>
+  :root {{ color-scheme: dark; --bg:#070b14; --card:#10182a; --line:#1c2942;
+           --text:#e8eef9; --muted:#8fa3c4; --accent:#3ecbff; --ok:#5dffa8; }}
+  * {{ box-sizing: border-box; }}
+  body {{ margin:0; font-family:"Segoe UI",system-ui,sans-serif; color:var(--text);
+         background: radial-gradient(900px 500px at 80% -20%, #1a3058, var(--bg));
+         min-height:100vh; padding:1.5rem; }}
+  header {{ max-width:1100px; margin:0 auto 1.25rem; }}
+  .eyebrow {{ color:var(--accent); font-size:.72rem; letter-spacing:.16em; text-transform:uppercase; }}
+  h1 {{ margin:.2rem 0; font-weight:600; font-size:1.6rem; }}
+  .sub {{ color:var(--muted); font-size:.9rem; }}
+  .grid {{ max-width:1100px; margin:0 auto; display:grid; gap:1rem;
+          grid-template-columns: minmax(240px, 1fr) minmax(0, 2.2fr); }}
+  @media (max-width:860px) {{ .grid {{ grid-template-columns:1fr; }} }}
+  .card {{ background:var(--card); border:1px solid var(--line); padding:1rem 1.1rem; }}
+  h2 {{ margin:0 0 .75rem; font-size:.95rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }}
+  ul {{ list-style:none; margin:0; padding:0; }}
+  li {{ padding:.45rem 0; border-bottom:1px solid var(--line); font-size:.95rem; }}
+  li.done {{ color:var(--muted); text-decoration:line-through; }}
+  li.empty, .empty {{ color:var(--muted); font-size:.85rem; border:0; }}
+  .mark {{ color:var(--ok); margin-right:.35rem; }}
+  .week {{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:.5rem; }}
+  @media (max-width:900px) {{ .week {{ grid-template-columns:repeat(2,1fr); }} }}
+  .day {{ background:#0c1424; border:1px solid var(--line); padding:.55rem; min-height:7rem; }}
+  .day.today {{ border-color:var(--accent); }}
+  .day h3 {{ margin:0 0 .45rem; font-size:.72rem; color:var(--accent); letter-spacing:.04em; }}
+  .ev {{ font-size:.78rem; margin:.25rem 0; line-height:1.3; }}
+  .ev .t {{ color:var(--muted); display:block; font-size:.68rem; }}
+  .muted {{ color:var(--muted); font-size:.8rem; margin-left:.35rem; }}
+  footer {{ max-width:1100px; margin:1.25rem auto 0; color:var(--muted); font-size:.75rem; }}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Friday · local data</div>
+  <h1>Week dashboard</h1>
+  <p class="sub">Week of {_html_escape(data['week_start'])} · agenda, calendar, reminders from this PC</p>
+</header>
+<div class="grid">
+  <aside class="card">
+    <h2>Today's agenda</h2>
+    <ul>{plan_lis}</ul>
+    <h2 style="margin-top:1.25rem">Reminders</h2>
+    <ul>{rem_lis}</ul>
+  </aside>
+  <div class="card">
+    <h2>Calendar · this week</h2>
+    <div class="week">{"".join(day_cols)}</div>
+  </div>
+</div>
+<footer>Opened as a local HTML file — no desktop clicking. Safe to close the tab.</footer>
+</body>
+</html>
+"""
+    return _write_and_open_html(html, stem="friday-week-dashboard")
 
 
 def _open_powershell_specs_window(text: str) -> None:
@@ -621,6 +786,20 @@ def try_direct(objective: str, *, workspace: str | None = None,
 
     if _STATUS.match(obj):
         return DirectResult(True, True, _system_status(), "system_status")
+
+    # Week / task dashboard → HTML in browser (never vision desktop agent).
+    if _WEEK_DASHBOARD.search(obj):
+        try:
+            path = _open_week_dashboard_html()
+            return DirectResult(
+                True,
+                True,
+                f"Opened your week dashboard in the browser ({path.name}). "
+                "Agenda, calendar, and reminders — no desktop clicking.",
+                "week_dashboard",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return DirectResult(True, False, f"Couldn't open week dashboard: {exc}", "week_dashboard")
 
     # Cameras / peripherals inventory (before generic specs — more specific).
     if _LIST_CAMERAS.search(obj) or _PERIPHERALS.search(obj):

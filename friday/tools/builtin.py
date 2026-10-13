@@ -38,21 +38,26 @@ def _memory_search(args: dict[str, Any]) -> ToolResult:
 
 
 def _memory_add(args: dict[str, Any]) -> ToolResult:
-    from friday.memory import get_memory
+    from friday.store.facts import add_fact
 
     text = str(args["text"]).strip()
     if not text:
         return ToolResult.error("Empty text")
-    cid = get_memory().add(text, metadata={"source": "tool"})
-    res = ToolResult.text_result(f"Stored memory id={cid}")
-    res.structured = {"id": cid}
+    row = add_fact(text, source="tool", kind="note", mirror_chroma=True)
+    res = ToolResult.text_result(f"Stored memory id={row['id']}")
+    res.structured = {"id": row["id"]}
     return res
 
 
 def _memory_delete(args: dict[str, Any]) -> ToolResult:
-    from friday.memory import get_memory
+    from friday.store.facts import delete_fact
 
-    ok = get_memory().delete(str(args["id"]).strip())
+    fid = str(args["id"]).strip()
+    ok = delete_fact(fid)
+    if not ok:
+        from friday.memory import get_memory
+
+        ok = get_memory().delete(fid)
     return ToolResult.text_result("Deleted." if ok else "Not found.", is_error=not ok)
 
 
@@ -264,7 +269,7 @@ def builtin_specs() -> list[ToolSpec]:
             _memory_search, R.SAFE,
         ),
         ToolSpec(
-            "memory_add", "Store a note in vector memory.",
+            "memory_add", "Store a durable note (SQLite + semantic index).",
             object_schema({"text": {**_S, "minLength": 1, "maxLength": 4000}}, ["text"]),
             _memory_add, R.SAFE,
         ),

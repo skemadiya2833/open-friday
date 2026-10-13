@@ -51,6 +51,52 @@ class SkillHandler(Skill):
                 pending = bool(RM.ASKED_WHEN.search(turn.get("content") or ""))
                 break
 
+        # Agenda briefings first — never turn a business dump into one giant reminder title.
+        if RM.is_agenda_briefing(msg) and not pending:
+            from friday.humor import maybe_append_quip
+            from friday.tasks.day_plan import extract_agenda_items
+            from friday.tasks.plan import add_item, format_for_prompt, get_plan
+
+            items = extract_agenda_items(msg)
+            added = []
+            for raw in items:
+                added.append(add_item(raw))
+            when = RM.parse_when(msg)
+            ping = None
+            if when is not None and added:
+                # Optional short daily/time ping — never the whole monologue as title.
+                from friday.tasks.scheduler import get_scheduler
+
+                title = "Morning check-in on today's ventures"
+                job = get_scheduler().add_job(
+                    prompt=title,
+                    skill_id="reminder",
+                    run_at=when.run_at,
+                    cron=when.cron,
+                    title=title[:80],
+                )
+                ping = {"job": job, "when": when.label, "title": title}
+                ctx.emit("reminder_set", {"title": title, "when": when.label, "job_id": job["id"]})
+
+            if added:
+                lines = "\n".join(f"• {it['text']}" for it in added)
+                reply = (
+                    f"Locked onto today's agenda, boss:\n{lines}\n\n"
+                    + (f"Also set a short ping ({ping['when']}).\n\n" if ping else "")
+                    + f"Full agenda:\n{format_for_prompt()}"
+                )
+                if ctx.voice_mode:
+                    reply = (
+                        "Locked in: " + "; ".join(it["text"] for it in added) + "."
+                        + (f" Ping set for {ping['when']}." if ping else "")
+                    )
+                reply = maybe_append_quip(reply, user_text=msg, context="agenda_add")
+                return SkillResult(
+                    reply=reply,
+                    skill_id="tasks",
+                    metadata={"added": added, "plan": get_plan(), "reminder": (ping or {}).get("job")},
+                )
+
         # Reminders, timers and recurring jobs: schedule immediately, no approval round-trip, no JSON dump.
         if RM.is_reminder_request(msg) or pending:
             # Voice echo of our own "when?" prompt must not re-ask forever.
@@ -104,7 +150,7 @@ class SkillHandler(Skill):
 
         # "Plan my day" / organise today — propose an outline; never save the request as a task.
         if _PLAN_DAY.search(msg) or is_meta_plan_request(msg):
-            built = compose_day_plan_reply(user_text=msg)
+            built = compose_day_plan_reply(user_text=msg, voice_mode=bool(ctx.voice_mode))
             reply = maybe_append_quip(built["reply"], user_text=msg, context="day_plan")
             return SkillResult(reply=reply, skill_id="tasks", metadata={k: v for k, v in built.items() if k != "reply"})
 
@@ -135,7 +181,7 @@ class SkillHandler(Skill):
             if not text or len(text) < 3:
                 text = msg
             if is_meta_plan_request(text) or is_meta_plan_request(msg):
-                built = compose_day_plan_reply(user_text=msg)
+                built = compose_day_plan_reply(user_text=msg, voice_mode=bool(ctx.voice_mode))
                 reply = maybe_append_quip(built["reply"], user_text=msg, context="day_plan")
                 return SkillResult(
                     reply=reply,

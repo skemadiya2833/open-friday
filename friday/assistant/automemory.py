@@ -1,8 +1,7 @@
 """Automatic long-term memory: remember durable facts the owner states, without being asked.
 
-Deterministic extraction (no model call, no latency): "my name is ...", "I live in ...", "I like/love/hate/prefer ...",
-"my <thing> is ...", "remember that ...". Everything stored is visible and deletable in the Memory view
-(metadata ``source=auto``); sensitive-looking text (passwords, card numbers, keys) is never stored.
+Deterministic extraction (no model call, no latency). Facts live in SQLite; a short
+Chroma mirror supports semantic recall. Sensitive-looking text is never stored.
 """
 
 from __future__ import annotations
@@ -47,17 +46,17 @@ def _id(text: str) -> str:
 
 
 def remember(message: str, *, background: bool = True) -> list[str]:
-    """Store extracted facts (idempotent). Returns the facts found."""
+    """Store extracted facts in SQLite (+ optional Chroma mirror). Returns the facts found."""
     facts = extract(message)
     if not facts:
         return []
 
     def _store() -> None:
         try:
-            from friday.memory import get_memory
+            from friday.store.facts import add_fact
 
             for f in facts:
-                get_memory().add(f, metadata={"source": "auto", "kind": "fact"}, doc_id=_id(f))
+                add_fact(f, source="auto", kind="fact", fact_id=_id(f), mirror_chroma=True)
         except Exception as exc:  # noqa: BLE001 - memory must never break chat
             print(f"[Memory] auto-remember skipped: {exc}")
 
@@ -69,13 +68,10 @@ def remember(message: str, *, background: bool = True) -> list[str]:
 
 
 def owner_facts(limit: int = 12) -> list[str]:
-    """Most recent stored facts about the owner (auto + manually added), for the chat prompt. No embedding call."""
+    """Most recent stored facts about the owner — SQLite only, no embedding call."""
     try:
-        from friday.memory import get_memory
+        from friday.store.facts import list_facts
 
-        hits = get_memory().list_all(collection="memories", limit=200)
+        return list_facts(limit=limit)
     except Exception:  # noqa: BLE001
         return []
-    rows: list[Any] = [h for h in hits if (h.metadata or {}).get("source") != "computer_use"]
-    rows.sort(key=lambda h: float((h.metadata or {}).get("created_at", 0) or 0), reverse=True)
-    return [h.text for h in rows[:limit]]

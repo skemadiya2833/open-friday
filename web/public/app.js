@@ -402,9 +402,18 @@ function clearActivity() {
 
 /** Pipeline chatter that makes voice mode feel broken — keep off the live HUD. */
 function isVoiceNoise(message) {
-  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening)\b/i.test(
+  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening|Scheduling|Researching|Working with files|Checking memory|Running |Controlling the desktop)\b/i.test(
     String(message || "").trim(),
   );
+}
+
+/** Live HUD may show look/act/errors only — never skill-run labels like Scheduling… */
+function isLiveHudWorthy(message) {
+  const m = String(message || "").trim();
+  if (!m || isVoiceNoise(m)) return false;
+  // Skip long "Acting · create a dashboard…" noise; desktop agent still surfaces Agent/Shell.
+  if (/^Acting\b/i.test(m)) return false;
+  return /^(Looking|Webcam|Camera|Agent |Shell |⚠|Error|Opened |Desktop agent)/i.test(m);
 }
 
 function pushActivity(message, { live = true, detail = "" } = {}) {
@@ -420,8 +429,7 @@ function pushActivity(message, { live = true, detail = "" } = {}) {
   if (detail) step.title = detail;
   feed.appendChild(step);
   while (feed.children.length > 6) feed.removeChild(feed.firstChild);
-  // Live HUD: only meaningful actions (look / act / errors) — never open RESULT for this.
-  if (voiceOpen && !isVoiceNoise(message)) {
+  if (voiceOpen && isLiveHudWorthy(message)) {
     FridayLive.activity(message, { live });
   }
 }

@@ -61,22 +61,27 @@ def upcoming() -> list[dict[str, Any]]:
 # ------------------------------------------------------------------ everything Friday knows
 @router.get("/api/memory/overview")
 def memory_overview(limit: int = 300) -> dict[str, Any]:
-    """One list of everything Friday remembers, whatever put it there, each entry tagged with its source."""
+    """Structured memory only — facts, plan, reminders, experience. Chat stays in Sessions."""
     items: list[dict[str, Any]] = []
     errors: list[str] = []
 
     try:
-        from friday.memory import get_memory
+        from friday.store.facts import list_facts_rows
 
-        for coll in ("memories", "conversation_chunks"):
-            for h in get_memory().list_all(collection=coll, limit=limit):
-                md = h.metadata or {}
-                src = str(md.get("source") or ("you" if coll == "memories" else "chat"))
-                kind = {"auto": "learned", "computer_use": "desktop", "you": "note", "chat": "chat"}.get(src, "note")
-                items.append({"id": h.id, "collection": coll, "kind": kind, "source": src, "text": h.text,
-                              "created_at": float(md.get("created_at", 0) or 0), "deletable": True})
+        for row in list_facts_rows(limit=limit):
+            src = str(row.get("source") or "manual")
+            kind = {"auto": "learned", "computer_use": "desktop", "tool": "note", "manual": "note"}.get(src, "note")
+            items.append({
+                "id": row["id"],
+                "collection": "owner_facts",
+                "kind": kind,
+                "source": src,
+                "text": row["text"],
+                "created_at": float(row.get("created_at") or 0),
+                "deletable": True,
+            })
     except Exception as exc:  # noqa: BLE001
-        errors.append(f"memory: {exc}")
+        errors.append(f"facts: {exc}")
 
     try:
         from friday.experience.store import get_experience
@@ -88,33 +93,20 @@ def memory_overview(limit: int = 300) -> dict[str, Any]:
         errors.append(f"experience: {exc}")
 
     try:
-        from friday.tasks.plan import get_plan
+        from friday.tasks.plan import list_plan_for_overview
 
-        for it in get_plan().get("items") or []:
-            items.append({"id": it.get("id", ""), "collection": "plan", "kind": "plan", "source": "today's plan",
-                          "text": ("✓ " if it.get("done") else "") + it.get("text", ""), "created_at": 0, "deletable": True})
+        for it in list_plan_for_overview(limit=limit):
+            items.append({
+                "id": it.get("id", ""),
+                "collection": "plan",
+                "kind": "plan",
+                "source": "today's plan",
+                "text": it.get("text", ""),
+                "created_at": float(it.get("created_at") or 0),
+                "deletable": True,
+            })
     except Exception as exc:  # noqa: BLE001
         errors.append(f"plan: {exc}")
-
-    try:
-        from friday.assistant.session import get_session_store
-
-        for s in get_session_store().list_sessions(20):
-            full = get_session_store().load(s["id"])
-            if not full:
-                continue
-            for t in full.turns[-30:]:
-                items.append({
-                    "id": f"{s['id']}:{t.ts}",
-                    "collection": "conversations",
-                    "kind": "chat",
-                    "source": "you said" if t.role == "user" else "Friday said",
-                    "text": (t.content or "")[:500],
-                    "created_at": float(t.ts or 0),
-                    "deletable": True,
-                })
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"chat: {exc}")
 
     try:
         from friday.tasks.scheduler import get_scheduler

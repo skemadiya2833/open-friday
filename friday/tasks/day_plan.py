@@ -35,6 +35,50 @@ def is_meta_plan_request(text: str) -> bool:
     )
 
 
+def extract_agenda_items(text: str) -> list[str]:
+    """Pull concrete workstreams out of a voice planning dump (not the whole transcript)."""
+    t = (text or "").strip()
+    if not t:
+        return []
+    items: list[str] = []
+    low = t.lower()
+
+    if re.search(r"\bcheck on everything|what we('?ve| have) got so far|review (everything|what we)\b", low):
+        items.append("Review everything we've got so far")
+    if re.search(r"\byoutube\b", low):
+        n = 2 if re.search(r"\b(two|2)\b.{0,40}\byoutube\b|\byoutube\b.{0,40}\b(two|2)\b", low) else 1
+        items.append("Grow YouTube channel(s)" if n > 1 else "Grow YouTube channel")
+    if re.search(r"\binstagram\b", low):
+        items.append("Grow Instagram page")
+    if re.search(r"\b3d\s*print", low):
+        items.append("3D printing business — explore and plan")
+    if re.search(r"\btiktok\b", low):
+        items.append("Grow TikTok")
+
+    # "we'll be doing X" — take a short clause when we still have nothing specific
+    if not items:
+        m = re.search(
+            r"\bwe('?ll| will) be doing\b\s+(.+?)(?:\s+along with|\s+and then|\.|$)",
+            t,
+            re.I | re.S,
+        )
+        if m:
+            clause = re.sub(r"\s+", " ", m.group(2)).strip(" ,.-")
+            clause = re.split(r"\b(?:uh+|um+)\b", clause, maxsplit=1, flags=re.I)[0].strip(" ,.-")
+            if 3 <= len(clause) <= 80:
+                items.append(clause[:1].upper() + clause[1:])
+
+    # De-dupe preserve order
+    out: list[str] = []
+    seen: set[str] = set()
+    for it in items:
+        key = it.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(it)
+    return out[:8]
+
+
 def scrub_meta_items() -> int:
     """Remove agenda rows that are clearly planning requests, not real tasks. Returns count removed."""
     from friday.tasks.plan import get_plan, remove_item
@@ -50,29 +94,14 @@ def scrub_meta_items() -> int:
 
 def _calendar_lines() -> list[str]:
     try:
-        from friday.calendar import agenda as cal
+        from friday.calendar.cache import today_lines
 
-        block = cal.today_agenda()
-        # today_agenda may return dict or string depending on implementation
-        if isinstance(block, dict):
-            events = block.get("events") or block.get("items") or []
-            lines = []
-            for ev in events[:12]:
-                if isinstance(ev, dict):
-                    title = ev.get("summary") or ev.get("title") or "Event"
-                    when = (ev.get("start") or "")[:16].replace("T", " ")
-                    lines.append(f"{when} — {title}".strip(" —") if when else str(title))
-                else:
-                    lines.append(str(ev)[:120])
-            return lines
-        if isinstance(block, str) and block.strip() and "no" not in block.lower()[:20]:
-            return [ln.strip() for ln in block.splitlines() if ln.strip()][:12]
+        return today_lines(force=False, limit=12)
     except Exception:  # noqa: BLE001
-        pass
-    return []
+        return []
 
 
-def compose_day_plan_reply(*, user_text: str = "") -> dict[str, Any]:
+def compose_day_plan_reply(*, user_text: str = "", voice_mode: bool = False) -> dict[str, Any]:
     """Scrub junk, summarize calendar + open items, propose a concrete day outline."""
     scrubbed = scrub_meta_items()
     from friday.tasks.plan import format_for_prompt, get_plan
@@ -81,21 +110,33 @@ def compose_day_plan_reply(*, user_text: str = "") -> dict[str, Any]:
     open_items = [it for it in (data.get("items") or []) if not it.get("done")]
     cal = _calendar_lines()
 
-    sections: list[str] = []
-    if cal:
-        sections.append("Calendar today:\n" + "\n".join(f"• {c}" for c in cal))
-    else:
-        sections.append("Calendar today: (no events loaded — secret iCal optional).")
-
-    if open_items:
-        sections.append("Already on your Friday agenda:\n" + format_for_prompt())
-    else:
-        sections.append("Friday agenda: empty — good canvas.")
-
     # Prefer a short local model outline; fall back to a template.
     outline = _model_outline(user_text=user_text, calendar=cal, open_items=open_items)
     if not outline:
         outline = _template_outline(calendar=cal, open_items=open_items)
+
+    # Voice: speak the outline only — never dump empty-calendar / setup stubs.
+    if voice_mode:
+        bits = ["Here's today's outline."]
+        if cal:
+            bits.append("Calendar: " + "; ".join(cal[:3]) + ".")
+        if open_items:
+            tops = "; ".join((it.get("text") or "")[:60] for it in open_items[:3])
+            bits.append(f"Already on the agenda: {tops}.")
+        bits.append(outline.replace("\n", " "))
+        bits.append("Say what to lock in and I'll add it.")
+        if scrubbed:
+            bits.append(f"Cleared {scrubbed} bogus planning line(s).")
+        reply = " ".join(bits)
+        return {"reply": reply, "scrubbed": scrubbed, "plan": data, "calendar_n": len(cal)}
+
+    sections: list[str] = []
+    if cal:
+        sections.append("Calendar today:\n" + "\n".join(f"• {c}" for c in cal))
+    # Omit empty calendar — setup hints belong in Settings, not the chat reply.
+
+    if open_items:
+        sections.append("Already on your Friday agenda:\n" + format_for_prompt())
 
     sections.append("Proposed day:\n" + outline)
     sections.append(

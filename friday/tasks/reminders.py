@@ -24,15 +24,41 @@ _UNIT = {"second": 1, "sec": 1, "minute": 60, "min": 60, "hour": 3600, "hr": 360
 _NUM_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
               "nine": 9, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "sixty": 60}
 
-INTENT = re.compile(
-    r"\b(remind (me|us)|reminder|set (an? )?(alarm|timer|reminder)|alarm (for|at)|timer for|wake me|notify me|ping me|"
-    r"schedule (an? |the |this |that )?(task|reminder|job|call|meeting)?|don'?t let me forget|"
-    r"add (an? )?(reminder|alarm|timer)|create (an? )?(reminder|alarm|timer)|"
-    r"every (day|morning|evening|night|weekday|weekdays|week|hour|minute|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (minutes?|hours?)))\b",
+# Explicit reminder verbs only. Bare "every day" is NOT enough — that matches agenda talk
+# ("grow YouTube every day") and used to dump the whole monologue into a reminder title.
+_REMIND_VERB = re.compile(
+    r"\b("
+    r"remind (me|us)|reminder|"
+    r"set (an? )?(alarm|timer|reminder)|"
+    r"alarm (for|at)|timer for|wake me|notify me|ping me|"
+    r"schedule (an? |the |this |that )?(task|reminder|job|call|meeting)|"
+    r"don'?t let me forget|"
+    r"add (an? )?(reminder|alarm|timer)|"
+    r"create (an? )?(reminder|alarm|timer)"
+    r")\b",
     re.I,
 )
+# Short recurring commands without a remind verb ("every weekday at 9 check mail").
+_SHORT_RECURRING = re.compile(
+    r"\bevery\s+(day|morning|evening|night|weekday|weekdays|week|hour|minute|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+\s+(minutes?|hours?))"
+    r"(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)?\b",
+    re.I,
+)
+# Kept for older imports / intent wiring — prefer is_reminder_request().
+INTENT = _REMIND_VERB
 
 ASKED_WHEN = re.compile(r"when should I (remind|schedule)|what time|say something like", re.I)
+
+# Long "here's what we're working on" voice dumps — agenda, not one giant reminder.
+_AGENDA_BRIEFING = re.compile(
+    r"\b("
+    r"we('?ll| will) be doing|first thing (we|i)|along with that|"
+    r"i('?m| am) (planning|thinking)|planning to grow|"
+    r"check on everything|what we('?ve| have) got"
+    r")\b",
+    re.I,
+)
 
 
 @dataclass
@@ -228,8 +254,46 @@ def clear_notifications() -> None:
 
 
 # ------------------------------------------------------------------ scheduling
+def is_agenda_briefing(text: str) -> bool:
+    """Owner narrating workstreams / ventures — lock agenda items, don't remind the transcript."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if _REMIND_VERB.search(t):
+        return False
+    words = len(t.split())
+    if words >= 18 and _AGENDA_BRIEFING.search(t):
+        return True
+    if words >= 24 and re.search(r"\b(youtube|instagram|business|channel|channels)\b", t, re.I):
+        return True
+    return False
+
+
 def is_reminder_request(text: str) -> bool:
-    return bool(INTENT.search(text or ""))
+    t = (text or "").strip()
+    if not t:
+        return False
+    # Planning monologues with a stray "every day at 9" must not become reminders.
+    if is_agenda_briefing(t):
+        return False
+    if _REMIND_VERB.search(t):
+        return True
+    # Allow short recurring commands only (≤14 words), e.g. "every day at 9 stretch".
+    if _SHORT_RECURRING.search(t) and len(t.split()) <= 14:
+        return True
+    return False
+
+
+def _shorten_title(title: str, *, max_chars: int = 72) -> str:
+    t = re.sub(r"\s+", " ", (title or "").strip(" ,.-"))
+    if not t:
+        return "Reminder"
+    # Prefer first clause before um/uh filler dumps.
+    t = re.split(r"\b(?:uh+|um+|so yeah)\b", t, maxsplit=1, flags=re.I)[0].strip(" ,.-")
+    if len(t) <= max_chars:
+        return t[:1].upper() + t[1:] if t else "Reminder"
+    cut = t[: max_chars - 1].rsplit(" ", 1)[0].strip(" ,.-")
+    return (cut[:1].upper() + cut[1:] + "…") if cut else (t[:max_chars - 1] + "…")
 
 
 def _llm_extract(text: str, now: datetime) -> When | None:
@@ -263,6 +327,9 @@ def _llm_extract(text: str, now: datetime) -> When | None:
 
 def schedule_from_text(text: str, *, use_llm: bool = True) -> dict[str, Any] | None:
     """Create the reminder immediately. Returns {"job":..., "when":..., "title":..., "reply":...} or None if no time found."""
+    # Refuse agenda dumps — caller should lock plan items instead.
+    if is_agenda_briefing(text):
+        return None
     now = datetime.now()
     when = parse_when(text, now)
     title = ""
@@ -276,6 +343,10 @@ def schedule_from_text(text: str, *, use_llm: bool = True) -> dict[str, Any] | N
         if when is not None:
             title = _LEAD.sub("", text.strip(), count=1).strip(" .,") or "Reminder"
     if when is None:
+        return None
+    title = _shorten_title(title)
+    # Still absurdly long after shorten → don't schedule junk titles.
+    if len(title) > 100 or title.count(" ") > 18:
         return None
     from friday.tasks.scheduler import get_scheduler
 

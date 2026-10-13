@@ -114,7 +114,7 @@ Neutral reference for Friday configuration. Values shown are **typical defaults*
 | FRIDAY_CAMERA_ARM_TTL | `300` | Arm grant TTL in seconds (30–3600) |
 | SKILL_EMBED_ROUTE | `false` | Embedding-based skill routing |
 | CHAT_RAG_ENABLED | `false` | RAG on every chat turn |
-| INDEX_CHAT_TURNS | `false` | Index chat into Chroma |
+| INDEX_CHAT_TURNS | `false` | **Deprecated / leave off.** Chat turns are not memory (SQLite holds plan/facts/calendar; Chroma is for short semantic notes only). |
 
 ## Paths and data
 

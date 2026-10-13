@@ -35,6 +35,35 @@ def _serialize_event(e: Event) -> EventDict:
 
 
 def load_events(*, force_fetch: bool = False) -> list[Event]:
+    """Prefer SQLite calendar cache; refresh from iCal when stale or forced."""
+    try:
+        from friday.calendar.cache import events_in_range, refresh_from_ical
+
+        refresh_from_ical(force=force_fetch)
+        # Wide window: past day through +14d for free-slots / week views
+        now = datetime.now().astimezone()
+        start = now - timedelta(days=1)
+        end = now + timedelta(days=14)
+        rows = events_in_range(start.timestamp(), end.timestamp())
+        out: list[Event] = []
+        for r in rows:
+            out.append(
+                {
+                    "uid": r["uid"],
+                    "summary": r.get("summary") or "",
+                    "start": r["start"],
+                    "end": r["end"],
+                    "location": r.get("location"),
+                    "description": None,
+                    "attendees": [],
+                    "status": None,
+                    "all_day": bool(r.get("all_day")),
+                }
+            )
+        if out or not force_fetch:
+            return out
+    except Exception:  # noqa: BLE001
+        pass
     body, _from_cache = fetch_ical(force=force_fetch)
     return parse_ics(body)
 

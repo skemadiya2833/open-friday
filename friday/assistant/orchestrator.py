@@ -199,12 +199,11 @@ def handle_message(
         "tasks": "Scheduling…",
     }
     skill_msg = skill_labels.get(intent.skill_id, f"Running {intent.skill_id}…")
-    # In voice, skip "Chatting…" noise; keep visible only when she is looking/acting.
-    if not voice_mode or intent.skill_id in ("observe", "camera", "computer_use", "research", "files", "tasks"):
+    # Live voice: only surface look/act — "Scheduling…" etc. belongs off-HUD.
+    if not voice_mode or intent.skill_id in ("observe", "camera", "computer_use"):
         emit("activity", {"step": "skill_run", "message": skill_msg})
-    if intent.skill_id == "computer_use":
-        emit("status", {"status": "acting"})
-    elif intent.skill_id in ("observe", "camera"):
+    # computer_use sets "acting" only after tools-first fails (see skill handler).
+    if intent.skill_id in ("observe", "camera", "computer_use"):
         emit("status", {"status": "thinking"})
 
     ctx = SkillContext(

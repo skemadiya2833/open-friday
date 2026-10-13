@@ -142,18 +142,11 @@ class SessionStore:
         if session.title == "New chat" and role == "user":
             session.title = content[:48] + ("…" if len(content) > 48 else "")
         self.save(session)
-        # Optional: indexing every reply costs an embed round-trip.
+        # Deprecated: never index raw chat into Chroma. Structured memory is SQLite;
+        # leave INDEX_CHAT_TURNS=false. Kept as a no-op gate for old .env files.
         from friday.config import INDEX_CHAT_TURNS
         if INDEX_CHAT_TURNS and role == "assistant" and content.strip():
-            try:
-                from friday.memory import get_memory
-                get_memory().add(
-                    content[:1500],
-                    collection="conversation_chunks",
-                    metadata={"session_id": session.id, "role": role},
-                )
-            except Exception:
-                pass
+            print("[Memory] INDEX_CHAT_TURNS is deprecated — chat is not indexed into Chroma.")
 
 
 _store: SessionStore | None = None

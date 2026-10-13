@@ -26,6 +26,9 @@ class TaskScheduler:
         return conn
 
     def _init_db(self) -> None:
+        from friday.store.db import ensure_schema
+
+        ensure_schema()
         with self._conn() as conn:
             conn.execute(
                 """

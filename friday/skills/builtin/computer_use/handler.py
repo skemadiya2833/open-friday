@@ -45,7 +45,9 @@ class SkillHandler(Skill):
 
         direct = try_direct(ctx.message.strip())
         if direct.handled:
-            ctx.emit("activity", {"step": "direct", "message": direct.message})
+            # HTML / PowerShell / notepad — never seize the mouse or flash ACTING in live mode.
+            short = (direct.message or "").split("\n")[0][:120]
+            ctx.emit("activity", {"step": "direct", "message": short or "Done"})
             ctx.emit("status", {"status": "idle"})
             return SkillResult(
                 reply=direct.message if direct.ok else f"That didn't work: {direct.message}",

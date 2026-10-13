@@ -346,28 +346,28 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
-    # Reminders / timers / recurring tasks: parsed locally and scheduled without asking.
-    from friday.tasks.reminders import INTENT as _REMIND
+    # Reminders / timers — explicit verbs only (not bare "every day" inside planning talk).
+    from friday.tasks import reminders as _RM
 
-    if _REMIND.search(msg) or re.search(r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b", msg, re.I):
+    if _RM.is_reminder_request(msg) or re.search(
+        r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b", msg, re.I
+    ):
         return Intent(mode="schedule", skill_id="tasks", confidence=0.95, objective=msg,
                       reason="deterministic: reminder", source="policy")
     if history:
         last_a = next((t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
         if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
-            from friday.tasks import reminders as _RM2
-
             # Mic often re-hears Friday's own ask; only continue if the user gave a time.
             echo = bool(re.search(
                 r"when should I remind|say something like|sure,? boss",
                 msg, re.I,
             ))
-            if not echo and (_RM2.parse_when(msg) or _RM2.INTENT.search(msg)):
+            if not echo and (_RM.parse_when(msg) or _RM.is_reminder_request(msg)):
                 return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
                               reason="deterministic: reminder follow-up", source="policy")
 
     # Plan / organise my day (meta) + concrete agenda phrases → tasks skill.
-    if re.search(
+    if _RM.is_agenda_briefing(msg) or re.search(
         r"\b((help (me )?)?(plan|organise|organize|schedule)\s+(my |the |a )?(day|today|agenda)"
         r"|plan my day|make (me )?(a )?(day )?plan|"
         r"we('?ll| will) be doing|for today|today'?s (plan|agenda)|"
@@ -442,6 +442,25 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             confidence=0.94,
             objective=msg,
             reason="deterministic: peripherals inventory",
+            source="policy",
+        )
+
+    # Week / task dashboard as HTML — tools-first, never mouse agent.
+    if re.search(
+        r"\b((?:create|make|build|show|display|open|generate)\b.{0,80}\b"
+        r"(?:dashboard|board|overview|visual)\b.{0,80}\b(?:week|weekly|tasks?|agenda|plan)|"
+        r"(?:week|weekly)\b.{0,60}\b(?:dashboard|overview|board|visual)|"
+        r"dashboard\b.{0,60}\b(?:week|weekly|tasks?|agenda)|"
+        r"tasks?\b.{0,40}\b(?:for the week|this week|week).{0,40}\b(?:visual|html|dashboard|screen|display))\b",
+        msg,
+        re.I,
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: week dashboard html",
             source="policy",
         )
 
