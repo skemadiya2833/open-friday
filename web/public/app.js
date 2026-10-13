@@ -162,12 +162,17 @@ function tickClock() {
   const clock = $("#clockReadout");
   const date = $("#dateReadout");
   if (clock) {
-    clock.textContent = now.toLocaleTimeString("en-GB", { hour12: false });
+    clock.textContent = now.toLocaleTimeString("en-US", {
+      hour12: true,
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   }
   if (date) {
-    date.textContent = now.toLocaleDateString("en-GB", {
+    date.textContent = now.toLocaleDateString("en-US", {
       weekday: "short",
-      day: "2-digit",
+      day: "numeric",
       month: "short",
     }).toUpperCase();
   }
@@ -313,7 +318,11 @@ async function refreshCalendar() {
       const start = ev.start || ev.dtstart || ev.when || "";
       if (typeof start === "string") {
         try {
-          when.textContent = new Date(start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          when.textContent = new Date(start).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
         } catch (_) {
           when.textContent = start.slice(11, 16) || start.slice(0, 16);
         }
@@ -326,7 +335,7 @@ async function refreshCalendar() {
       li.appendChild(title);
       list.appendChild(li);
     });
-    window.FridayMotion && FridayMotion.refreshStaggerForView($("#view-tasks"));
+    if (window.FridayMotion && FridayMotion.restagger) FridayMotion.restagger(list);
   } catch (_) {
     status.textContent = "Calendar offline.";
     list.replaceChildren();
@@ -1405,7 +1414,15 @@ function renderMemCards(items) {
   for (const m of items) {
     const card = document.createElement("div");
     card.className = "card";
-    const when = m.created_at ? new Date(m.created_at * 1000).toLocaleString() : "";
+    const when = m.created_at
+      ? new Date(m.created_at * 1000).toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "";
     card.innerHTML = `
       <div><p>${escapeHtml(m.text)}</p><p class="muted"><span class="tag">${escapeHtml(m.source || m.kind || "")}</span> ${when}</p></div>
       <div class="actions">${m.id ? `<button class="ghost" data-del="${escapeHtml(m.id)}" data-coll="${escapeHtml(m.collection || "memories")}">Forget</button>` : ""}</div>`;
@@ -1819,7 +1836,14 @@ async function refreshBell() {
       const rows = [];
       for (const n of unseen) rows.push(`<div class="rem-row new"><b>${escapeHtml(n.title)}</b><span class="muted">due now</span></div>`);
       for (const j of upcoming.slice(0, 8)) {
-        const when = j.cron ? `repeats · ${j.cron}` : new Date(j.run_at * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        const when = j.cron
+          ? `repeats · ${j.cron}`
+          : new Date(j.run_at * 1000).toLocaleString([], {
+              weekday: "short",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            });
         rows.push(`<div class="rem-row"><b>${escapeHtml(j.title)}</b><span class="muted">${when}</span><button class="ghost" data-cancel-job="${j.id}">×</button></div>`);
       }
       panel.innerHTML = rows.join("") || `<div class="muted">No reminders. Say “remind me to … in 20 minutes”.</div>`;

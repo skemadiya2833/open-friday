@@ -1,4 +1,4 @@
-/* Stage 4 motion system — View Transitions, panel assemble, decipher, stagger */
+/* Stage 4 motion — View Transitions, panel assemble, light stagger (no re-decipher flicker) */
 (function () {
   "use strict";
 
@@ -35,12 +35,9 @@
   }
 
   function assemblePanels() {
-    // CSS already draws panel-frame corners (::before/::after). Do not inject a
-    // second SVG bracket layer — that stacked and looked "assembled twice".
     document.querySelectorAll(".panel-frame").forEach((panel) => {
       if (panel.dataset.hudAssembled === "1") return;
       panel.dataset.hudAssembled = "1";
-      // Strip any leftover SVG brackets from older motion.js builds.
       panel.querySelectorAll(".hud-bracket-svg").forEach((el) => el.remove());
       panel.classList.remove("hud-bracket");
       if (!motionAllowed()) {
@@ -54,30 +51,14 @@
     });
   }
 
-  function decipherHeading(h1) {
-    if (!h1 || h1.dataset.hudDeciphered === "1") return;
-    const raw = h1.textContent || "";
-    h1.textContent = "";
-    h1.classList.add("hud-decipher");
-    const chars = [...raw];
-    chars.forEach((ch, i) => {
-      const span = document.createElement("span");
-      span.className = "hud-char";
-      span.textContent = ch === " " ? "\u00a0" : ch;
-      if (motionAllowed()) span.style.animationDelay = `${Math.min(i * 18, 400)}ms`;
-      else span.style.opacity = "1";
-      h1.appendChild(span);
-    });
-    h1.dataset.hudDeciphered = "1";
-  }
-
   function staggerContainer(root) {
     if (!root || root.dataset.hudStagger === "1") return;
+    const kids = [...root.children];
+    if (!kids.length) return;
     root.dataset.hudStagger = "1";
     root.classList.add("hud-stagger");
-    const kids = [...root.children];
     kids.forEach((el, i) => {
-      if (motionAllowed()) el.style.animationDelay = `${i * 45}ms`;
+      if (motionAllowed()) el.style.animationDelay = `${Math.min(i * 40, 320)}ms`;
     });
     if (motionAllowed()) {
       requestAnimationFrame(() => root.classList.add("hud-stagger-go"));
@@ -91,19 +72,14 @@
 
   function refreshStaggerForView(viewEl) {
     if (!viewEl) return;
-    staggerContainer(viewEl.querySelector(".cards"));
-    staggerContainer(viewEl.querySelector(".plan-list"));
-    staggerContainer(viewEl.querySelector(".calendar-agenda"));
-    staggerContainer(viewEl.querySelector(".nav"));
-    const h1 = viewEl.querySelector(".top h1");
-    if (h1) {
-      delete h1.dataset.hudDeciphered;
-      h1.classList.remove("hud-decipher");
-      decipherHeading(h1);
-    }
+    // Only stagger fresh lists — never re-run heading decode (that caused flicker).
+    [".cards", ".plan-list", ".calendar-agenda", ".report-history"].forEach((sel) => {
+      const node = viewEl.querySelector(sel);
+      if (node && !node.dataset.hudStagger) staggerContainer(node);
+    });
   }
 
-  function transitionView(fromEl, toEl, fn) {
+  function fadeView(fromEl, toEl, fn) {
     if (!motionAllowed()) {
       fn();
       refreshStaggerForView(toEl);
@@ -111,6 +87,12 @@
     }
     const run = () => {
       fn();
+      if (toEl) {
+        toEl.classList.add("hud-view-in");
+        requestAnimationFrame(() => {
+          setTimeout(() => toEl.classList.remove("hud-view-in"), 280);
+        });
+      }
       refreshStaggerForView(toEl);
     };
     if (VT) {
@@ -119,13 +101,9 @@
     }
     if (fromEl) fromEl.classList.add("hud-view-out");
     setTimeout(() => {
-      run();
-      if (toEl) {
-        toEl.classList.add("hud-view-in");
-        setTimeout(() => toEl.classList.remove("hud-view-in"), 220);
-      }
       if (fromEl) fromEl.classList.remove("hud-view-out");
-    }, 120);
+      run();
+    }, 110);
   }
 
   function hookShowView() {
@@ -140,7 +118,7 @@
         document.dispatchEvent(new CustomEvent("friday:view", { detail: { from: prev?.id, to: name } }));
         return;
       }
-      transitionView(prev, next, () => {
+      fadeView(prev, next, () => {
         base(name);
         document.dispatchEvent(new CustomEvent("friday:view", { detail: { from: prev?.id, to: name } }));
       });
@@ -192,12 +170,10 @@
     const block = document.createElement("div");
     block.className = "hud-settings-block setting";
     block.innerHTML = `
-      <h3>HUD &amp; MOTION</h3>
+      <label>Motion</label>
       <div class="hud-settings-row">
-        <label><input type="checkbox" id="hudLowEffects" /> Low effects (lighter motion)</label>
-        <a class="ghost" href="/health" style="padding:6px 10px;font-size:0.8rem">Open health / perf</a>
-      </div>
-      <p class="muted" style="margin:0">Honors <code>prefers-reduced-motion</code>. Pauses ambient loops when the tab is hidden.</p>`;
+        <label class="speak-toggle" style="margin:0"><input type="checkbox" id="hudLowEffects" /><span>Low effects</span></label>
+      </div>`;
     grid.appendChild(block);
     const cb = block.querySelector("#hudLowEffects");
     cb.checked = lowEffects();
@@ -218,7 +194,11 @@
     hookPanels();
     listenStatus();
     bindVisibility();
-    refreshStaggerForView(document.querySelector(".view.active"));
+    const active = document.querySelector(".view.active");
+    if (active) {
+      active.classList.add("hud-boot-once");
+      refreshStaggerForView(active);
+    }
     injectSettingsBlock();
   }
 
@@ -230,6 +210,13 @@
       syncBodyClasses();
     },
     setWorkload,
+    /** Call after list DOM is replaced so stagger can run once on new children. */
+    restagger(root) {
+      if (!root) return;
+      delete root.dataset.hudStagger;
+      root.classList.remove("hud-stagger", "hud-stagger-go");
+      staggerContainer(root);
+    },
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

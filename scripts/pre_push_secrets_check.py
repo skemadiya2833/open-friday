@@ -74,6 +74,11 @@ ALLOWLIST_PATHS = {
     "docs/VOICE_SAMPLES.md",
 }
 
+# Unit-test fixtures intentionally contain fake keys / PEM samples.
+ALLOWLIST_PREFIXES = (
+    "tests/",
+)
+
 
 def _git(args: list[str]) -> str:
     r = subprocess.run(
@@ -135,7 +140,10 @@ def path_forbidden(rel: str) -> str | None:
 
 
 def scan_content(rel: str, text: str) -> list[str]:
-    if rel.replace("\\", "/") in ALLOWLIST_PATHS:
+    norm = rel.replace("\\", "/")
+    if norm in ALLOWLIST_PATHS:
+        return []
+    if any(norm.startswith(p) for p in ALLOWLIST_PREFIXES):
         return []
     hits: list[str] = []
     for name, pat in CONTENT_RULES:

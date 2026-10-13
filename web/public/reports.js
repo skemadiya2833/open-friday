@@ -366,20 +366,46 @@
     clear(host);
     try {
       const rows = await (await apiFetch("/api/reports")).json();
+      if (!Array.isArray(rows) || !rows.length) {
+        host.appendChild(el("p", "report-empty", "No reports yet."));
+        return;
+      }
       rows.forEach((r) => {
-        const btn = el("button", "ghost report-hist", `${r.query || r.id}`);
+        const when = r.created_at
+          ? new Date(r.created_at).toLocaleString([], {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })
+          : "";
+        const label = when ? `${r.query || r.id} · ${when}` : (r.query || r.id);
+        const btn = el("button", "ghost report-hist", label);
         btn.type = "button";
         btn.addEventListener("click", async () => {
-          const doc = await (await apiFetch(`/api/reports/${r.id}`)).json();
+          const res = await apiFetch(`/api/reports/${r.id}`);
+          if (!res.ok) {
+            setLive("Could not open report.");
+            return;
+          }
+          const doc = await res.json();
           renderReport(doc);
           showReportsView();
         });
         host.appendChild(btn);
       });
-    } catch (_) { /* offline */ }
+      if (window.FridayMotion && FridayMotion.restagger) FridayMotion.restagger(host);
+    } catch (_) {
+      host.appendChild(el("p", "report-empty", "History unavailable."));
+    }
   }
 
   function showReportsView() {
+    if (typeof showView === "function") {
+      showView("reports");
+      return;
+    }
     document.querySelectorAll(".nav-btn").forEach((b) => {
       b.classList.toggle("active", b.getAttribute("data-view") === "reports");
     });
@@ -421,7 +447,8 @@
       body: JSON.stringify({ query, mode: mode || "quick" }),
     });
     if (!res.ok) {
-      setLive(res.status === 403 ? "Tools role required to run web research." : "Could not start.");
+      setLive(res.status === 403 ? "Tools role required." : res.status === 409 ? "Another run is active." : "Could not start.");
+      clearInterval(timerIv);
       return;
     }
     const { run_id } = await res.json();

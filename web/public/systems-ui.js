@@ -47,10 +47,9 @@ function prefsPanelHtml(snap) {
   return `
     <div class="setting ops-panel prefs-panel">
       <label>Preferences</label>
-      <p class="muted" style="margin:4px 0 10px">Everyday knobs live here — optima are the defaults. Host/auth/API keys stay in <code>.env</code>.</p>
       <div class="prefs-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button type="button" class="ghost" id="prefsOptimaBtn">Reset to optima</button>
-        <button type="button" class="ghost" id="prefsClearBtn">Clear UI overrides</button>
+        <button type="button" class="ghost" id="prefsClearBtn">Clear overrides</button>
         <span class="muted" id="prefsSaveHint" style="align-self:center"></span>
       </div>
       ${body}
@@ -78,7 +77,6 @@ function prefItemHtml(it) {
     <div class="pref-label"><strong>${escapeHtml(it.label)}</strong>
       <span class="muted pref-src"> · ${escapeHtml(src)}${restart}</span></div>
     ${control}
-    <p class="muted" style="margin:6px 0 0">${escapeHtml(it.help || "")}</p>
   </div>`;
 }
 
@@ -180,25 +178,126 @@ function opsSummaryHtml(ops) {
     ? Object.entries(memCols).map(([k, v]) => `${k}:${v}`).join(" · ")
     : "";
   return `
-      <div class="setting ops-panel"><label>Ops summary</label>
-        <p class="muted" style="margin:4px 0 8px">Local aggregate (${ops.duration_ms || "—"} ms) — no cloud telemetry.</p>
+      <div class="setting ops-panel"><label>Ops</label>
         <table class="ops-table"><tbody>
           <tr><td>Sessions</td><td>${c.sessions ?? "—"}</td><td>Active runs</td><td>${c.active_runs ?? "—"}</td></tr>
-          <tr><td>Skills</td><td>${c.skills_enabled ?? "—"} / ${c.skills_total ?? "—"}</td><td>SKILL.md</td><td>${c.skillmd_installed ?? "—"} inst · ${c.skillmd_quarantine ?? "—"} quarantine</td></tr>
-          <tr><td>Memory docs</td><td>${c.memory_docs ?? "—"}${memDetail ? `<br><span class="muted">${escapeHtml(memDetail)}</span>` : ""}</td><td>Reports</td><td>${c.reports ?? "—"}</td></tr>
-          <tr><td>Tasks</td><td>${c.tasks_enabled ?? "—"} / ${c.scheduled_tasks ?? "—"}</td><td>Approvals</td><td>${c.approvals_pending ?? "—"} pending</td></tr>
-          <tr><td>Ollama</td><td colspan="3">${escapeHtml(ollLabel)} · config drift: ${escapeHtml(drift)}</td></tr>
+          <tr><td>Skills</td><td>${c.skills_enabled ?? "—"} / ${c.skills_total ?? "—"}</td><td>SKILL.md</td><td>${c.skillmd_installed ?? "—"} · ${c.skillmd_quarantine ?? "—"} Q</td></tr>
+          <tr><td>Memory</td><td>${c.memory_docs ?? "—"}${memDetail ? `<br><span class="muted">${escapeHtml(memDetail)}</span>` : ""}</td><td>Reports</td><td>${c.reports ?? "—"}</td></tr>
+          <tr><td>Tasks</td><td>${c.tasks_enabled ?? "—"} / ${c.scheduled_tasks ?? "—"}</td><td>Approvals</td><td>${c.approvals_pending ?? "—"}</td></tr>
+          <tr><td>Ollama</td><td colspan="3">${escapeHtml(ollLabel)} · drift ${escapeHtml(drift)}</td></tr>
         </tbody></table>
-        <p class="muted" style="margin:8px 0 0">CLI: <code>python main.py --doctor</code> for GPU/models/ports (never auto-downloads).</p>
       </div>`;
+}
+
+function ownerProfileHtml(profile) {
+  const about = (profile && profile.about) || "";
+  const ups = (profile && profile.upgrades) || [];
+  const list = ups.length
+    ? ups.map((u, i) => {
+        const text = typeof u === "string" ? u : (u.text || "");
+        const src = typeof u === "object" && u.source ? ` · ${u.source}` : "";
+        return `<li data-idx="${i}"><span>${escapeHtml(text)}${src ? `<span class="muted">${escapeHtml(src)}</span>` : ""}</span>
+          <button type="button" class="ghost danger" data-upgrade-del="${i}" title="Remove">×</button></li>`;
+      }).join("")
+    : `<li class="muted" style="border:0;background:transparent;padding:0">None yet</li>`;
+  return `
+    <div class="setting ops-panel owner-profile-panel">
+      <label>About you</label>
+      <textarea id="ownerAbout" placeholder="Who you are, preferences, how Friday should work with you…">${escapeHtml(about)}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="ghost" id="ownerAboutSave">Save profile</button>
+        <span class="muted" id="ownerProfileHint"></span>
+      </div>
+      <label style="margin-top:16px">Upgrade notes</label>
+      <ul class="upgrade-list" id="ownerUpgradeList">${list}</ul>
+      <div class="upgrade-add">
+        <input id="ownerUpgradeInput" maxlength="280" placeholder="Idea for a future upgrade…" />
+        <button type="button" class="ghost" id="ownerUpgradeAdd">Add</button>
+      </div>
+    </div>`;
+}
+
+async function loadOwnerProfile() {
+  try {
+    const res = await apiFetch("/api/systems/profile");
+    if (!res.ok) return { about: "", upgrades: [] };
+    return res.json();
+  } catch (_) {
+    return { about: "", upgrades: [] };
+  }
+}
+
+function bindOwnerProfile() {
+  const hint = $("#ownerProfileHint");
+  const setHint = (t) => { if (hint) hint.textContent = t || ""; };
+  $("#ownerAboutSave")?.addEventListener("click", async () => {
+    try {
+      const about = $("#ownerAbout")?.value || "";
+      const res = await apiFetch("/api/systems/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ about }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setHint("Saved");
+      setTimeout(() => setHint(""), 1600);
+    } catch (_) {
+      setHint("Save failed");
+    }
+  });
+  $("#ownerUpgradeAdd")?.addEventListener("click", async () => {
+    const input = $("#ownerUpgradeInput");
+    const text = (input?.value || "").trim();
+    if (!text) return;
+    try {
+      const res = await apiFetch("/api/systems/profile/upgrades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, source: "manual" }),
+      });
+      if (!res.ok) throw new Error("add failed");
+      if (input) input.value = "";
+      const profile = await res.json();
+      const panel = document.querySelector(".owner-profile-panel");
+      if (panel) {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = ownerProfileHtml(profile);
+        panel.replaceWith(wrap.firstElementChild);
+        bindOwnerProfile();
+      }
+    } catch (_) {
+      setHint("Could not add");
+    }
+  });
+  document.querySelectorAll("[data-upgrade-del]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const idx = Number(btn.getAttribute("data-upgrade-del"));
+      if (!Number.isFinite(idx)) return;
+      try {
+        const res = await apiFetch(`/api/systems/profile/upgrades/${idx}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("delete failed");
+        const profile = await res.json();
+        const panel = document.querySelector(".owner-profile-panel");
+        if (panel) {
+          const wrap = document.createElement("div");
+          wrap.innerHTML = ownerProfileHtml(profile);
+          panel.replaceWith(wrap.firstElementChild);
+          bindOwnerProfile();
+        }
+      } catch (_) {
+        setHint("Could not remove");
+      }
+    });
+  });
 }
 
 async function refreshSettings() {
   try {
-    const [hRes, opsRes, prefsRes] = await Promise.all([
+    const [hRes, opsRes, prefsRes, profile] = await Promise.all([
       apiFetch("/api/health"),
       apiFetch("/api/ops/summary").catch(() => null),
       apiFetch("/api/systems/prefs").catch(() => null),
+      loadOwnerProfile(),
     ]);
     const h = await hRes.json();
     let ops = null;
@@ -209,10 +308,10 @@ async function refreshSettings() {
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · SECURE";
     $("#settingsGrid").innerHTML = `
+      ${ownerProfileHtml(profile)}
       ${opsSummaryHtml(ops)}
       ${prefsPanelHtml(prefs)}
-      <div class="setting"><label>Active models</label>
-        <p class="muted" style="margin:4px 0 8px">Installed tags (change via Ollama). Role routing is under Preferences → Models.</p>
+      <div class="setting"><label>Models</label>
         <div><span class="muted">Vision</span> <strong>${escapeHtml(h.vision_model || "—")}</strong></div>
         <div><span class="muted">Chat</span> <strong>${escapeHtml(h.chat_model || "—")}</strong></div>
         <div><span class="muted">Embed</span> <strong>${escapeHtml(h.embed_model || "—")}</strong></div>
@@ -232,60 +331,58 @@ async function refreshSettings() {
           <button type="button" data-voice-duplex="hold">Hold</button>
           <button type="button" data-voice-duplex="interrupt">Interrupt</button>
         </div>
-        <p class="muted" style="margin:8px 0 0">Hold (default) is speaker-safe half-duplex: mic muted while Friday talks + echo tail. Pace and TTS voice are also under Preferences.</p>
       </div>
       <div class="setting"><label>Briefings</label>
         <label class="speak-toggle" style="margin-top:8px">
           <input type="checkbox" id="morningBriefingToggle" />
-          <span>Morning briefing (≈08:00)</span>
+          <span>Morning (≈08:00)</span>
         </label>
         <label class="speak-toggle" style="margin-top:8px">
           <input type="checkbox" id="eodBriefingToggle" />
-          <span>End-of-day shutdown (≈18:00)</span>
+          <span>End of day (≈18:00)</span>
         </label>
         <label class="speak-toggle" style="margin-top:8px">
           <input type="checkbox" id="weeklyBriefingToggle" />
           <span>Weekly review</span>
         </label>
-        <p class="muted" style="margin:8px 0 0">Owner-only built-in jobs. Agents cannot schedule these.</p>
-        <button type="button" class="ghost" id="morningBriefingRun" style="margin-top:8px">Run morning once</button>
+        <button type="button" class="ghost" id="morningBriefingRun" style="margin-top:8px">Run morning</button>
       </div>
       <div class="setting"><label>Camera</label>
         <p class="muted" id="cameraStatusLine" style="margin:0 0 8px">Checking…</p>
         <label class="speak-toggle">
           <input type="checkbox" id="cameraEnableToggle" />
-          <span>Enable camera</span>
+          <span>Enable</span>
         </label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
           <label for="cameraDeviceSelect" class="muted" style="margin:0">Device</label>
           <select id="cameraDeviceSelect" style="min-width:220px;max-width:100%">
             <option value="">Scanning…</option>
           </select>
-          <button type="button" class="ghost" id="cameraScanBtn" title="Re-scan connected cameras">Scan</button>
-          <button type="button" class="ghost" id="cameraUseRecommendedBtn" title="Pick best physical desk camera" style="display:none">Use recommended</button>
+          <button type="button" class="ghost" id="cameraScanBtn" title="Re-scan">Scan</button>
+          <button type="button" class="ghost" id="cameraUseRecommendedBtn" title="Use recommended" style="display:none">Recommended</button>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
           <label for="cameraResSelect" class="muted" style="margin:0">Resolution</label>
           <select id="cameraResSelect" style="min-width:180px">
-            <option value="720p">720p · 1280×720 (default)</option>
-            <option value="480p">480p · 640×480</option>
-            <option value="1080p">1080p · 1920×1080</option>
-            <option value="auto">Auto (driver default)</option>
+            <option value="720p">720p</option>
+            <option value="480p">480p</option>
+            <option value="1080p">1080p</option>
+            <option value="auto">Auto</option>
           </select>
         </div>
-        <p class="muted" id="cameraDeviceHint" style="margin:0 0 8px">Pick the physical webcam (avoid Snap Camera / OBS Virtual). Names are matched via DirectShow when ffmpeg is available.</p>
+        <p class="muted" id="cameraDeviceHint" style="margin:0 0 8px"></p>
         <label class="speak-toggle">
           <input type="checkbox" id="cameraArmToggle" />
-          <span>Arm camera (timed grant)</span>
+          <span>Arm</span>
         </label>
-        <p class="muted" style="margin:8px 0 0">All camera controls live here — no .env required. One-shot desk look; e-stop disarms. Frames stay on this PC.</p>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" class="ghost" id="cameraSnapBtn">Snap once now</button>
-          <button type="button" class="ghost" id="cameraPreviewBtn">Show preview</button>
+          <button type="button" class="ghost" id="cameraSnapBtn">Snap</button>
+          <button type="button" class="ghost" id="cameraPreviewBtn">Preview</button>
           <span class="pill" id="cameraLivePill" style="display:none">CAMERA LIVE</span>
         </div>
         <img id="cameraPreviewImg" alt="Camera preview" class="hidden" style="margin-top:10px;max-width:100%;max-height:240px;border:1px solid var(--line);background:#000" />
       </div>`;
+    bindOwnerProfile();
     bindVoiceControls();
     syncSpeakToggles();
     bindPrefsControls(prefs || { items: [] });
@@ -295,7 +392,7 @@ async function refreshSettings() {
       setSpeakEnabled(e.target.checked);
     });
   } catch (_) {
-    $("#settingsGrid").innerHTML = `<div class="setting"><strong>Uplink lost — server offline</strong></div>`;
+    $("#settingsGrid").innerHTML = `<div class="setting"><strong>Uplink lost</strong></div>`;
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · LOST";
   }
@@ -421,8 +518,8 @@ async function refreshCameraDevices() {
       else {
         const virt = devices.filter((d) => d.virtual).length;
         hint.textContent = data.enabled
-          ? `${devices.length} endpoint(s)${virt ? ` · ${virt} virtual` : ""} — pick a physical cam (not Snap Camera / OBS).`
-          : `${devices.length} found — enable camera to use them.`;
+          ? `${devices.length} device(s)${virt ? ` · ${virt} virtual` : ""}`
+          : `${devices.length} found · enable to use`;
       }
     }
     return data;

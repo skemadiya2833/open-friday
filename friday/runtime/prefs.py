@@ -24,7 +24,7 @@ PrefKind = Literal["bool", "str", "choice", "int", "float"]
 SCHEMA: dict[str, dict[str, Any]] = {
     "owner_name": {
         "kind": "str",
-        "default": "boss",
+        "default": "Sunil",
         "env": "FRIDAY_OWNER_NAME",
         "group": "persona",
         "label": "Owner name",

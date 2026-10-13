@@ -10,7 +10,7 @@ Use this when cutting a tagged Friday release (`vX.Y.Z`).
 4. `ruff check friday tests main.py scripts --select F,E9`
 5. `pytest -q -k "not real_hotkey and not hotkey_conflict"`
 6. `friday doctor` — note any WARN/FAIL that are environment-only (missing Ollama models is OK if documented).
-7. `python scripts/pre_push_secrets_check.py`
+7. `python scripts/pre_push_secrets_check.py` (required shipping helper)
 8. `python scripts/pre_push_guard.py`
 
 ## Tag and publish

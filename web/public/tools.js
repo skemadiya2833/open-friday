@@ -49,9 +49,9 @@
         jget("/api/policy"), jget("/api/mcp/servers"), jget("/api/tools"), jget("/api/audit?n=40"),
       ]);
       $("#toolsPolicyLine").textContent =
-        `Policy: safe=${pol.tiers.safe}, confirm=${pol.tiers.confirm}, dangerous=${pol.tiers.dangerous}. ` +
-        `Shell tool ${pol.shell.enabled ? "enabled" : "disabled"} (mode ${pol.shell.mode}).` +
-        (mcp.config_error ? ` MCP config error: ${mcp.config_error}` : "");
+        `Safe ${pol.tiers.safe} · Confirm ${pol.tiers.confirm} · Dangerous ${pol.tiers.dangerous}` +
+        ` · Shell ${pol.shell.enabled ? "on" : "off"}` +
+        (mcp.config_error ? ` · MCP error` : "");
 
       const sv = $("#mcpServers");
       sv.replaceChildren();

@@ -60,7 +60,7 @@ def owner_name() -> str:
             return name
     except Exception:  # noqa: BLE001
         pass
-    return (os.environ.get("FRIDAY_OWNER_NAME") or "boss").strip() or "boss"
+    return (os.environ.get("FRIDAY_OWNER_NAME") or "Sunil").strip() or "Sunil"
 
 
 def format_persona(template: str) -> str:
@@ -94,4 +94,12 @@ def system_prompt(kind: str = "chat") -> str:
                 "(still never during errors/security/stress, never film quotes)."
             )
         text += "\n" + aside
+    try:
+        from friday.runtime.owner_profile import prompt_block
+
+        block = prompt_block()
+        if block:
+            text += "\n\n" + block
+    except Exception:  # noqa: BLE001
+        pass
     return text

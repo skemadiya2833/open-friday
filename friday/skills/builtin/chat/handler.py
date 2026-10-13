@@ -26,7 +26,7 @@ class SkillHandler(Skill):
 
         kind = "voice" if ctx.voice_mode else "chat"
         system = system_prompt(kind)
-        system += f"\nNow: {datetime.now().strftime('%A %d %B %Y, %H:%M')}."
+        system += f"\nNow: {datetime.now().strftime('%A %d %B %Y, %I:%M %p')}."
         facts = owner_facts(10)
         if facts:
             system += "\n\nWhat you remember about the owner (use naturally, do not recite):\n- " + "\n- ".join(facts)
@@ -86,9 +86,11 @@ class SkillHandler(Skill):
             )
             return SkillResult(reply=reply, skill_id="chat", metadata={"error": why})
         reply = (result.get("message") or result.get("raw") or "").strip()
+        upgrades: list[str] = []
         if not reply:
             reply = f"Say that again, {owner_name()}?"
         else:
+            reply, upgrades = _capture_upgrades(reply)
             reply = maybe_append_quip(
                 reply,
                 user_text=ctx.message,
@@ -98,4 +100,33 @@ class SkillHandler(Skill):
         meta = dict(route_meta)
         if isinstance(result.get("metadata"), dict):
             meta.update(result["metadata"])
+        if upgrades:
+            meta["upgrades_captured"] = upgrades
         return SkillResult(reply=reply, skill_id="chat", metadata=meta)
+
+
+def _capture_upgrades(reply: str) -> tuple[str, list[str]]:
+    """Pull UPGRADE: lines into owner profile; strip them from the spoken/chat reply."""
+    import re
+
+    captured: list[str] = []
+    lines_out: list[str] = []
+    for line in reply.splitlines():
+        m = re.match(r"^\s*UPGRADE:\s*(.+?)\s*$", line, flags=re.IGNORECASE)
+        if m:
+            idea = m.group(1).strip()
+            if idea:
+                captured.append(idea)
+            continue
+        lines_out.append(line)
+    if not captured:
+        return reply, []
+    try:
+        from friday.runtime.owner_profile import add_upgrade
+
+        for idea in captured:
+            add_upgrade(idea, source="model")
+    except Exception:  # noqa: BLE001
+        pass
+    cleaned = "\n".join(lines_out).strip()
+    return cleaned or reply, captured

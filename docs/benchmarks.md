@@ -1,6 +1,6 @@
 # Benchmarks and evaluation
 
-Friday includes local benchmark harnesses under `friday/bench/` and `scripts/bench_*.py`. Results depend on your GPU, Ollama version, model quantizations, and Windows build. Treat numbers as **indicative**, not guarantees.
+Friday includes timing helpers under `friday/bench/`. Results depend on your GPU, Ollama version, model quantizations, and Windows build. Treat numbers as **indicative**, not guarantees.
 
 ## Agent backends
 
@@ -11,17 +11,11 @@ Friday includes local benchmark harnesses under `friday/bench/` and `scripts/ben
 
 **Caveats:** Do not touch mouse/keyboard during a live bench. Hybrid requires the Windows-MCP server enabled and `uv` available. Pass rates vary widely by task group (Notepad/Calculator vs Chrome canvas). Emergency-stop (Ctrl+Alt+F12) aborts runs.
 
-## Other local benches (optional)
+## Other local benches
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/bench_fast_brain.py` | Latency of small “fast brain” routing |
-| `scripts/bench_model_roles.py` | Role map vs single-model baseline |
-| `scripts/bench_stt.py` / `bench_stt_real.py` | Speech-to-text plumbing |
-| `scripts/bench_research_reports.py` | Research report pipeline |
-| `scripts/bench_complexity_routing.py` | Complexity-based model routing (opt-in flag) |
+One-off latency / STT / routing probes used to live under `scripts/bench_*.py`. Those stay **local-only** (gitignored) so the public repo stays lean. Re-create them on your machine if you need a private harness.
 
-Raw JSON outputs from development runs are kept out of the public repository. Re-run the scripts locally to reproduce curves on your hardware.
+For model-role and complexity routing behaviour, prefer the unit tests under `tests/test_complexity_routing.py` and `tests/test_agent_backend.py`. CI runs `pytest` + ruff — that is the correctness gate, not a perf scoreboard.
 
 ## Model defaults
 

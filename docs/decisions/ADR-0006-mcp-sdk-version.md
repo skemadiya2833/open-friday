@@ -13,7 +13,7 @@ Pin `mcp==2.3.0` (in `requirements/core.in` and the lock), not 2.0.0 and not v1.
 Reasoning: all Friday MCP code and tests were written and run against 2.3.0 (`Client`, `StdioServerParameters`, `.structured_content`, snake_case annotations). 2.0.0 was never exercised here, so pinning it would be an untested configuration. Staying on v1.x would mean building on a maintenance-only line.
 
 ## Consequences
-- Upgrades are deliberate: re-run `tests/test_mcp_manager.py` and `scripts/live_mcp_acceptance.py` before bumping the pin.
+- Upgrades are deliberate: re-run `tests/test_mcp_manager.py` (and any local MCP acceptance probe you keep off-repo) before bumping the pin.
 - `mcp` pulls in `httpx2` and `pywin32`; the project's own `httpx` use is unchanged.
 - Alternative (recorded in DECISIONS_NEEDED D-002): pin 2.0.0 to match "stable" literally; rejected for being untested.
 

@@ -7,8 +7,8 @@
     content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#05070c" />
   <title>F.R.I.D.A.Y. — HUD</title>
-  <link rel="stylesheet" href="/styles.css?v=20" />
-  <link rel="stylesheet" href="/hud.css?v=2" />
+  <link rel="stylesheet" href="/styles.css?v=21" />
+  <link rel="stylesheet" href="/hud.css?v=3" />
 </head>
 
 <body>
@@ -199,8 +199,6 @@
               title="Delete everything Friday remembers">Forget all</button>
           </div>
         </header>
-        <p class="lede">Everything Friday knows: facts it learned from you automatically, notes you added, desktop-task
-          history, agent experience, your plan and reminders.</p>
         <div class="chips" id="memFilters"></div>
         <div class="toolbar">
           <input id="memSearch" placeholder="Query memory lattice…" />
@@ -221,7 +219,6 @@
             <h1>Skill Modules</h1>
           </div>
         </header>
-        <p class="lede">Auto-routing engaged. Toggle modules or override from Comms.</p>
         <div class="cards" id="skillList"></div>
       </section>
 
@@ -254,7 +251,6 @@
           <ul class="calendar-agenda" id="calendarAgenda" aria-label="Today's calendar events"></ul>
         </div>
 
-        <p class="lede">Timed automation — Friday runs these later with a skill.</p>
         <form class="card-form grid-form" id="taskForm">
           <input id="taskTitle" placeholder="Title" />
           <input id="taskPrompt" placeholder="Prompt / message" />
@@ -277,20 +273,18 @@
             <button class="ghost danger" id="reportCancel" type="button">Cancel</button>
           </div>
         </header>
-        <p class="lede">Cited, validated reports. Chat role can view history; running web research needs the tools role.
-        </p>
         <form class="card-form grid-form" id="reportForm">
           <input id="reportQuery" placeholder="Research topic…" required />
           <select id="reportMode">
-            <option value="quick">Quick (≤4 sources)</option>
-            <option value="deep">Deep (≤12 sources)</option>
-            <option value="think">Think (no web)</option>
+            <option value="quick">Quick</option>
+            <option value="deep">Deep</option>
+            <option value="think">Think</option>
           </select>
           <button type="submit">Run report</button>
         </form>
         <p class="muted" id="reportLive">Idle</p>
         <div class="plan-head">
-          <h2>Live canvas</h2>
+          <h2>Canvas</h2>
         </div>
         <div id="reportCanvas" class="report-canvas"></div>
         <div class="plan-head">
@@ -311,7 +305,7 @@
             <button type="button" class="ghost danger" id="mcpKill">Kill switch</button>
           </div>
         </header>
-        <p class="lede" id="toolsPolicyLine"></p>
+        <p class="muted" id="toolsPolicyLine"></p>
         <div class="plan-head">
           <h2>MCP servers</h2>
         </div>
@@ -339,13 +333,11 @@
             <button class="ghost" type="button" id="btnAuthRefresh">Refresh</button>
           </div>
         </header>
-        <p class="lede" id="authStatusLine">On this PC you are always signed in. Register phones with a QR code.</p>
+        <p class="muted" id="authStatusLine">Local · signed in</p>
         <div class="card-form" id="qrPairPanel" style="margin-bottom:14px">
-          <p class="muted">Same Wi‑Fi: show a QR on this PC, scan with your phone — it registers and signs in
-            automatically.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="pairDeviceName" placeholder="Device name (e.g. Pixel)" maxlength="64" style="min-width:160px" />
-            <button type="button" class="send" id="btnShowPairQr">Show QR to register phone</button>
+            <input id="pairDeviceName" placeholder="Device name" maxlength="64" style="min-width:160px" />
+            <button type="button" class="send" id="btnShowPairQr">Show pair QR</button>
           </div>
           <p class="muted" id="qrPairHint" style="margin-top:8px"></p>
           <div id="qrPairBox" class="hidden" style="margin-top:12px;text-align:center">
@@ -406,11 +398,11 @@
   <script src="/live.js?v=22"></script>
   <script src="/turn.js?v=1"></script>
   <script src="/auth.js?v=6"></script>
-  <script src="/app.js?v=45"></script>
-  <script src="/systems-ui.js?v=6"></script>
-  <script src="/tools.js?v=6"></script>
-  <script src="/reports.js?v=2"></script>
-  <script src="/motion.js?v=2"></script>
+  <script src="/app.js?v=46"></script>
+  <script src="/systems-ui.js?v=7"></script>
+  <script src="/tools.js?v=7"></script>
+  <script src="/reports.js?v=3"></script>
+  <script src="/motion.js?v=3"></script>
   <script src="/sfx.js?v=1"></script>
 </body>
 

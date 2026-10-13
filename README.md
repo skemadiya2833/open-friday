@@ -1,8 +1,8 @@
-# Friday
+# Open Friday
 
-Local-first personal AI assistant for Windows: modular **skills**, vector memory, voice, scheduled tasks, calendar and productivity hooks, and an optional **desktop agent** that observes the screen and executes one action at a time.
+Local-first personal AI assistant for Windows by **Sunil Kemadiya** ([Devoids](https://devoids.in)): modular **skills**, vector memory, voice, scheduled tasks, calendar hooks, and an optional **desktop agent** that observes the screen and acts one step at a time.
 
-Talk to Friday in the Control Center; it routes to chat, research, memory, files, tasks, or **computer use** (vision or hybrid accessibility-tree backend).
+Talk to Friday in the Control Center; it routes to chat, research, memory, files, tasks, or **computer use** (vision or hybrid accessibility-tree backend). Everyday knobs live in **Systems** (owner profile, prefs, camera) — not scattered `.env` edits.
 
 <p align="center">
   <img src="docs/assets/hud_desktop.png" alt="Friday Control Center desktop HUD" width="720" />
@@ -14,9 +14,10 @@ Talk to Friday in the Control Center; it routes to chat, research, memory, files
 
 | Surface | What it does |
 |---------|----------------|
-| **Control Center** | Web UI at `http://127.0.0.1:8787` — chat, skills, tools, health, reports |
+| **Control Center** | Web UI at `http://127.0.0.1:8787` — Comms, Memory, Skills, Tasks, Reports, Tools, Devices, Systems |
 | **Skills** | Built-in packs: chat, computer_use, research, memory, files, tasks |
 | **Memory** | Chroma + local embeddings — searchable from the UI |
+| **Owner profile** | Systems → About you — durable context + upgrade notes Friday can capture |
 | **Calendar & rhythm** | iCal agenda, morning briefing, focus nudges (local data) |
 | **Voice** | Push-to-talk STT and TTS (optional install) |
 | **Desktop agent** | Legacy vision loop or hybrid UIA+vision via Windows-MCP |

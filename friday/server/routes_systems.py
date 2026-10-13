@@ -54,6 +54,53 @@ def systems_prefs_clear() -> dict[str, Any]:
     return snapshot()
 
 
+@router.get("/api/systems/profile")
+def systems_profile_get() -> dict[str, Any]:
+    from friday.runtime.owner_profile import load
+
+    return load()
+
+
+class ProfilePatch(BaseModel):
+    about: str | None = None
+    upgrades: list[Any] | None = None
+
+
+@router.patch("/api/systems/profile")
+def systems_profile_patch(body: ProfilePatch) -> dict[str, Any]:
+    from friday.runtime.owner_profile import update
+
+    return update(about=body.about, upgrades=body.upgrades)
+
+
+class UpgradeAdd(BaseModel):
+    text: str = Field(..., min_length=1, max_length=280)
+    source: str = "manual"
+
+
+@router.post("/api/systems/profile/upgrades")
+def systems_profile_add_upgrade(body: UpgradeAdd) -> dict[str, Any]:
+    from friday.runtime.owner_profile import add_upgrade
+
+    try:
+        return add_upgrade(body.text, source=body.source)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/api/systems/profile/upgrades/{index}")
+def systems_profile_del_upgrade(index: int) -> dict[str, Any]:
+    from friday.runtime.owner_profile import load, save
+
+    data = load()
+    ups = list(data.get("upgrades") or [])
+    if index < 0 or index >= len(ups):
+        raise HTTPException(404, "Not found")
+    ups.pop(index)
+    data["upgrades"] = ups
+    return save(data)
+
+
 def _apply_side_effects(patch: dict[str, Any]) -> None:
     """Invalidate caches / request overrides after a prefs write."""
     if "agent_backend" in patch:

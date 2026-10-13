@@ -1,17 +1,12 @@
 # Process artifacts (progress, decisions, reports, benches) — never push
 .internal/
 
+# Local runtime / secrets / user data
 data/
 data/calendar_ical.url
 **/calendar_ical.url
 .private_library/
 friday_env/
-__pycache__/
-*.pyc
-.venv/
-venv/
-web/node_modules/
-web/dist/
 .env
 .env.*
 !.env.example
@@ -19,19 +14,68 @@ web/dist/
 *.key
 id_rsa
 id_ed25519
+*.secrets
+credentials.json
+service-account*.json
+owner_profile.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Web build / deps
+web/node_modules/
+web/dist/
+
+# Media / logs / scratch
 *.wav
 *.mp3
-.DS_Store
-.pytest_cache/
-*.egg-info/
-.ruff_cache/
-__pycache__/
-
-docs/research/diag_chrome/*.txt
 *.err
 *.log
 *.out
 srv.out
-*.secrets
-credentials.json
-service-account*.json
+.DS_Store
+Thumbs.db
+
+# Local-only scratch entrypoints at repo root (never ship)
+/_srv.py
+/_t.py
+/_*.py
+
+# Maintainer-local harnesses / benches / probes (keep on disk, not in the repo)
+scripts/_*.py
+scripts/bench_*.py
+scripts/diag_*.py
+scripts/eval_*.py
+scripts/hw_*.py
+scripts/hybrid_*.py
+scripts/injected_*.py
+scripts/lan_*.py
+scripts/live_*.py
+scripts/physical_*.py
+scripts/probe_*.py
+scripts/record_*.py
+scripts/render_*.py
+scripts/synth_*.py
+scripts/tts_*.py
+scripts/ui_*.py
+scripts/voice_*.py
+scripts/vram_*.py
+scripts/audit_deps.py
+scripts/compare_models.ps1
+scripts/hotkey_collision_check.py
+
+# Design research dumps
+docs/research/diag_chrome/*.txt
