@@ -89,7 +89,8 @@ def calendar_agenda(range: Literal["today", "week"] = "today") -> dict[str, Any]
     from friday.calendar.secrets import configured
 
     if not configured():
-        raise HTTPException(400, "Calendar iCal URL is not configured")
+        # Soft empty — UI polls this; 400 spams the console when iCal isn't set up yet.
+        return {"configured": False, "events": [], "range": range}
     try:
         if range == "week":
             return cal_agenda.week_agenda()
@@ -104,7 +105,7 @@ def calendar_next() -> dict[str, Any]:
     from friday.calendar.secrets import configured
 
     if not configured():
-        raise HTTPException(400, "Calendar iCal URL is not configured")
+        return {"configured": False, "event": None}
     try:
         return cal_agenda.next_event()
     except RuntimeError as exc:

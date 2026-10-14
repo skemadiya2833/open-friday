@@ -40,13 +40,18 @@ class SkillHandler(Skill):
                 metadata={"refused": True},
             )
 
-        # Tools-first: open Notepad / specs / etc. without the vision loop (voice-friendly).
-        from friday.agent.direct_tools import try_direct
+        # Tools-first: open Notepad / specs / HTML / etc. without the vision loop (voice-friendly).
+        from friday.agent.direct_tools import is_make_html_request, try_direct
 
-        direct = try_direct(ctx.message.strip())
+        msg = ctx.message.strip()
+        if is_make_html_request(msg):
+            ctx.emit("activity", {"step": "direct", "message": "Writing HTML…"})
+            ctx.emit("status", {"status": "acting"})
+
+        direct = try_direct(msg)
         if direct.handled:
-            # HTML / PowerShell / notepad — never seize the mouse or flash ACTING in live mode.
-            short = (direct.message or "").split("\n")[0][:120]
+            # HTML / PowerShell / notepad — never seize the mouse. Final reply streams via done.
+            short = (direct.message or "").split("\n")[0][:100]
             ctx.emit("activity", {"step": "direct", "message": short or "Done"})
             ctx.emit("status", {"status": "idle"})
             return SkillResult(
@@ -73,7 +78,8 @@ class SkillHandler(Skill):
             # Seed the run objective with the multi-step protocol so the vision loop sees it.
             objective = f"{plan_note}\n\nUSER OBJECTIVE:\n{objective}"
         ctx.emit("computer_use_start", {"objective": objective[:200]})
-        ctx.emit("activity", {"step": "act", "message": f"Desktop agent · {ctx.message.strip()[:80]}"})
+        # Quiet hint only — never dump the user utterance or open the RESULT card mid-run.
+        ctx.emit("activity", {"step": "act", "message": "Working the desktop…"})
         ctx.emit("status", {"status": "acting"})
 
         # The run owns its controller and event log; only ITS events are forwarded here, so a

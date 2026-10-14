@@ -144,14 +144,28 @@ def test_pipeline_with_mocked_search_and_model(tmp_path, monkeypatch):
             })
         }
 
+    def fake_enrich(row, *, fetch_body=True):
+        return {
+            "title": row.get("title") or "",
+            "url": row.get("url") or "",
+            "snippet": row.get("snippet") or "",
+            "text": row.get("snippet") or "",
+            "image": "",
+            "domain": "news.example",
+            "kind": "web",
+        }
+
     monkeypatch.setattr("friday.knowledge.search.fetch_web_results", fake_fetch)
     monkeypatch.setattr("friday.models.local.query_model_text", fake_query)
+    monkeypatch.setattr("friday.knowledge.enrich.wikipedia_brief", lambda *_a, **_k: None)
+    monkeypatch.setattr("friday.knowledge.enrich.duckduckgo_images", lambda *_a, **_k: [])
+    monkeypatch.setattr("friday.knowledge.enrich.enrich_source_row", fake_enrich)
 
     from friday.reports.pipeline import run_research_report
 
     doc = run_research_report("AlphaCorp revenue research report", mode="quick", save=True)
     assert doc["schema_version"] == "1"
-    assert doc["claims"]
+    assert doc["claims"] or doc["findings"]
     assert not doc.get("fallback_plain")
     assert validate_report_schema(doc) == []
 

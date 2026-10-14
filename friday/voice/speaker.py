@@ -85,8 +85,16 @@ class NullSink:
 class WorkerEngine:
     """Local engine in an isolated interpreter. One request at a time."""
 
-    def __init__(self, engine: str, voice: str | None = None, python: Path | None = None) -> None:
+    def __init__(
+        self,
+        engine: str,
+        voice: str | None = None,
+        python: Path | None = None,
+        *,
+        speed: float = 1.0,
+    ) -> None:
         self.engine, self.voice = engine, voice
+        self.speed = float(speed) if speed else 1.0
         self.python = Path(python) if python else default_worker_python()
         self._p: subprocess.Popen | None = None
         self._lock = threading.Lock()
@@ -96,12 +104,56 @@ class WorkerEngine:
             return
         if not self.python.is_file():
             raise FileNotFoundError(f"TTS worker interpreter not found: {self.python} (see docs/VOICE_SAMPLES.md)")
-        env = {k: v for k, v in os.environ.items() if k in ("PATH", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA")}
-        self._p = subprocess.Popen([str(self.python), str(Path(__file__).with_name("tts_worker.py"))], stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
-        ready = json.loads(self._p.stdout.readline() or b"{}")
+        # Keep enough Windows env for onnxruntime DLLs; still avoid leaking secrets.
+        keep = {
+            "PATH",
+            "PATHEXT",
+            "SystemRoot",
+            "SYSTEMROOT",
+            "WINDIR",
+            "SystemDrive",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "HOME",
+            "LOCALAPPDATA",
+            "APPDATA",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "ProgramData",
+            "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE",
+            "CUDA_PATH",
+            "FRIDAY_TTS_MODELS",
+            "FRIDAY_TTS_PYTHON",
+        }
+        env = {k: v for k, v in os.environ.items() if k in keep}
+        models = Path(os.environ.get("FRIDAY_TTS_MODELS") or (ROOT / "data" / "voice_lab" / "models"))
+        env["FRIDAY_TTS_MODELS"] = str(models.resolve())
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        self._p = subprocess.Popen(
+            [str(self.python), str(Path(__file__).with_name("tts_worker.py"))],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        ready_line = self._p.stdout.readline() if self._p.stdout else b""
+        try:
+            ready = json.loads(ready_line or b"{}")
+        except json.JSONDecodeError:
+            ready = {}
         if not ready.get("ready"):
-            raise RuntimeError("TTS worker did not start")
+            err = b""
+            try:
+                if self._p.stderr:
+                    err = self._p.stderr.read(800) or b""
+            except Exception:  # noqa: BLE001
+                pass
+            raise RuntimeError(
+                f"TTS worker did not start (exit={self._p.poll()}): "
+                f"{(err or ready_line or b'').decode(errors='ignore')[:400]}"
+            )
 
     def stop(self) -> None:
         p, self._p = self._p, None
@@ -113,7 +165,7 @@ class WorkerEngine:
             self.start()
             p = self._p
             assert p and p.stdin and p.stdout
-            req = {"engine": self.engine, "text": text}
+            req = {"engine": self.engine, "text": text, "speed": self.speed}
             if self.voice:
                 req["voice"] = self.voice
             p.stdin.write((json.dumps(req) + "\n").encode())

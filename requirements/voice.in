@@ -1,5 +1,6 @@
 ﻿-c core.lock.txt
 faster-whisper
-edge-tts        # optional CLOUD voice (sends text to Microsoft); off unless enabled
+edge-tts        # optional CLOUD voice (sends text to Microsoft); often 403 — see gTTS
+gTTS            # simple Google TTS fallback (no API key) when Edge is unavailable
 openwakeword==0.6.0   # wake word, ONNX only on Windows (Apache-2.0)
 sounddevice==0.5.6    # microphone and speaker I/O (MIT)

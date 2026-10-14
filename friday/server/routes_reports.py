@@ -11,19 +11,13 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
-def _role(request: Request) -> str:
-    sess = getattr(request.state, "session", None) or {}
-    return str(sess.get("role") or "chat")
-
-
 def _require_tools(request: Request) -> None:
-    from friday.auth.roles import role_at_least
-    from friday.config import FRIDAY_AUTH
+    # Same trust model as the rest of the API: this PC (loopback) is admin;
+    # phones need an approved session with tools+.
+    from friday.auth.roles import Role
+    from friday.server.routes_auth import require_session
 
-    if FRIDAY_AUTH in ("off", ""):
-        return
-    if not role_at_least(_role(request), "tools"):
-        raise HTTPException(403, "Running web research requires the tools role")
+    require_session(request, min_role=Role.TOOLS)
 
 
 class StartBody(BaseModel):

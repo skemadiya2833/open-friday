@@ -222,7 +222,7 @@ VOICE_ENABLED = _env_bool("VOICE_ENABLED", "true")
 SHELL_TOOLS_ENABLED = _env_bool("SHELL_TOOLS_ENABLED", "false")
 
 # Persona / humor / deep mode (see docs/PERSONA.md)
-FRIDAY_OWNER_NAME = os.getenv("FRIDAY_OWNER_NAME", "Sunil").strip() or "Sunil"
+FRIDAY_OWNER_NAME = os.getenv("FRIDAY_OWNER_NAME", "boss").strip() or "boss"
 FRIDAY_HUMOR = (os.getenv("FRIDAY_HUMOR", "dry") or "dry").strip().lower()
 FRIDAY_DEEP = _env_bool("FRIDAY_DEEP", "false")
 

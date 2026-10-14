@@ -122,23 +122,27 @@ def _news_rss(query: str, limit: int) -> list[dict[str, str]]:
 
 
 def fetch_web_results(query: str, *, limit: int = 8) -> list[dict[str, str]]:
-    """Network fetch. Tests patch this. Never opens a browser."""
+    """Network fetch (DuckDuckGo + News). Tests patch this. Never opens a browser."""
     found: list[dict[str, str]] = []
     errors: list[str] = []
+    # Always pull news + web for a thicker brief (news used to be news-query only).
+    try:
+        found.extend(_news_rss(query, max(3, limit // 2)))
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"news:{type(exc).__name__}")
+    try:
+        found.extend(_duckduckgo(query, limit))
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"ddg:{type(exc).__name__}")
     if _NEWS.search(query) or _norm(query) in {"news", "today", "headlines"}:
         try:
-            found.extend(_news_rss(query, limit))
+            found.extend(_news_rss(query + " latest", limit))
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"news:{type(exc).__name__}")
-    if len(found) < 3:
-        try:
-            found.extend(_duckduckgo(query, limit))
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"ddg:{type(exc).__name__}")
+            errors.append(f"news2:{type(exc).__name__}")
     seen: set[str] = set()
     uniq: list[dict[str, str]] = []
     for row in found:
-        key = _norm(row.get("title") or "")
+        key = _norm(row.get("url") or "") or _norm(row.get("title") or "")
         if not key or key in seen:
             continue
         seen.add(key)

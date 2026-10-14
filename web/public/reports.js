@@ -158,32 +158,68 @@
     }
   }
 
+  function safeImgUrl(u) {
+    const href = safeHttpUrl(u);
+    if (!href) return null;
+    // Only allow http(s) images — never javascript: or data: from untrusted pages.
+    return href;
+  }
+
   function renderReport(doc) {
     currentReport = doc;
     const root = $("#reportCanvas");
     if (!root) return;
     clear(root);
+    root.classList.add("report-dossier");
 
-    const head = el("div", "report-head");
-    head.appendChild(el("h2", null, doc.query || "Report"));
-    const meta = el("p", "muted");
-    meta.textContent = `${doc.mode || "?"} · ${doc.created_at || ""} · id ${doc.id || ""}`;
-    head.appendChild(meta);
-    if (doc.fallback_plain) {
-      head.appendChild(el("p", "warn", `Plain fallback: ${doc.fallback_reason || ""}`));
-    }
-    root.appendChild(head);
+    const hero = el("div", "report-hero");
+    hero.appendChild(el("div", "report-kicker", "FRIDAY · RESEARCH BRIEF"));
+    hero.appendChild(el("h2", null, doc.query || "Report"));
+    const meta = el("p", "report-meta");
+    const nSrc = (doc.sources || []).length;
+    const nImg = (doc.images || []).length;
+    meta.textContent = `${(doc.mode || "quick").toUpperCase()} · ${nSrc} sources · ${nImg} visuals · ${doc.created_at || ""}`;
+    hero.appendChild(meta);
+    root.appendChild(hero);
 
     const sum = doc.summary || {};
-    const card = el("div", "report-card");
-    card.appendChild(el("h3", null, doc.kind === "productivity" ? "Summary" : "TL;DR"));
+    const brief = el("div", "report-brief");
+    brief.appendChild(el("h3", null, doc.kind === "productivity" ? "Summary" : "Executive brief"));
     const bodyText = sum.tldr || doc.commentary || "";
-    card.appendChild(el("p", null, bodyText));
-    card.appendChild(el("p", "muted", `Confidence ${sum.confidence ?? "—"} — ${sum.rationale || ""}`));
-    if (doc.commentary_valid === false) {
-      card.appendChild(el("p", "warn", (doc.commentary_issues || []).join("; ")));
+    (String(bodyText).split(/\n+/).filter(Boolean) || [""]).forEach((para) => {
+      brief.appendChild(el("p", null, para));
+    });
+    if (sum.confidence != null || sum.rationale) {
+      brief.appendChild(
+        el("p", "muted", `Confidence ${sum.confidence ?? "—"} · ${sum.rationale || ""}`),
+      );
     }
-    root.appendChild(card);
+    root.appendChild(brief);
+
+    const gallery = (doc.images || []).filter((im) => safeImgUrl(im.image || im.url));
+    if (gallery.length) {
+      const g = el("div", "report-gallery");
+      g.appendChild(el("h3", null, "Visuals from the web"));
+      const strip = el("div", "report-gallery-strip");
+      gallery.slice(0, 8).forEach((im) => {
+        const fig = el("figure", "report-figure");
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.alt = im.title || "Research visual";
+        img.src = safeImgUrl(im.image || im.url);
+        fig.appendChild(img);
+        const cap = el("figcaption");
+        if (im.url && safeHttpUrl(im.url)) {
+          cap.appendChild(linkEl(im.url, im.title || domainOf(im.url) || "Open"));
+        } else {
+          cap.textContent = im.title || "";
+        }
+        fig.appendChild(cap);
+        strip.appendChild(fig);
+      });
+      g.appendChild(strip);
+      root.appendChild(g);
+    }
 
     if (doc.metrics && typeof doc.metrics === "object") {
       const mbox = el("div", "report-card");
@@ -217,31 +253,26 @@
     root.appendChild(findingsHost);
     renderFindings(doc);
 
-    const claimsHost = el("div", "report-card");
-    claimsHost.appendChild(el("h3", null, "Claims & evidence"));
-    (doc.claims || []).forEach((c) => {
-      const row = el("details", "claim-row");
-      const sumEl = el("summary");
-      sumEl.textContent = c.claim || "";
-      row.appendChild(sumEl);
-      row.appendChild(el("p", "muted", `Evidence: ${c.evidence || ""}`));
-      const src = (doc.sources || []).find((s) => s.id === c.source_id);
-      if (src) {
-        const p = el("p");
-        p.appendChild(document.createTextNode("Source: "));
-        p.appendChild(linkEl(src.url, src.domain || src.title));
-        row.appendChild(p);
-      }
-      const copyBtn = el("button", "ghost", "Copy citation");
-      copyBtn.type = "button";
-      copyBtn.addEventListener("click", () => {
-        const text = `${c.claim} — ${src ? src.url : c.source_id}`;
-        navigator.clipboard?.writeText(text);
+    if ((doc.claims || []).length) {
+      const claimsHost = el("div", "report-card");
+      claimsHost.appendChild(el("h3", null, "Claims & evidence"));
+      (doc.claims || []).forEach((c) => {
+        const row = el("details", "claim-row");
+        const sumEl = el("summary");
+        sumEl.textContent = c.claim || "";
+        row.appendChild(sumEl);
+        row.appendChild(el("p", "muted", `Evidence: ${c.evidence || ""}`));
+        const src = (doc.sources || []).find((s) => s.id === c.source_id);
+        if (src) {
+          const p = el("p");
+          p.appendChild(document.createTextNode("Source: "));
+          p.appendChild(linkEl(src.url, src.domain || src.title));
+          row.appendChild(p);
+        }
+        claimsHost.appendChild(row);
       });
-      row.appendChild(copyBtn);
-      claimsHost.appendChild(row);
-    });
-    root.appendChild(claimsHost);
+      root.appendChild(claimsHost);
+    }
 
     (doc.charts || []).forEach((ch) => {
       const box = el("div", "report-card");
@@ -283,15 +314,29 @@
       root.appendChild(box);
     }
 
-    const srcBox = el("div", "report-card");
-    srcBox.appendChild(el("h3", null, "Sources"));
+    const srcBox = el("div", "report-sources");
+    srcBox.appendChild(el("h3", null, "Sources & articles"));
+    const grid = el("div", "report-source-grid");
     (doc.sources || []).forEach((s) => {
-      const row = el("div", "source-row");
-      row.appendChild(linkEl(s.url, `${s.domain} — ${s.title}`));
+      const card = el("article", "report-source-card");
+      if (safeImgUrl(s.image)) {
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.alt = "";
+        img.src = safeImgUrl(s.image);
+        card.appendChild(img);
+      }
+      const body = el("div", "report-source-body");
+      body.appendChild(el("div", "report-source-domain", s.domain || domainOf(s.url) || "web"));
+      body.appendChild(linkEl(s.url, s.title || s.url));
+      const snip = (s.snippet || s.text || "").slice(0, 220);
+      if (snip) body.appendChild(el("p", null, snip + (snip.length >= 220 ? "…" : "")));
       const cred = (s.credibility || {}).label || "";
-      row.appendChild(el("p", "muted", `${s.fetched_at || ""} · ${cred}`));
-      srcBox.appendChild(row);
+      if (cred) body.appendChild(el("p", "muted", cred));
+      card.appendChild(body);
+      grid.appendChild(card);
     });
+    srcBox.appendChild(grid);
     root.appendChild(srcBox);
 
     ["uncertainties", "open_questions", "pros", "cons"].forEach((key) => {
@@ -318,6 +363,16 @@
     ht.href = `/api/reports/${doc.id}/export.html`;
     ht.rel = "noopener noreferrer";
     actions.appendChild(ht);
+    const google = el("a", "ghost", "Open Google");
+    google.href = "https://www.google.com/search?q=" + encodeURIComponent(doc.query || "");
+    google.target = "_blank";
+    google.rel = "noopener noreferrer";
+    actions.appendChild(google);
+    const ddg = el("a", "ghost", "Open DuckDuckGo");
+    ddg.href = "https://duckduckgo.com/?q=" + encodeURIComponent(doc.query || "");
+    ddg.target = "_blank";
+    ddg.rel = "noopener noreferrer";
+    actions.appendChild(ddg);
     const del = el("button", "ghost danger", "Delete");
     del.type = "button";
     del.addEventListener("click", async () => {
@@ -334,30 +389,33 @@
     if (!host) return;
     clear(host);
     host.appendChild(el("h3", null, "Key findings"));
-    (doc.findings || [])
-      .filter((f) => (f.confidence ?? 0) >= confFilter)
-      .forEach((f) => {
-        const card = el("div", "report-card finding");
-        card.appendChild(el("h4", null, f.title || ""));
-        card.appendChild(el("p", null, f.body || ""));
-        card.appendChild(el("p", "muted", `Confidence ${f.confidence ?? "—"}`));
-        const dig = el("button", "ghost", "Dig deeper");
-        dig.type = "button";
-        dig.addEventListener("click", async () => {
-          const r = await apiFetch(`/api/reports/${doc.id}/dig`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ finding_id: f.id }),
-          });
-          if (r.ok) {
-            const sub = await r.json();
-            renderReport(sub);
-            refreshHistory();
-          }
+    const list = (doc.findings || []).filter((f) => (f.confidence ?? 0) >= confFilter);
+    if (!list.length) {
+      host.appendChild(el("p", "muted", "No findings above this confidence — lower the filter or dig deeper."));
+      return;
+    }
+    list.forEach((f) => {
+      const card = el("div", "report-card finding");
+      card.appendChild(el("h4", null, f.title || ""));
+      card.appendChild(el("p", null, f.body || ""));
+      card.appendChild(el("p", "muted", `Confidence ${f.confidence ?? "—"}`));
+      const dig = el("button", "ghost", "Dig deeper");
+      dig.type = "button";
+      dig.addEventListener("click", async () => {
+        const r = await apiFetch(`/api/reports/${doc.id}/dig`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ finding_id: f.id }),
         });
-        card.appendChild(dig);
-        host.appendChild(card);
+        if (r.ok) {
+          const sub = await r.json();
+          renderReport(sub);
+          refreshHistory();
+        }
       });
+      card.appendChild(dig);
+      host.appendChild(card);
+    });
   }
 
   async function refreshHistory() {

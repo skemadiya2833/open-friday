@@ -130,9 +130,32 @@ _WEEK_DASHBOARD = re.compile(
     r")\b",
     re.I,
 )
+# Write / generate an HTML page → file + browser. Never the vision desktop agent.
+_MAKE_HTML = re.compile(
+    r"\b("
+    r"(?:write|create|make|build|generate|code|draft|spin\s*up)\b.{0,100}\bhtml(?:5)?\b|"
+    r"\bhtml(?:5)?\b.{0,80}\b(?:page|file|document|site|webpage|landing|demo|template)\b|"
+    r"(?:write|create|make|build|generate)\b.{0,60}\b(?:web\s*page|webpage|landing\s*page)\b"
+    r")\b",
+    re.I,
+)
+_MAKE_HTML_VAGUE = re.compile(
+    r"^\s*(?:please\s+|hey\s+friday[,:]?\s*)?(?:write|create|make|build|generate|code)\s+"
+    r"(?:(?:me\s+|an?\s+|some\s+|the\s+)?)?(?:html(?:5)?(?:\s+code)?(?:\s+file)?|"
+    r"an?\s+html(?:5)?\s+page)\s*[.!]?\s*$",
+    re.I,
+)
 _SHOW_TEXT_ON_SCREEN = re.compile(
     r"^\s*(?:please\s+)?(?:show|display|put|write)\b.{"
     r"0,40}\b(?:on (?:my |the )?(?:screen|desktop)|in (?:a |my )?notepad)\b",
+    re.I,
+)
+# Vague "put something on my screen" — ask one question; never start the vision agent.
+_SHOW_SOMETHING_VAGUE = re.compile(
+    r"\b(?:put|show|display|bring up|pull up)\b.{0,60}\b(?:something|anything|stuff)\b.{0,50}"
+    r"\b(?:on (?:my |the )?(?:screen|desktop|monitor)|in (?:the )?browser)\b|"
+    r"\b(?:on (?:my |the )?(?:screen|desktop))\b.{0,40}\b(?:something|anything|to show)\b|"
+    r"\b(?:put|show)\b.{0,30}\b(?:on (?:my |the )?screen)\b\s*$",
     re.I,
 )
 _SCREENSHOT = re.compile(
@@ -398,6 +421,105 @@ def _write_and_open_html(html: str, *, stem: str) -> Path:
     return path
 
 
+_STARTER_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Friday · new page</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --fg:#e8eefc; --accent:#5b8cff; --muted:#8b9bb8; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1a2a55 0%, var(--bg) 55%);
+      color: var(--fg); display: grid; place-items: center; padding: 2rem;
+    }
+    main {
+      width: min(640px, 100%); padding: 2rem 2.25rem; border: 1px solid #243056;
+      border-radius: 18px; background: rgba(12, 18, 36, 0.85); backdrop-filter: blur(8px);
+    }
+    h1 { margin: 0 0 0.4rem; font-size: 1.75rem; letter-spacing: 0.02em; }
+    p { margin: 0; color: var(--muted); line-height: 1.55; }
+    .tag {
+      display: inline-block; margin-bottom: 1rem; padding: 0.2rem 0.55rem;
+      border-radius: 999px; font-size: 0.75rem; color: var(--accent);
+      border: 1px solid rgba(91, 140, 255, 0.35);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="tag">FRIDAY · LOCAL</span>
+    <h1>Ready when you are</h1>
+    <p>Tell Friday what this page should become — a landing page, form, dashboard, whatever —
+       and she'll rewrite the file and reopen it.</p>
+  </main>
+</body>
+</html>
+"""
+
+
+def _strip_html_fences(text: str) -> str:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:html|HTML)?\s*", "", t)
+        t = re.sub(r"\s*```$", "", t)
+    return t.strip()
+
+
+def _llm_html_page(brief: str) -> str | None:
+    """Generate a single-file HTML page. Fail soft — caller has a starter fallback."""
+    brief = (brief or "").strip()[:600]
+    if not brief:
+        return None
+    try:
+        from friday.models.local import query_model_text
+
+        prompt = (
+            "Write one complete self-contained HTML5 document for this request.\n"
+            "Rules: start with <!DOCTYPE html>; inline CSS only; no markdown; no explanation; "
+            "polished dark UI; usable as a real page.\n"
+            f"Request: {brief}"
+        )
+        out = query_model_text(prompt, think=False, num_predict=1800, num_ctx=4096)
+        raw = ""
+        msg = out.get("message")
+        if isinstance(msg, str):
+            raw = msg.strip()
+        elif isinstance(msg, dict):
+            raw = str(msg.get("content") or "").strip()
+        if not raw:
+            raw = str(out.get("raw") or out.get("response") or out.get("text") or "").strip()
+        if not raw:
+            for v in out.values():
+                if isinstance(v, str) and "<html" in v.lower():
+                    raw = v
+                    break
+        html = _strip_html_fences(raw)
+        if "<html" in html.lower() and len(html) > 80:
+            if not html.lstrip().lower().startswith("<!doctype"):
+                html = "<!DOCTYPE html>\n" + html
+            return html
+    except Exception as exc:  # noqa: BLE001
+        print(f"[DirectTools] HTML LLM failed: {exc}")
+    return None
+
+
+def _make_and_open_html(objective: str) -> tuple[Path, str]:
+    """Write HTML and open the default browser. Returns (path, how)."""
+    obj = (objective or "").strip()
+    if _MAKE_HTML_VAGUE.match(obj) or len(obj.split()) <= 5:
+        path = _write_and_open_html(_STARTER_HTML, stem="friday-page")
+        return path, "starter"
+    html = _llm_html_page(obj)
+    if html:
+        path = _write_and_open_html(html, stem="friday-page")
+        return path, "generated"
+    path = _write_and_open_html(_STARTER_HTML, stem="friday-page")
+    return path, "starter"
+
+
 def _open_specs_html(text: str, *, stem: str = "friday-system-specs") -> Path:
     """Write a self-contained HTML report and open it in the default browser."""
     rows = _specs_to_rows(text)
@@ -642,6 +764,12 @@ def _screenshot_describe(*, describe: bool = True) -> str:
     return describe_screen("What is visibly open on the desktop? Be brief.", frame_b64=b64)
 
 
+def is_make_html_request(objective: str) -> bool:
+    """True when the ask should be write-HTML + open browser (not the vision agent)."""
+    obj = (objective or "").strip()
+    return bool(obj and _MAKE_HTML.search(obj) and not _WEEK_DASHBOARD.search(obj))
+
+
 def try_direct(objective: str, *, workspace: str | None = None,
                approve: Callable[[str, str], bool] | None = None) -> DirectResult:
     obj = (objective or "").strip()
@@ -800,6 +928,30 @@ def try_direct(objective: str, *, workspace: str | None = None,
             )
         except Exception as exc:  # noqa: BLE001
             return DirectResult(True, False, f"Couldn't open week dashboard: {exc}", "week_dashboard")
+
+    # Write / generate HTML → temp file + default browser (never vision desktop agent).
+    if _MAKE_HTML.search(obj) and not _WEEK_DASHBOARD.search(obj):
+        try:
+            path, how = _make_and_open_html(obj)
+            if how == "starter":
+                msg = (
+                    f"Opened a starter HTML page in your browser ({path.name}). "
+                    "Tell me what you want on it and I'll rewrite it."
+                )
+            else:
+                msg = f"Wrote the HTML and opened it in your browser ({path.name})."
+            return DirectResult(True, True, msg, "make_html")
+        except Exception as exc:  # noqa: BLE001
+            return DirectResult(True, False, f"Couldn't write/open HTML: {exc}", "make_html")
+
+    # Vague "put something on screen" → one clarifying question (no vision loop, no RESULT spam).
+    if _SHOW_SOMETHING_VAGUE.search(obj) and not _SHOW_SPECS_ON_SCREEN.search(obj):
+        return DirectResult(
+            True,
+            True,
+            "What should I put on screen — your tasks, system specs, a note, or an HTML page?",
+            "clarify_screen",
+        )
 
     # Cameras / peripherals inventory (before generic specs — more specific).
     if _LIST_CAMERAS.search(obj) or _PERIPHERALS.search(obj):

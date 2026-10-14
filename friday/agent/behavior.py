@@ -56,7 +56,7 @@ def plan_preamble(objective: str) -> str:
         "1. Short PLAN (2–5 bullets) before acting.\n"
         "2. Execute ONE step, then VERIFY from evidence (tool result or screen).\n"
         "3. On failure: change strategy — never repeat the same failing action.\n"
-        "4. Ask ONLY if the answer changes the next concrete step.\n"
+        "4. If a missing detail would change the next step, ask ONE short question — then act. Do not guess wrong.\n"
         "5. Prefer tools / keyboard routes before pixel clicks.\n"
         "6. Finish with what was done and how you verified it.\n"
         f"Objective: {objective.strip()[:500]}\n"

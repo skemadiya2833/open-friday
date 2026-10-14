@@ -121,7 +121,10 @@
   $("#approvalAllow").addEventListener("click", () => answer(true));
   $("#approvalDeny").addEventListener("click", () => answer(false));
 
-  async function pollApprovals() {
+  let _approvalTimer = null;
+  let _approvalGen = 0;
+
+  async function pollApprovalsOnce() {
     try {
       const res = await fetch("/api/approvals");
       if (res.ok) {
@@ -138,8 +141,21 @@
           overlay.hidden = true;
         }
       }
-    } catch (_) { /* server offline: the main UI already reports it */ }
-    setTimeout(pollApprovals, 1000);
+    } catch (_) { /* server offline */ }
   }
-  pollApprovals();
+
+  function scheduleApprovals(ms) {
+    clearTimeout(_approvalTimer);
+    const gen = ++_approvalGen;
+    _approvalTimer = setTimeout(async () => {
+      if (gen !== _approvalGen) return;
+      await pollApprovalsOnce();
+      const delay = document.hidden ? 20000 : (current || !overlay.hidden ? 1200 : 8000);
+      scheduleApprovals(delay);
+    }, ms);
+  }
+  scheduleApprovals(1500);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleApprovals(300);
+  });
 })();

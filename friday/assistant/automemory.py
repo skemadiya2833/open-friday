@@ -165,8 +165,41 @@ def _id(text: str) -> str:
     return "auto-" + hashlib.sha1(re.sub(r"\W+", " ", text.lower()).strip().encode()).hexdigest()[:20]
 
 
+_CALL_ME = re.compile(
+    r"\b(?:call me|you can call me|address me as|prefer(?: to be)? called)\s+"
+    r"([A-Za-z][\w'’-]{1,30})",
+    re.I,
+)
+
+
+def _apply_preferred_address(message: str) -> str | None:
+    """Only \"call me …\" changes spoken address — \"my name is …\" stays a memory fact."""
+    m = _CALL_ME.search(message or "")
+    if not m:
+        return None
+    name = m.group(1).strip(" .,!;:")
+    if not name or len(name) > 32:
+        return None
+    # Keep cinematic defaults lower-case when short nicknames; title-case real names.
+    if name.lower() in {"boss", "chief", "sir", "ma'am", "maam", "captain", "commander"}:
+        name = name.lower()
+        if name == "maam":
+            name = "ma'am"
+    else:
+        name = name[:1].upper() + name[1:]
+    try:
+        from friday.runtime.prefs import update as prefs_update
+
+        prefs_update({"owner_name": name})
+        return name
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Memory] preferred address update skipped: {exc}")
+        return None
+
+
 def remember(message: str, *, background: bool = True) -> list[str]:
     """Store worth-keeping facts. Returns texts that were accepted."""
+    _apply_preferred_address(message)
     cands = extract_candidates(message)
     if not cands:
         return []

@@ -140,7 +140,7 @@ MODES:
 - research: look something up on the web
 - files: read/write files in the workspace
 - schedule: reminders, timed tasks, OR today's agenda / "we'll be doing X today"
-- clarify: truly ambiguous — a short question would change the next action
+- clarify: missing detail blocks the next move (which target, when, confirm risk) — ask one short question
 
 AVAILABLE SKILLS:
 {_skill_catalog()}
@@ -152,7 +152,7 @@ RULES:
 - "Can you see…" / "what's on my desktop" with no ask to change anything → look
 - If unsure between look and act → look
 - If unsure between talk and act but there is a clear imperative → act
-- clarify only when missing info blocks the next step
+- Use clarify when guessing would likely do the wrong thing; put the question in objective (one sentence)
 
 Recent conversation:
 {hist or "(none)"}
@@ -361,7 +361,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
             # Mic often re-hears Friday's own ask; only continue if the user gave a time.
             echo = bool(re.search(
-                r"when should I remind|say something like|sure,? (?:boss|sunil)",
+                r"when should I remind|say something like|sure,? (?:boss|chief)",
                 msg, re.I,
             ))
             if not echo and (_RM.parse_when(msg) or _RM.is_reminder_request(msg)):
@@ -463,6 +463,23 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             confidence=0.95,
             objective=msg,
             reason="deterministic: week dashboard html",
+            source="policy",
+        )
+
+    # Write / generate HTML page → tools-first (write file + open browser), never vision agent.
+    if re.search(
+        r"\b((?:write|create|make|build|generate|code|draft)\b.{0,100}\bhtml(?:5)?\b|"
+        r"html(?:5)?\b.{0,80}\b(?:page|file|document|site|webpage|landing)|"
+        r"(?:write|create|make|build|generate)\b.{0,60}\b(?:web\s*page|webpage|landing\s*page))\b",
+        msg,
+        re.I,
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.96,
+            objective=msg,
+            reason="deterministic: make html page",
             source="policy",
         )
 

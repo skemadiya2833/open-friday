@@ -738,7 +738,10 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         chip.textContent = `Skill · ${ev.skill_id}${ev.mode ? ` · ${ev.mode}` : ""}`;
         chip.classList.remove("hidden");
         liveMeta.textContent = `skill:${ev.skill_id}`;
-        if (ev.skill_id === "computer_use") setState("acting");
+        if (ev.skill_id === "computer_use") {
+          setState("acting");
+          // Status stays in the quiet hint — never open the RESULT card for pipeline chatter.
+        }
         if (ev.skill_id === "camera") {
           setCameraLooking(true, "capture");
           filler && filler.looking && filler.looking();
@@ -916,17 +919,24 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     }
     if (skillId) liveMeta.textContent = `skill:${skillId}`;
     clearFillerForReply();
+    const awaitSpeak = async (p) => {
+      // Absolute cap so a stuck TTS chain cannot leave voiceBusy / SPEAKING forever.
+      await Promise.race([
+        Promise.resolve(p).catch(() => {}),
+        new Promise((r) => setTimeout(r, 90000)),
+      ]);
+    };
     if (speaker && vcfg.streamSpeech && speaker.spoken() > 0) {
       speaker.finish();
-      await speaker.done();
+      await awaitSpeak(speaker.done());
     } else if (speakEnabled() && textOut && !/^No reply\.?$/i.test(textOut)) {
       pushActivity("Speaking reply…");
       if (speaker) {
         speaker.push(String(textOut).slice(0, 700) + " ");
         speaker.finish();
-        await speaker.done();
+        await awaitSpeak(speaker.done());
       } else {
-        await speak(textOut);
+        await awaitSpeak(speak(textOut));
       }
       pushActivity("Spoken", { live: false });
     }
@@ -1646,77 +1656,125 @@ function speakBrowser(text) {
       resolve(false);
       return;
     }
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text.slice(0, 800));
+    const slice = String(text || "").slice(0, 800);
+    if (!slice.trim()) {
+      resolve(false);
+      return;
+    }
+    // Chrome: cancel → immediate speak often stays silent; pause briefly + resume.
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+    const u = new SpeechSynthesisUtterance(slice);
     const voice = pickFemaleBrowserVoice();
     if (voice) {
       u.voice = voice;
-      u.lang = voice.lang || "en-IE";
+      u.lang = voice.lang || "en-US";
     } else {
-      u.lang = "en-IE";
+      u.lang = "en-US";
     }
-    // Natural rate only — speeding browser TTS is what sounded robotic.
     u.rate = window.FridayVoice && FridayVoice.pace() === "fast" ? 1.08
       : window.FridayVoice && FridayVoice.pace() === "slow" ? 0.92
       : 1.0;
     u.pitch = 1.0;
-    u.onend = () => resolve(true);
-    u.onerror = () => resolve(false);
-    // Voices often load async on Chromium.
+    const maxMs = Math.min(45000, 2500 + slice.length * 90);
+    let settled = false;
+    let safety = 0;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      if (safety) clearTimeout(safety);
+      resolve(ok);
+    };
+    safety = setTimeout(() => {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+      done(false);
+    }, maxMs);
+    u.onend = () => done(true);
+    u.onerror = () => done(false);
     const go = () => {
       if (!u.voice) {
         const v = pickFemaleBrowserVoice();
-        if (v) { u.voice = v; u.lang = v.lang || "en-IE"; }
+        if (v) { u.voice = v; u.lang = v.lang || "en-US"; }
       }
-      window.speechSynthesis.speak(u);
+      try {
+        window.speechSynthesis.speak(u);
+        // Chromium bug: synth can stick in paused state and produce no audio.
+        window.speechSynthesis.resume();
+      } catch (err) {
+        console.warn("[Friday] browser TTS speak failed:", err);
+        done(false);
+      }
     };
     if (!voice && speechSynthesis.getVoices().length === 0) {
       let started = false;
-      const once = () => { if (started) return; started = true; go(); };
+      const once = () => { if (started) return; started = true; setTimeout(go, 60); };
       speechSynthesis.addEventListener("voiceschanged", once, { once: true });
       setTimeout(once, 280);
       return;
     }
-    go();
+    setTimeout(go, 60);
   });
 }
 
-// Fetch synthesized audio for one piece of text; resolves to an object URL, or null when the server TTS is unavailable.
+/** Server TTS (Edge). Hard 8s abort so a 403/hang never freezes the voice HUD. */
 async function ttsFetchUrl(text) {
   const clean = String(text || "").replace(/\*\*/g, "").trim();
   if (!clean) return null;
+  const ac = new AbortController();
+  // Edge is fast; local SAPI can take a few seconds per sentence.
+  const timer = setTimeout(() => ac.abort(), 20000);
   try {
     const rate = window.FridayVoice && FridayVoice.edgeRate ? FridayVoice.edgeRate() : "+0%";
     const res = await apiFetch("/api/voice/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: clean.slice(0, 500), rate }),
+      signal: ac.signal,
     });
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
     const blob = await res.blob();
     if ((blob.type || "").startsWith("audio") || blob.size > 1000) return URL.createObjectURL(blob);
   } catch (err) {
-    console.warn("[Friday] server TTS failed, using browser voice:", err);
+    if (err && err.name !== "AbortError") {
+      console.warn("[Friday] server TTS failed, using browser voice:", err);
+    }
+  } finally {
+    clearTimeout(timer);
   }
   return null;
 }
 
 function playUrl(url) {
   return new Promise((resolve) => {
+    try { window.FridaySfx && FridaySfx.unlock && FridaySfx.unlock(); } catch (_) {}
     const audio = new Audio(url);
     currentAudio = audio;
     audio.preservesPitch = true;
     // Always 1× — rate is baked into Edge synthesis so it stays natural.
     audio.playbackRate = 1;
     window.FridayLive && FridayLive.attachAudio(audio);
+    let settled = false;
+    let safety = 0;
     const fin = () => {
-      URL.revokeObjectURL(url);
+      if (settled) return;
+      settled = true;
+      if (safety) clearTimeout(safety);
+      try { URL.revokeObjectURL(url); } catch (_) {}
       resolve();
     };
+    safety = setTimeout(() => {
+      try { audio.pause(); } catch (_) {}
+      fin();
+    }, 45000);
     audio.onended = fin;
-    audio.onerror = fin;
+    audio.onerror = () => {
+      console.warn("[Friday] audio playback error");
+      fin();
+    };
     audio._cancel = fin;
-    audio.play().catch(fin);
+    audio.play().catch((err) => {
+      console.warn("[Friday] audio.play blocked:", err);
+      fin();
+    });
   });
 }
 
@@ -1750,20 +1808,25 @@ async function speak(text) {
   if (!parts.length) return;
   stopSpeech();
   window.FridayLive && FridayLive.state("speaking");
-  // Prefetch sentence N+1 while N plays — cuts the gap between Edge fetches.
-  let next = ttsFetchUrl(parts[0]);
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    const urlP = next;
-    if (i + 1 < parts.length) next = ttsFetchUrl(parts[i + 1]);
-    const url = await urlP;
-    if (url) {
-      await playUrl(url);
-      continue;
+  try {
+    // Prefetch sentence N+1 while N plays — cuts the gap between Edge fetches.
+    let next = ttsFetchUrl(parts[0]);
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const urlP = next;
+      if (i + 1 < parts.length) next = ttsFetchUrl(parts[i + 1]);
+      let url = null;
+      try { url = await urlP; } catch (_) { url = null; }
+      if (url) {
+        await playUrl(url);
+        continue;
+      }
+      window.FridayLive && FridayLive.synthSpeaking(true);
+      const ok = await speakBrowser(part);
+      if (!ok) console.warn("[Friday] browser TTS unavailable");
     }
-    window.FridayLive && FridayLive.synthSpeaking(true);
-    const ok = await speakBrowser(part);
-    if (!ok) console.warn("[Friday] browser TTS unavailable");
+  } catch (err) {
+    console.warn("[Friday] speak failed:", err);
   }
 }
 
@@ -1841,30 +1904,55 @@ function showReminderPopup(n, { fromToast = false } = {}) {
   rememberShown(n.id);
 }
 
+let _lastUnseen = [];
+let _notifPollTimer = null;
+
 async function pollNotifications() {
+  if (document.hidden) return;
   try {
     const list = await (await apiFetch("/api/notifications?unseen=1")).json();
-    for (const n of list.slice().reverse()) if (!shownReminders.has(n.id)) showReminderPopup(n);
-  } catch (_) {}
-  refreshBell();
-}
-
-async function refreshBell() {
-  try {
-    const [unseen, upcoming] = await Promise.all([
-      apiFetch("/api/notifications?unseen=1").then((r) => r.json()),
-      apiFetch("/api/reminders/upcoming").then((r) => r.json()),
-    ]);
+    _lastUnseen = Array.isArray(list) ? list : [];
+    for (const n of _lastUnseen.slice().reverse()) {
+      if (!shownReminders.has(n.id)) showReminderPopup(n);
+    }
     const badge = $("#bellCount");
     if (badge) {
-      badge.textContent = unseen.length || "";
-      badge.classList.toggle("hidden", !unseen.length);
+      badge.textContent = _lastUnseen.length || "";
+      badge.classList.toggle("hidden", !_lastUnseen.length);
+    }
+    // Only hit reminders/upcoming when the panel is open — not every poll.
+    if ($("#remPanel") && !$("#remPanel").classList.contains("hidden")) {
+      await refreshBell({ reuseUnseen: true });
+    }
+  } catch (_) {}
+}
+
+function scheduleNotifPoll() {
+  clearTimeout(_notifPollTimer);
+  const ms = document.hidden ? 60000 : 20000;
+  _notifPollTimer = setTimeout(async () => {
+    await pollNotifications();
+    scheduleNotifPoll();
+  }, ms);
+}
+
+async function refreshBell(opts = {}) {
+  try {
+    const unseen = opts.reuseUnseen
+      ? _lastUnseen
+      : await apiFetch("/api/notifications?unseen=1").then((r) => r.json());
+    _lastUnseen = Array.isArray(unseen) ? unseen : [];
+    const upcoming = await apiFetch("/api/reminders/upcoming").then((r) => r.json());
+    const badge = $("#bellCount");
+    if (badge) {
+      badge.textContent = _lastUnseen.length || "";
+      badge.classList.toggle("hidden", !_lastUnseen.length);
     }
     const panel = $("#remList");
     if (panel) {
       const rows = [];
-      for (const n of unseen) rows.push(`<div class="rem-row new"><b>${escapeHtml(n.title)}</b><span class="muted">due now</span></div>`);
-      for (const j of upcoming.slice(0, 8)) {
+      for (const n of _lastUnseen) rows.push(`<div class="rem-row new"><b>${escapeHtml(n.title)}</b><span class="muted">due now</span></div>`);
+      for (const j of (upcoming || []).slice(0, 8)) {
         const when = j.cron
           ? `repeats · ${j.cron}`
           : new Date(j.run_at * 1000).toLocaleString([], {
@@ -1875,7 +1963,7 @@ async function refreshBell() {
             });
         rows.push(`<div class="rem-row"><b>${escapeHtml(j.title)}</b><span class="muted">${when}</span><button class="ghost" data-cancel-job="${j.id}">×</button></div>`);
       }
-      panel.innerHTML = rows.join("") || `<div class="muted">No reminders. Say “remind me to … in 20 minutes”.</div>`;
+      panel.innerHTML = rows.join("") || `<div class="muted">No reminders.</div>`;
       panel.querySelectorAll("[data-cancel-job]").forEach((b) => b.addEventListener("click", async () => {
         await apiFetch(`/api/tasks/${b.dataset.cancelJob}`, { method: "DELETE" });
         refreshBell();
@@ -1938,7 +2026,13 @@ document.addEventListener("visibilitychange", () => {
   syncSpeakToggles();
   openReminderFromUrl();
   pollNotifications();
-  setInterval(pollNotifications, 5000);
+  scheduleNotifPoll();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      pollNotifications();
+      scheduleNotifPoll();
+    }
+  });
   tickClock();
   setInterval(tickClock, 1000);
   setZenMode(zenEnabled());

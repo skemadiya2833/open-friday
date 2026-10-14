@@ -561,7 +561,7 @@ def voice_speak(body: TTSRequest):
     if mime.startswith("text"):
         raise HTTPException(
             503,
-            "TTS backend unavailable. Install edge-tts (`pip install edge-tts`) or ensure Windows SAPI voices work.",
+            "Neural TTS unavailable — client should use browser SpeechSynthesis.",
         )
     return Response(
         content=data,

@@ -295,6 +295,15 @@
       if (!reply) return;
       const t = String(text || "");
       if (!t.trim() && !append) return;
+      // Short spoken replies live in the caption — the RESULT card is for longer output only.
+      const short = !append && t.replace(/\s+/g, " ").trim().length <= 240;
+      if (short) {
+        this.friday(t);
+        if (box) box.hidden = true;
+        if (overlay) overlay.classList.remove("has-result");
+        reply.textContent = "";
+        return;
+      }
       if (box) box.hidden = false;
       if (overlay) overlay.classList.add("has-result");
       if (append) reply.textContent += t;
@@ -441,10 +450,21 @@
               if (trail.length > 6) trail.shift();
               Live._spokenTrail = trail.slice();
             }
-            const url = await pre;
+            // Never wait forever on Edge — fall through to browser voice.
+            const url = await Promise.race([
+              Promise.resolve(pre).catch(() => null),
+              new Promise((r) => setTimeout(() => r(null), 8500)),
+            ]);
             if (aborted) return;
-            if (url) await window.playUrl(url);
-            else { Live.synthSpeaking(true); await window.speakBrowser(clean); }
+            const play = url && window.playUrl
+              ? window.playUrl(url)
+              : (window.speakBrowser
+                ? (Live.synthSpeaking(true), window.speakBrowser(clean))
+                : Promise.resolve());
+            await Promise.race([
+              Promise.resolve(play).catch(() => {}),
+              new Promise((r) => setTimeout(r, 45000)),
+            ]);
           }).catch(() => {});
         },
         push(chunk) {
@@ -471,7 +491,12 @@
         },
         finish() { if (pending.trim()) sp.say(pending); pending = ""; },
         // App owns listening after echo-tail cool-down (half-duplex re-arm).
-        done() { return chain.then(() => {}); },
+        done() {
+          return Promise.race([
+            chain.then(() => {}),
+            new Promise((r) => setTimeout(r, 90000)),
+          ]);
+        },
         abort() { aborted = true; pending = ""; },
       };
       Live._speaker = sp;
