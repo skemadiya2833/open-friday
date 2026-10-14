@@ -22,7 +22,6 @@ from friday.reports.limits import (
     SYNTHESIS_TIMEOUT_S,
 )
 from friday.reports.schema_load import validate_report_schema
-from friday.reports.store import save_report
 from friday.reports.validate import validate_mechanics
 
 EmitFn = Callable[[str, dict], None]
@@ -439,6 +438,9 @@ def run_research_report(
     save: bool = True,
 ) -> dict[str, Any]:
     """Run the full pipeline. ``mode``: quick | deep | think."""
+    # Lazy: avoid package-init cycles with store under concurrent ASGI imports.
+    from friday.reports.store import save_report
+
     mode = mode if mode in ("quick", "deep", "think") else "quick"
     use_web = (mode != "think") if allow_web is None else bool(allow_web)
     rid = uuid.uuid4().hex[:12]

@@ -57,6 +57,7 @@ Thumbs.db
 # Maintainer-local harnesses / benches / probes (keep on disk, not in the repo)
 scripts/_*.py
 scripts/bench_*.py
+!scripts/bench_compare.py
 scripts/diag_*.py
 scripts/eval_*.py
 scripts/hw_*.py
