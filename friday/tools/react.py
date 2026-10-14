@@ -70,7 +70,8 @@ def run_react(
     for step in range(steps):
         prompt = f"""{overlay}
 
-You are Friday's tool-using skill. You may call ONE tool per step OR give a final answer.
+You are Friday operating tools on the owner's machine. Call ONE tool per step, or finish with FINAL:.
+Prefer doing the work over explaining how you would do it.
 
 Available tools:
 {tools_prompt_block(allowed_tools)}
@@ -144,14 +145,18 @@ Step {step + 1}/{steps}. Decide.
             last = tool_trace[-1]
             final_reply = last.get("result") or "Done."
             if last.get("tool") == "schedule_task" and not last.get("result", "").startswith("{"):
-                final_reply = "Scheduled, boss. I'll remind you when it's due."
+                from friday.persona import owner_name
+
+                final_reply = f"Scheduled, {owner_name()}. I'll remind you when it's due."
         else:
             final_reply = "I could not complete that request."
 
     # Never show raw tool JSON to the owner.
     if re.search(r'"tool"\s*:' , final_reply) or final_reply.strip().startswith("```"):
         if tool_trace:
-            final_reply = tool_trace[-1].get("result") or "Done, boss."
+            from friday.persona import owner_name
+
+            final_reply = tool_trace[-1].get("result") or f"Done, {owner_name()}."
         else:
             call = _extract_tool_call(final_reply)
             if call:
@@ -161,6 +166,8 @@ Step {step + 1}/{steps}. Decide.
                 tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
                 final_reply = out
             else:
-                final_reply = "Done, boss."
+                from friday.persona import owner_name
+
+                final_reply = f"Done, {owner_name()}."
 
     return final_reply, {"tools": tool_trace, "steps": len(transcript)}

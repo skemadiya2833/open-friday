@@ -98,6 +98,22 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Approval beep",
         "help": "Audible nudge when Friday needs a confirm.",
     },
+    "blackout": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_BLACKOUT",
+        "group": "safety",
+        "label": "Blackout (local only)",
+        "help": "Block web research and outbound network tools; stay on local models.",
+    },
+    "diary": {
+        "kind": "bool",
+        "default": True,
+        "env": "FRIDAY_DIARY",
+        "group": "persona",
+        "label": "Daily diary",
+        "help": "Log notable work to a local day file for continuity and briefings.",
+    },
     "shell_tools": {
         "kind": "bool",
         "default": False,

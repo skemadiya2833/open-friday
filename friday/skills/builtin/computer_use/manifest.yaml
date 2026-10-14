@@ -1,6 +1,6 @@
 id: computer_use
 name: Computer Use
-description: Drive the Windows desktop with vision — open apps, click, type, save files, control the browser like a human. Use only when the user wants you to DO something on the PC, not when they only ask what is visible.
+description: Drive the Windows desktop — open apps, click, type, save, control the browser. Use when the owner wants something DONE on the PC, not when they only ask what is visible.
 triggers:
   - open notepad
   - open chrome
@@ -13,9 +13,12 @@ triggers:
   - control my desktop
   - press enter
   - win search
-tools: []   # start_computer_use was a text-only hint that could disagree with the router; removed.
+  - fix
+  - send
+tools: []
 priority: 80
 requires_vision: true
 enabled: true
 system_overlay: |
-  Launch the vision desktop agent only for imperative tasks (open/click/type/save).
+  Operate the desktop to complete the objective. Plan, act, verify.
+  Prefer reliable keyboard routes; change strategy on failure.

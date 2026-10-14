@@ -50,7 +50,9 @@ def handle_message(
         session.turns = []
         session.title = "New chat"
         store.save(session)
-        reply = "Chat cleared, boss. Fresh page — memories I saved stay in Memory Core."
+        from friday.persona import owner_name
+
+        reply = f"Chat cleared, {owner_name()}. Fresh page — durable memories stay in Memory Core."
         store.append(session, "assistant", reply, skill_id="chat")
         emit("status", {"status": "idle"})
         emit("chat_cleared", {"cleared": n})
@@ -62,7 +64,7 @@ def handle_message(
             "metadata": {"cleared": n},
         }
 
-    # Durable facts — background so voice replies are not blocked by embedding.
+    # Durable facts + light knowledge — background so voice is not blocked.
     try:
         from friday.assistant.automemory import remember
 
@@ -71,6 +73,36 @@ def handle_message(
             emit("activity", {"step": "memory", "message": f"Remembered · {fact[:80]}"})
     except Exception as exc:  # noqa: BLE001
         print(f"[Memory] auto-remember failed: {exc}")
+    try:
+        from friday.runtime.knowledge import observe as kg_observe
+
+        threading.Thread(
+            target=lambda: kg_observe(message),
+            daemon=True,
+            name="FridayKnowledge",
+        ).start()
+    except Exception:  # noqa: BLE001
+        pass
+
+    # System-1 reflexes — skip the model for solved phrases (perf).
+    if not skill_override:
+        try:
+            from friday.assistant.reflexes import try_reflex
+
+            hit = try_reflex(message)
+            if hit:
+                emit("status", {"status": "idle"})
+                emit("activity", {"step": "reflex", "message": f"Reflex · {hit.label}"})
+                store.append(session, "assistant", hit.reply, skill_id=hit.skill_id)
+                return {
+                    "reply": hit.reply,
+                    "session_id": session.id,
+                    "skill_id": hit.skill_id,
+                    "events": events,
+                    "metadata": {"reflex": hit.label, "cached": hit.cached, "voice_mode": voice_mode},
+                }
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Reflex] skipped: {exc}")
 
     # --- Architectural gate: LLM classify + deterministic policy ---
     emit("status", {"status": "thinking"})
@@ -230,15 +262,9 @@ def handle_message(
         emit("activity", {"step": "done", "message": "Done"})
     emit("status", {"status": "idle"})
 
-    if result.skill_id == "computer_use" and result.metadata.get("status") == "completed":
-        try:
-            from friday.memory import get_memory
-            get_memory().add(
-                f"Completed desktop task: {skill_message}",
-                metadata={"source": "computer_use"},
-            )
-        except Exception:
-            pass
+    # Desktop completions stay in the session / experience store — do not dump
+    # every task string into vector memory.
+    _maybe_diary(result.skill_id, message, reply, result.metadata or {})
 
     store.append(session, "assistant", reply, skill_id=result.skill_id)
     return {
@@ -248,6 +274,28 @@ def handle_message(
         "events": events,
         "metadata": {**(result.metadata or {}), "intent": intent.to_dict(), "voice_mode": voice_mode},
     }
+
+
+def _maybe_diary(skill_id: str, message: str, reply: str, meta: dict) -> None:
+    """Log notable work to the day diary (not every chat turn)."""
+    try:
+        from friday.runtime.prefs import get as pref
+
+        if not pref("diary"):
+            return
+    except Exception:  # noqa: BLE001
+        return
+    notable = skill_id in {"computer_use", "research", "tasks", "files", "camera"}
+    if not notable and not meta.get("report_id") and not meta.get("reminder"):
+        return
+    try:
+        from friday.runtime.diary import record
+
+        title = (message or "").strip().replace("\n", " ")[:100] or skill_id
+        body = (reply or "").strip().replace("\n", " ")[:240]
+        record(title, body, kind=skill_id)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _clip_voice_reply(text: str, max_chars: int = 420) -> str:

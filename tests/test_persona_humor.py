@@ -21,15 +21,26 @@ from friday.persona import format_persona, owner_name, system_prompt
 
 def test_persona_formats_owner(monkeypatch):
     monkeypatch.setenv("FRIDAY_OWNER_NAME", "chief")
+
+    def _pref(key, default=None):
+        return "chief" if key == "owner_name" else default
+
+    monkeypatch.setattr("friday.runtime.prefs.get", _pref)
     assert owner_name() == "chief"
     text = system_prompt("chat")
     assert "chief" in text
     assert "Tony Stark" not in text
     assert "MCU" not in text
+    assert "film character" in text.lower() or "run the house" in text.lower() or "f.r.i.d.a.y" in text.lower()
 
 
 def test_humor_off(monkeypatch):
     monkeypatch.setenv("FRIDAY_HUMOR", "off")
+
+    def _pref(key, default=None):
+        return "off" if key == "humor" else default
+
+    monkeypatch.setattr("friday.runtime.prefs.get", _pref)
     assert humor_level() == "off"
     assert should_quip(user_text="hello", reply="Hi there.") is False
     assert maybe_append_quip("All done.", user_text="hello") == "All done."
@@ -61,7 +72,7 @@ def test_deep_and_plan_helpers():
     combined = with_plan_if_needed(
         "SYS", "first open chrome then search the news and finally save a note"
     )
-    assert "MULTI-STEP" in combined
+    assert "OPERATOR PROTOCOL" in combined or "MULTI-STEP" in combined
 
 
 def test_format_persona_placeholder():

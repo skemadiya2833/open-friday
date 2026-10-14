@@ -24,4 +24,4 @@ priority: 72
 requires_vision: false
 enabled: true
 system_overlay: |
-  Prefer plan_add for same-day agenda items. Use schedule_task only for timed/future automation.
+  Own the agenda: plan_add for today, schedule_task for timed/future work. Confirm what was locked in.

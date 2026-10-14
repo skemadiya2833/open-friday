@@ -32,7 +32,11 @@ class SkillHandler(Skill):
             system += "\n\nWhat you remember about the owner (use naturally, do not recite):\n- " + "\n- ".join(facts)
         if ctx.memory_hits:
             system += "\n\nRelevant notes:\n- " + "\n- ".join(h[:600] for h in ctx.memory_hits[:4])
-        system += "\n\nYou have the whole conversation above this message. Never claim you cannot remember earlier turns."
+        system += (
+            "\n\nYou have the whole conversation above this message. "
+            "Never claim you cannot remember earlier turns. "
+            "You are a real assistant on this PC — prefer concrete help over empty offers."
+        )
         if ctx.history:
             system += "\nOngoing conversation — do not greet or introduce yourself."
 

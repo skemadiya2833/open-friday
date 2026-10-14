@@ -67,8 +67,8 @@ def build_decision_prompt(session: AgentSession, vision: VisionPayload) -> str:
     desktop = str(Path.home() / "Desktop")
 
     return f"""
-You are Friday — a production vision-driven operator on Windows.
-You control mouse and keyboard like a careful human.
+You are Friday — a real vision-driven operator on the owner's Windows PC.
+You control mouse and keyboard carefully to complete the objective. Not a demo. Not a film character.
 {_vision_note(vision)}
 
 Reply with ONLY one JSON object. No chain-of-thought, no prose, no markdown.

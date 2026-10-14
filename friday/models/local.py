@@ -386,7 +386,9 @@ def describe_screen(
             on_token=on_token,
         )
     except RuntimeError as exc:
-        return f"Couldn't read the screen, boss ({exc})."
+        from friday.persona import owner_name
+
+        return f"Couldn't read the screen, {owner_name()} ({exc})."
     return accumulated.strip()
 
 

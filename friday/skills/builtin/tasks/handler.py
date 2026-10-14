@@ -80,8 +80,10 @@ class SkillHandler(Skill):
 
             if added:
                 lines = "\n".join(f"• {it['text']}" for it in added)
+                from friday.persona import owner_name
+
                 reply = (
-                    f"Locked onto today's agenda, boss:\n{lines}\n\n"
+                    f"Locked onto today's agenda, {owner_name()}:\n{lines}\n\n"
                     + (f"Also set a short ping ({ping['when']}).\n\n" if ping else "")
                     + f"Full agenda:\n{format_for_prompt()}"
                 )
@@ -125,20 +127,23 @@ class SkillHandler(Skill):
                     for t in (ctx.history or [])[-4:]
                     if t.get("role") == "assistant"
                 )
+                from friday.persona import owner_name
+
                 reply = (
                     "Still waiting on a time — for example, in 20 minutes or tomorrow at 9."
                     if asked_already
-                    else "Sure, boss. When should I remind you? Say something like \"in 20 minutes\", \"tomorrow at 9\" or \"every weekday at 8\"."
+                    else f"Sure, {owner_name()}. When should I remind you? Say something like \"in 20 minutes\", \"tomorrow at 9\" or \"every weekday at 8\"."
                 )
                 return SkillResult(reply=reply, skill_id="tasks")
         if re.search(r"\b(reminders?|alarms?|scheduled)\b", msg, re.I) and re.search(r"\b(what|which|show|list|any)\b", msg, re.I):
             import datetime as _dt
 
+            from friday.persona import owner_name
             from friday.tasks.scheduler import get_scheduler
 
             jobs = [j for j in get_scheduler().list_jobs() if j["status"] == "scheduled" and (j.get("cron") or j.get("run_at"))]
             if not jobs:
-                return SkillResult(reply="Nothing scheduled right now, boss.", skill_id="tasks")
+                return SkillResult(reply=f"Nothing scheduled right now, {owner_name()}.", skill_id="tasks")
             lines = []
             for j in sorted(jobs, key=lambda j: j.get("run_at") or 1e18)[:8]:
                 when = j["cron"] and f"repeats ({j['cron']})" or _dt.datetime.fromtimestamp(j["run_at"]).strftime("%a %H:%M")
@@ -188,10 +193,12 @@ class SkillHandler(Skill):
                     skill_id="tasks",
                     metadata={k: v for k, v in built.items() if k != "reply"},
                 )
+            from friday.persona import owner_name
+
             item = add_item(text)
             data = get_plan()
             reply = (
-                f"Got it, boss — locked in for today:\n• {item['text']}\n\n"
+                f"Got it, {owner_name()} — locked in for today:\n• {item['text']}\n\n"
                 f"Full agenda:\n{format_for_prompt()}"
             )
             reply = maybe_append_quip(reply, user_text=msg, context="agenda_add")

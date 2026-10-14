@@ -95,9 +95,25 @@ def test_missed_reminder_is_delivered_after_restart(tmp_path, monkeypatch):
     ("I love strong black coffee", "The owner loves strong black coffee"),
     ("my favorite editor is Cursor", "The owner's favorite editor is Cursor"),
     ("remember that the wifi router is in the hall", "the wifi router is in the hall"),
+    ("I'm a software engineer", "The owner is a software engineer"),
 ])
 def test_extracts_facts(msg, fact):
     assert AM.extract(msg) == [fact]
+
+
+def test_routes_profile_to_sqlite_and_notes_to_both():
+    profile = AM.extract_candidates("my name is Stark")
+    assert profile and profile[0].store == "sqlite"
+    note = AM.extract_candidates("remember that the wifi router is in the hall")
+    assert note and note[0].store == "both"
+
+
+def test_skips_ephemeral_and_task_shaped():
+    assert AM.extract("I like that") == []
+    assert AM.extract("I'm tired") == []
+    assert AM.extract("I prefer this one for now") == []
+    assert AM.extract("remember to buy milk") == []
+    assert AM.extract("I'm a bit confused about the UI") == []
 
 
 def test_does_not_store_secrets_or_questions():

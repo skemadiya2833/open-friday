@@ -129,28 +129,30 @@ def _llm_classify(message: str, history: list[dict[str, str]] | None = None) -> 
     for turn in (history or [])[-4:]:
         hist += f"{turn.get('role', 'user')}: {(turn.get('content') or '')[:200]}\n"
 
-    prompt = f"""You are Friday's intent classifier. Choose ONE mode for the user message.
-Do NOT perform the task. ONLY classify.
+    prompt = f"""You are Friday's intent router for a real local Windows assistant.
+Do NOT perform the task. ONLY classify so the right skill can act.
 
 MODES:
-- talk: chat, opinions, explanations, greetings (no screen control)
+- talk: opinions, explanations, brainstorming, greetings (no PC control this turn)
 - look: user wants to KNOW what is on screen / describe desktop (NO clicking)
-- act: user wants you to CONTROL the PC (open apps, click, type, save) — imperative only
-- remember: store or recall personal notes in memory
+- act: user wants the PC controlled (open apps, click, type, save, fix, send, create on desktop)
+- remember: store or recall durable personal notes
 - research: look something up on the web
 - files: read/write files in the workspace
 - schedule: reminders, timed tasks, OR today's agenda / "we'll be doing X today"
-- clarify: message is ambiguous — ask a short clarifying question instead of acting
+- clarify: truly ambiguous — a short question would change the next action
 
 AVAILABLE SKILLS:
 {_skill_catalog()}
 
 RULES:
-- Questions about seeing/describing the screen → look (never act)
-- "Can you see…" / "what's going on on my desktop" → look
-- Only act if the user clearly wants an action performed on their computer
+- Prefer capability: if they want something DONE on the machine, choose act (or research/files/schedule as appropriate) — not talk.
+- Imperatives (open, launch, click, type, write, save, send, fix, install, create on desktop) → act
+- Questions about seeing/describing the screen only → look (never act)
+- "Can you see…" / "what's on my desktop" with no ask to change anything → look
 - If unsure between look and act → look
-- If unsure between talk and act → talk or clarify
+- If unsure between talk and act but there is a clear imperative → act
+- clarify only when missing info blocks the next step
 
 Recent conversation:
 {hist or "(none)"}
@@ -359,7 +361,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
             # Mic often re-hears Friday's own ask; only continue if the user gave a time.
             echo = bool(re.search(
-                r"when should I remind|say something like|sure,? boss",
+                r"when should I remind|say something like|sure,? (?:boss|sunil)",
                 msg, re.I,
             ))
             if not echo and (_RM.parse_when(msg) or _RM.is_reminder_request(msg)):

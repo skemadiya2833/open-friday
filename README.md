@@ -1,8 +1,8 @@
 # Open Friday
 
-Local-first personal AI assistant for Windows by **Sunil Kemadiya** ([Devoids](https://devoids.in)): modular **skills**, vector memory, voice, scheduled tasks, calendar hooks, and an optional **desktop agent** that observes the screen and acts one step at a time.
+A **real** local-first personal AI assistant for Windows by **Sunil Kemadiya** ([Devoids](https://devoids.in)) — not a movie prop. Modular **skills**, selective memory, voice, scheduling, calendar, and a **desktop agent** that plans, acts, and verifies on your PC.
 
-Talk to Friday in the Control Center; it routes to chat, research, memory, files, tasks, or **computer use** (vision or hybrid accessibility-tree backend). Everyday knobs live in **Systems** (owner profile, prefs, camera) — not scattered `.env` edits.
+Talk in the Control Center; Friday routes to chat, research, memory, files, tasks, or **computer use** (vision or hybrid UIA). Everyday knobs live in **Systems** (owner profile, prefs, camera). Tone may nod at classic on-screen aides; the charter is capability — see [`docs/PERSONA.md`](docs/PERSONA.md).
 
 <p align="center">
   <img src="docs/assets/hud_desktop.png" alt="Friday Control Center desktop HUD" width="720" />

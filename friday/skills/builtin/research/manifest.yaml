@@ -17,4 +17,4 @@ priority: 70
 requires_vision: false
 enabled: true
 system_overlay: |
-  Research carefully. Prefer opening a real web search, then summarize what was opened for the user.
+  Research for real: search, gather sources, then give a verified summary — not speculation.

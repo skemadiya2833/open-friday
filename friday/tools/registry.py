@@ -121,6 +121,20 @@ class ToolRegistry:
                          risk="unknown", caller=caller, run_id=run_id)
             return ToolResult.error(f"Unknown tool: {name}")
 
+        try:
+            from friday.runtime.blackout import blocks_tool
+
+            if blocks_tool(name):
+                audit.record(
+                    tool=name, args=args, outcome="blackout", approver="n/a",
+                    risk=spec.risk.value, caller=caller, run_id=run_id,
+                )
+                return ToolResult.error(
+                    f"Blackout is on — {name} is blocked (Systems → Safety)."
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
         args = _normalize_args(spec.input_schema, args)
         errors = sorted(validator.iter_errors(args), key=lambda e: list(e.path))
         if errors:

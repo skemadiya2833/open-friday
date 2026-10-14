@@ -351,5 +351,7 @@ def schedule_from_text(text: str, *, use_llm: bool = True) -> dict[str, Any] | N
     from friday.tasks.scheduler import get_scheduler
 
     job = get_scheduler().add_job(prompt=title, skill_id="reminder", run_at=when.run_at, cron=when.cron, title=title[:80])
-    reply = f"Done, boss. I'll remind you: {title} ({when.label})."
+    from friday.persona import owner_name
+
+    reply = f"Done, {owner_name()}. I'll remind you: {title} ({when.label})."
     return {"job": job, "when": when.label, "title": title, "reply": reply}

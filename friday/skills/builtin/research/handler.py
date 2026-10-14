@@ -31,6 +31,21 @@ class SkillHandler(Skill):
 
     def run(self, ctx: SkillContext) -> SkillResult:
         msg = ctx.message or ""
+        try:
+            from friday.runtime.blackout import blocks_research
+            from friday.persona import owner_name
+
+            if blocks_research():
+                return SkillResult(
+                    reply=(
+                        f"Blackout is on, {owner_name()} — web research is paused. "
+                        "Turn it off in Systems → Safety, or ask me something I can answer from local memory."
+                    ),
+                    skill_id="research",
+                    metadata={"blackout": True},
+                )
+        except Exception:  # noqa: BLE001
+            pass
         if _OPEN.search(msg):
             from friday.reports.store import list_reports
 

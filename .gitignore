@@ -79,3 +79,4 @@ scripts/hotkey_collision_check.py
 
 # Design research dumps
 docs/research/diag_chrome/*.txt
+.cursor/

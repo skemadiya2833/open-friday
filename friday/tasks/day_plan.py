@@ -146,7 +146,9 @@ def compose_day_plan_reply(*, user_text: str = "", voice_mode: bool = False) -> 
     if scrubbed:
         sections.append(f"(Cleared {scrubbed} bogus agenda line(s) that were just planning requests.)")
 
-    reply = "Here's a working plan for today, boss.\n\n" + "\n\n".join(sections)
+    from friday.persona import owner_name
+
+    reply = f"Here's a working plan for today, {owner_name()}.\n\n" + "\n\n".join(sections)
     return {"reply": reply, "scrubbed": scrubbed, "plan": data, "calendar_n": len(cal)}
 
 

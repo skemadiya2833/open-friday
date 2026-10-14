@@ -88,7 +88,8 @@ function setState(state, { force = false } = {}) {
   uiState = state;
   window.FridayLive && FridayLive.state(state);
   if (orb) orb.dataset.state = state;
-  if (statusLabel) statusLabel.textContent = state;
+  if (statusLabel) statusLabel.textContent = String(state || "standby").toUpperCase();
+  syncZenChips();
   const core = $("#coreState");
   if (core) {
     const map = {
@@ -161,20 +162,48 @@ function tickClock() {
   const now = new Date();
   const clock = $("#clockReadout");
   const date = $("#dateReadout");
-  if (clock) {
-    clock.textContent = now.toLocaleTimeString("en-US", {
-      hour12: true,
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  }
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour12: true,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  if (clock) clock.textContent = timeStr;
   if (date) {
     date.textContent = now.toLocaleDateString("en-US", {
       weekday: "short",
       day: "numeric",
       month: "short",
     }).toUpperCase();
+  }
+  const zenTime = $("#zenChipTime");
+  if (zenTime) zenTime.textContent = timeStr.replace(/:\d{2}(?=\s)/, "");
+}
+
+const ZEN_KEY = "friday_zen_mode";
+
+function zenEnabled() {
+  return localStorage.getItem(ZEN_KEY) === "1";
+}
+
+function setZenMode(on) {
+  localStorage.setItem(ZEN_KEY, on ? "1" : "0");
+  document.body.classList.toggle("zen-mode", !!on);
+  const btn = $("#btnZen");
+  if (btn) {
+    btn.classList.toggle("on", !!on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  if (on) showView("chat");
+}
+
+function syncZenChips() {
+  const st = $("#zenChipStatus");
+  const link = $("#zenChipLink");
+  if (st) st.textContent = (uiState || "standby").toUpperCase();
+  if (link) {
+    const up = ($("#uplinkStatus")?.textContent || "").includes("LOST") ? "LOST" : "LOCAL";
+    link.textContent = up;
   }
 }
 
@@ -1382,8 +1411,8 @@ async function refreshSkills() {
 
 let memFilter = "all";
 const MEM_KINDS = [
-  ["all", "Everything"], ["learned", "Learned about you"], ["note", "Notes you added"], ["desktop", "Desktop tasks"],
-  ["experience", "Agent experience"], ["plan", "Today's plan"], ["reminder", "Reminders"], ["chat", "Chat snippets"],
+  ["all", "Everything"], ["learned", "Learned about you"], ["note", "Notes"], ["desktop", "Desktop"],
+  ["experience", "Experience"], ["plan", "Plan"], ["reminder", "Reminders"],
 ];
 let memItems = [];
 
@@ -1450,7 +1479,7 @@ $("#btnForgetAll")?.addEventListener("click", async () => {
     ? FridayDialog.confirm({
         eyebrow: "MEMORY CORE",
         title: "Forget everything?",
-        body: "Notes, learned facts, chat snippets, plan items, and reminders in Memory Core will be permanently deleted.",
+        body: "Learned facts, notes, plan items, and reminders in Memory Core will be permanently deleted. Chat history is separate.",
         tone: "danger",
         confirmLabel: "Forget all",
         cancelLabel: "Keep memories",
@@ -1912,6 +1941,17 @@ document.addEventListener("visibilitychange", () => {
   setInterval(pollNotifications, 5000);
   tickClock();
   setInterval(tickClock, 1000);
+  setZenMode(zenEnabled());
+  $("#btnZen")?.addEventListener("click", () => setZenMode(!zenEnabled()));
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B") && !e.altKey) {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
+      e.preventDefault();
+      setZenMode(!zenEnabled());
+    }
+  });
+  syncZenChips();
   await refreshSkills();
   await refreshSettings();
   await restoreChat();

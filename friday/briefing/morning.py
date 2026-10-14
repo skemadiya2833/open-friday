@@ -247,6 +247,15 @@ def compose_spoken_briefing(digest: dict[str, Any] | None = None) -> str:
     now = datetime.now()
     parts = [f"Good morning, {boss}. It's {now.strftime('%A')}, {now.strftime('%d %B')}."]
 
+    try:
+        from friday.runtime.diary import yesterday_highlights
+
+        yh = yesterday_highlights(4)
+        if yh:
+            parts.append("From yesterday: " + "; ".join(yh) + ".")
+    except Exception:  # noqa: BLE001
+        pass
+
     plan = [p for p in (digest.get("plan") or []) if p]
     top_three = digest.get("proposed_top_three") or []
     if top_three:

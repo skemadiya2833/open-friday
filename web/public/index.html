@@ -7,8 +7,11 @@
     content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#05070c" />
   <title>F.R.I.D.A.Y. — HUD</title>
-  <link rel="stylesheet" href="/styles.css?v=21" />
-  <link rel="stylesheet" href="/hud.css?v=3" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=22" />
+  <link rel="stylesheet" href="/hud.css?v=4" />
 </head>
 
 <body>
@@ -42,6 +45,7 @@
       <span id="dateReadout">—</span>
     </div>
     <div class="topbar-right">
+      <button type="button" class="ghost zen-toggle" id="btnZen" title="Zen focus (Ctrl+B)">ZEN</button>
       <span class="pill camera-hud-pill hidden" id="cameraHudPill" title="Webcam is in use for this turn" role="status"
         aria-live="polite">CAMERA LIVE</span>
       <button type="button" class="bell" id="btnBell" title="Reminders and notifications">&#128276;<span
@@ -50,6 +54,12 @@
       <span class="pill" id="modelPill">local</span>
     </div>
   </header>
+
+  <div class="zen-ambient" id="zenAmbient" aria-hidden="true">
+    <div class="zen-chip" id="zenChipTime">—</div>
+    <div class="zen-chip" id="zenChipStatus">STANDBY</div>
+    <div class="zen-chip" id="zenChipLink">LOCAL</div>
+  </div>
 
   <div class="rem-panel hidden" id="remPanel">
     <div class="rem-panel-head"><strong>Reminders</strong><button class="ghost" id="btnRemAllSeen" type="button">Mark
@@ -111,8 +121,8 @@
         </div>
         <div class="brand-copy">
           <div class="brand-name">FRIDAY</div>
-          <div class="brand-tag">F.R.I.D.A.Y. PROTOCOL</div>
-          <div class="brand-sub" id="statusLabel">idle</div>
+          <div class="brand-tag">F.R.I.D.A.Y. · LOCAL PROTOCOL</div>
+          <div class="brand-sub" id="statusLabel">STANDBY</div>
         </div>
       </div>
 
@@ -398,11 +408,11 @@
   <script src="/live.js?v=22"></script>
   <script src="/turn.js?v=1"></script>
   <script src="/auth.js?v=6"></script>
-  <script src="/app.js?v=46"></script>
+  <script src="/app.js?v=47"></script>
   <script src="/systems-ui.js?v=7"></script>
   <script src="/tools.js?v=7"></script>
   <script src="/reports.js?v=3"></script>
-  <script src="/motion.js?v=3"></script>
+  <script src="/motion.js?v=4"></script>
   <script src="/sfx.js?v=1"></script>
 </body>
 

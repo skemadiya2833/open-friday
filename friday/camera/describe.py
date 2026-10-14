@@ -56,5 +56,7 @@ def describe_camera(
             on_token=on_token,
         )
     except RuntimeError as exc:
-        return f"Couldn't read the camera, boss ({exc})."
+        from friday.persona import owner_name
+
+        return f"Couldn't read the camera, {owner_name()} ({exc})."
     return accumulated.strip()
