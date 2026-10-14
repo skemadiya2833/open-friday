@@ -77,6 +77,11 @@
             title="Barge-in (echo risk with open speakers)">Interrupt</button>
         </span>
       </div>
+      <div class="live-chrome-status" aria-live="polite">
+        <div class="live-state" id="liveState">LISTENING</div>
+        <div class="live-hint hidden" id="liveHint"></div>
+        <div class="camera-voice-badge hidden" id="cameraVoiceBadge" role="status">CAMERA · LOOKING</div>
+      </div>
       <div class="live-chrome-actions">
         <button type="button" class="live-type-toggle" id="liveTypeToggle"
           title="Type instead of speaking">Type</button>
@@ -84,27 +89,25 @@
       </div>
     </div>
     <div class="live-body">
-      <div class="live-state" id="liveState">LISTENING</div>
-      <div class="camera-voice-badge hidden" id="cameraVoiceBadge" role="status" aria-live="polite">CAMERA · LOOKING
-      </div>
       <canvas id="liveOrb" title="Hold mode — mic muted while Friday talks. Click to stop her."></canvas>
       <div class="live-caps">
         <div class="cap cap-user" id="capUser"></div>
         <div class="cap cap-friday faded" id="capFriday"></div>
       </div>
-      <div class="live-hint hidden" id="liveHint" aria-live="polite"></div>
-      <div class="live-results" id="liveResults" hidden>
-        <div class="live-results-head">
-          <span class="eyebrow">RESULT</span>
-          <button type="button" class="live-results-clear" id="liveResultsClear" title="Clear">Clear</button>
+      <div class="live-dock">
+        <div class="live-results" id="liveResults" hidden>
+          <div class="live-results-head">
+            <span class="eyebrow">RESULT</span>
+            <button type="button" class="live-results-clear" id="liveResultsClear" title="Clear">Clear</button>
+          </div>
+          <div class="live-activity" id="liveActivity" aria-live="polite"></div>
+          <pre class="live-reply" id="liveReply"></pre>
         </div>
-        <div class="live-activity" id="liveActivity" aria-live="polite"></div>
-        <pre class="live-reply" id="liveReply"></pre>
+        <form class="live-compose" id="liveCompose" autocomplete="off">
+          <textarea id="liveInput" rows="2" placeholder="Type here — Enter to send" enterkeyhint="send"></textarea>
+          <button type="submit" class="live-send">Send</button>
+        </form>
       </div>
-      <form class="live-compose" id="liveCompose" autocomplete="off">
-        <textarea id="liveInput" rows="2" placeholder="Type here — Enter to send" enterkeyhint="send"></textarea>
-        <button type="submit" class="live-send">Send</button>
-      </form>
     </div>
   </div>
 

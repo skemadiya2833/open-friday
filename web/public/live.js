@@ -295,8 +295,8 @@
       if (!reply) return;
       const t = String(text || "");
       if (!t.trim() && !append) return;
-      // Short spoken replies live in the caption — the RESULT card is for longer output only.
-      const short = !append && t.replace(/\s+/g, " ").trim().length <= 240;
+      // Short spoken replies live in the caption — RESULT docks at the bottom for long output only.
+      const short = !append && t.replace(/\s+/g, " ").trim().length <= 420;
       if (short) {
         this.friday(t);
         if (box) box.hidden = true;

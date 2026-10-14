@@ -171,14 +171,14 @@ body {
   50% { opacity: 1; }
 }
 .camera-voice-badge {
-  margin-top: 10px;
+  margin-top: 0;
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   letter-spacing: 0.14em;
   color: #ff8a7a;
   border: 1px solid rgba(255, 90, 70, 0.45);
   background: rgba(255, 70, 50, 0.12);
-  padding: 6px 14px;
+  padding: 3px 10px;
   animation: cameraPulse 1.1s ease-in-out infinite;
 }
 .camera-voice-badge.hidden { display: none; }
@@ -805,30 +805,36 @@ select:focus, input:focus, textarea:focus {
     backdrop-filter: blur(10px);
   }
   .live-chrome {
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
+    justify-items: stretch;
     padding: 10px 12px 6px;
   }
+  .live-chrome-status { order: -1; padding-top: 0; }
+  .live-chrome-actions { justify-content: space-between; }
   .live-body {
-    justify-content: flex-start;
     padding: 4px 12px calc(12px + env(safe-area-inset-bottom));
-    gap: 10px;
   }
   body.live-open { overflow: auto; }
   body.live-open .shell { filter: none; pointer-events: auto; }
   .live-pace { max-width: 100%; }
   .live-speed { margin-left: 0; }
   #liveOrb {
-    width: min(220px, 40vmin);
-    max-width: 42vw;
-    max-height: 22vh;
+    top: 38%;
+    width: min(220px, 42vmin);
+    max-width: 46vw;
+    max-height: 28vh;
   }
-  .live-caps { min-height: 64px; }
+  .live-caps {
+    top: calc(38% + min(120px, 18vmin));
+    max-height: 14vh;
+  }
   .cap { font-size: 1.05rem; }
   .cap-friday { font-size: 1.15rem; }
   .live-compose { display: flex; } /* always show type box on phone */
   .live.has-result { height: min(88dvh, 760px); }
-  .live-results { max-height: min(40vh, 360px); flex: 1 1 auto; }
-  .live-reply { max-height: min(34vh, 300px); font-size: 1rem; }
+  .live-dock { max-height: min(40vh, 320px); width: 100%; }
+  .live-results { max-height: min(34vh, 280px); }
+  .live-reply { max-height: min(28vh, 240px); font-size: 1rem; }
   .rem-panel { left: 8px; right: 8px; width: auto; top: 42px; }
   .rem-popup { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); max-width: none; }
 }
@@ -964,11 +970,27 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live.hidden { display: none; }
 .live-chrome {
   flex: 0 0 auto;
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
   padding: 14px 16px 8px;
-  z-index: 2;
+  z-index: 3;
 }
-.live-chrome-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.live-chrome-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  text-align: center;
+  padding-top: 4px;
+}
+.live-chrome-actions {
+  display: flex; gap: 8px; flex-shrink: 0;
+  justify-content: flex-end;
+}
 .live-close, .live-type-toggle, .live-results-clear, .live-send {
   appearance: none;
   background: transparent;
@@ -999,16 +1021,28 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live-body {
   flex: 1 1 auto;
   min-height: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px;
-  padding: 8px 16px 20px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  padding: 0 16px 16px;
+  overflow: hidden;
+}
+.live-dock {
+  position: relative;
+  z-index: 2;
+  width: min(720px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  max-height: min(32vh, 280px);
 }
 .live-compose {
-  display: none; width: min(820px, 92vw); gap: 8px; align-items: stretch;
-  margin-top: 4px; flex-shrink: 0;
+  display: none; width: 100%; gap: 8px; align-items: stretch;
+  margin-top: 0; flex-shrink: 0;
 }
 .live-compose textarea {
   flex: 1; min-height: 52px; resize: vertical; font-size: 16px;
@@ -1016,23 +1050,20 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
   padding: 10px 12px; clip-path: none;
 }
 .live.show-type .live-compose { display: flex; }
-.live.show-type #liveOrb,
-.live.has-result #liveOrb {
-  width: min(280px, 42vmin);
-}
 .live-results {
-  width: min(720px, 88vw);
+  width: 100%;
   max-height: min(28vh, 240px);
   display: flex;
   flex-direction: column;
   gap: 6px;
   text-align: left;
-  background: transparent;
-  border: 0;
-  border-top: 1px solid rgba(120, 170, 220, 0.18);
-  padding: 10px 4px 0;
+  background: rgba(4, 10, 18, 0.72);
+  border: 1px solid rgba(120, 170, 220, 0.16);
+  border-radius: 2px;
+  padding: 10px 12px;
   overflow: hidden;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  backdrop-filter: blur(8px);
 }
 .live-results[hidden] { display: none !important; }
 .live-results-head {
@@ -1050,7 +1081,7 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live-results-clear:hover { color: var(--cyan); }
 .live-hint {
   max-width: min(88vw, 420px);
-  margin: 0 auto 4px;
+  margin: 0;
   padding: 2px 8px;
   font-family: var(--mono);
   font-size: 0.68rem;
@@ -1063,6 +1094,8 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 }
 .live-hint.live { color: rgba(125, 220, 255, 0.75); }
 .live-hint.hidden { display: none !important; }
+/* When a status hint is showing, hide the coarse LISTENING/ACTING label so the chrome stays one line. */
+.live-chrome-status:has(#liveHint:not(.hidden)) .live-state { display: none; }
 .live-activity {
   display: flex; flex-wrap: wrap; gap: 6px;
   font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
@@ -1105,9 +1138,13 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live-speed input { width: 90px; }
 .seg { display: flex; gap: 6px; margin-top: 6px; }
 .live-state {
-  font-family: var(--display); letter-spacing: 0.4em; font-size: 0.85rem; color: var(--cyan); opacity: 0.9;
+  font-family: var(--display); letter-spacing: 0.28em; font-size: 0.78rem; color: var(--cyan); opacity: 0.9;
   transition: color 0.35s ease, opacity 0.35s ease;
   flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .live[data-state="thinking"] .live-state { color: var(--accent-2); animation: pulseSoft 1.2s ease-in-out infinite; }
 .live[data-state="acting"] .live-state { color: var(--accent); animation: pulseSoft 1.2s ease-in-out infinite; }
@@ -1116,17 +1153,29 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 #liveOrb {
   cursor: pointer;
   display: block;
-  flex-shrink: 0;
-  width: min(420px, 55vmin);
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  width: min(420px, 52vmin);
   height: auto;
   aspect-ratio: 1 / 1;
-  max-width: min(420px, 80vw);
-  max-height: min(420px, 48vh);
+  max-width: min(420px, 78vw);
+  max-height: min(420px, 52vh);
 }
 .live-caps {
-  width: min(820px, 90vw); min-height: 4.5rem;
-  display: flex; flex-direction: column; gap: 10px; text-align: center;
-  flex-shrink: 0;
+  position: absolute;
+  left: 50%;
+  top: calc(46% + min(210px, 26vmin));
+  transform: translateX(-50%);
+  z-index: 2;
+  width: min(820px, 90vw);
+  min-height: 0;
+  max-height: 18vh;
+  overflow: hidden;
+  display: flex; flex-direction: column; gap: 8px; text-align: center;
+  pointer-events: none;
 }
 .cap { font-size: 1.25rem; line-height: 1.35; transition: opacity 0.3s; }
 .cap-user { color: #cfeaff; opacity: 0.95; }
