@@ -17,6 +17,26 @@ def test_open_url_pattern(monkeypatch):
     assert opened == ["https://example.com"]
 
 
+def test_open_site_aliases_not_win_search(monkeypatch):
+    opened = []
+    monkeypatch.setattr(
+        "friday.calendar.create.open_in_chrome",
+        lambda u: opened.append(u) or {"opened": True, "browser": "chrome", "url": u},
+    )
+    for msg, expect in (
+        ("open youtube", "youtube.com"),
+        ("open github.com", "github.com"),
+        ("open chrome", "google.com"),
+        ("open the browser", "google.com"),
+        ("go to reddit", "reddit.com"),
+        ("open a site", "google.com"),
+    ):
+        opened.clear()
+        r = DT.try_direct(msg)
+        assert r.handled and r.ok and r.tool == "open_url", msg
+        assert opened and expect in opened[0], (msg, opened)
+
+
 def test_open_google_calendar(monkeypatch):
     calls = []
     monkeypatch.setattr(

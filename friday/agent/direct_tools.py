@@ -30,8 +30,35 @@ class DirectResult:
 # ---------------------------------------------------------------------------
 
 _OPEN_URL = re.compile(
-    r"^\s*(?:please\s+)?(?:open|go to|navigate to|browse)\s+"
+    r"^\s*(?:please\s+|hey\s+friday[,:]?\s*)?(?:open|go to|navigate to|browse|visit|pull up|bring up)\s+"
     r"(?P<url>https?://[^\s]+|www\.[^\s]+)\s*$",
+    re.I,
+)
+# "open youtube", "open github.com", "go to reddit", "open the website figma"
+_OPEN_SITE = re.compile(
+    r"^\s*(?:please\s+|hey\s+friday[,:]?\s*)?"
+    r"(?:open|go to|navigate to|browse|visit|pull up|bring up|launch)\s+"
+    r"(?:(?:the|a|my)\s+)?(?:(?:web\s*)?site|webpage|page|url)\s*(?:for|of|called)?\s*"
+    r"(?P<target>.+?)"
+    r"(?:\s+in\s+(?:chrome|edge|firefox|the\s+browser))?\s*[.!]?\s*$",
+    re.I,
+)
+_OPEN_KNOWN = re.compile(
+    r"^\s*(?:please\s+|hey\s+friday[,:]?\s*)?"
+    r"(?:open|go to|navigate to|browse|visit|pull up|bring up|launch)\s+"
+    r"(?:(?:the|a|my)\s+)?"
+    r"(?P<target>chrome|google\s+chrome|edge|msedge|firefox|browser|"
+    r"youtube|google|gmail|maps|drive|docs|github|gitlab|reddit|twitter|x\.com|linkedin|"
+    r"figma|notion|stackoverflow|stack\s+overflow|wikipedia|amazon|netflix|spotify|"
+    r"[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:/[^\s]*)?)"
+    r"(?:\s+in\s+(?:chrome|edge|firefox|the\s+browser))?\s*[.!]?\s*$",
+    re.I,
+)
+# Bare "open a site / the website" with no name → Google (never Win+S).
+_OPEN_BARE_SITE = re.compile(
+    r"^\s*(?:please\s+|hey\s+friday[,:]?\s*)?"
+    r"(?:open|go to|browse|pull up|bring up|launch)\s+"
+    r"(?:(?:the|a|my)\s+)?(?:(?:web\s*)?site|webpage|browser)\s*[.!]?\s*$",
     re.I,
 )
 _OPEN_GCAL = re.compile(
@@ -41,10 +68,40 @@ _OPEN_GCAL = re.compile(
     re.I,
 )
 _OPEN_APP = re.compile(
-    r"^\s*(?:please\s+)?open\s+(?P<app>notepad|calculator|calc|settings|explorer|paint|cmd|powershell|"
-    r"file explorer|windows settings)\b(?P<rest>.*)$",
+    r"^\s*(?:please\s+)?(?:open|launch|start)\s+"
+    r"(?P<app>notepad|calculator|calc|settings|explorer|paint|cmd|powershell|"
+    r"file explorer|windows settings|chrome|google chrome|edge|msedge|firefox|browser)\b"
+    r"(?P<rest>.*)$",
     re.I,
 )
+_SITE_ALIASES = {
+    "youtube": "https://www.youtube.com",
+    "google": "https://www.google.com",
+    "gmail": "https://mail.google.com",
+    "maps": "https://maps.google.com",
+    "drive": "https://drive.google.com",
+    "docs": "https://docs.google.com",
+    "github": "https://github.com",
+    "gitlab": "https://gitlab.com",
+    "reddit": "https://www.reddit.com",
+    "twitter": "https://x.com",
+    "x.com": "https://x.com",
+    "linkedin": "https://www.linkedin.com",
+    "figma": "https://www.figma.com",
+    "notion": "https://www.notion.so",
+    "stackoverflow": "https://stackoverflow.com",
+    "stack overflow": "https://stackoverflow.com",
+    "wikipedia": "https://en.wikipedia.org",
+    "amazon": "https://www.amazon.com",
+    "netflix": "https://www.netflix.com",
+    "spotify": "https://open.spotify.com",
+    "chrome": "https://www.google.com",
+    "google chrome": "https://www.google.com",
+    "edge": "https://www.google.com",
+    "msedge": "https://www.google.com",
+    "firefox": "https://www.google.com",
+    "browser": "https://www.google.com",
+}
 _OPEN_FOLDER = re.compile(
     r"^\s*(?:please\s+)?(?:open|show)\s+(?:the\s+)?(?:folder|directory)\s+"
     r"(?P<path>\"[^\"]+\"|[A-Za-z]:\\[^\s]+|%USERPROFILE%[^\s]*|~[^\s]*)\s*$",
@@ -215,6 +272,13 @@ _APP_CMDS = {
     "paint": ["mspaint.exe"],
     "cmd": ["cmd.exe"],
     "powershell": ["powershell.exe"],
+    # Browsers: never Win+S → type "browser". Launch via Chrome helper / exe.
+    "chrome": None,  # handled specially
+    "google chrome": None,
+    "edge": ["msedge.exe"],
+    "msedge": ["msedge.exe"],
+    "firefox": ["firefox.exe"],
+    "browser": None,
 }
 
 
@@ -805,6 +869,33 @@ def is_make_html_request(objective: str) -> bool:
     return bool(obj and _MAKE_HTML.search(obj) and not _WEEK_DASHBOARD.search(obj))
 
 
+def _resolve_site_url(raw: str) -> str | None:
+    """Map 'youtube' / 'github.com' / 'www.x.com/foo' → https URL. None if not a site."""
+    t = (raw or "").strip().strip("\"'")
+    t = re.sub(r"\s+in\s+(chrome|edge|firefox|the\s+browser)\s*$", "", t, flags=re.I).strip()
+    t = re.sub(r"^(the|a|my)\s+", "", t, flags=re.I).strip()
+    if not t or len(t) > 200:
+        return None
+    # Vague "a site" / "the website" with no name — default Google, not Win+S.
+    if re.fullmatch(r"(a\s+)?(web\s*)?site|the\s+(web\s*)?site|webpage|page|url", t, re.I):
+        return "https://www.google.com"
+    low = t.lower()
+    if low in _SITE_ALIASES:
+        return _SITE_ALIASES[low]
+    # multi-word alias
+    for key, url in _SITE_ALIASES.items():
+        if " " in key and low.startswith(key):
+            return url
+    if low.startswith("www."):
+        return "https://" + t
+    if re.match(r"^https?://", t, re.I):
+        return t
+    # bare domain
+    if re.match(r"^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(/[^\s]*)?$", t, re.I):
+        return "https://" + t
+    return None
+
+
 def try_direct(objective: str, *, workspace: str | None = None,
                approve: Callable[[str, str], bool] | None = None) -> DirectResult:
     obj = (objective or "").strip()
@@ -819,7 +910,30 @@ def try_direct(objective: str, *, workspace: str | None = None,
         from friday.calendar.create import open_in_chrome
 
         open_in_chrome(url)
-        return DirectResult(True, True, f"Opened {url}", "open_url")
+        return DirectResult(True, True, f"Opened {url} in Chrome", "open_url")
+
+    # Sites / chrome / known destinations — never fall through to Win+S vision.
+    if _OPEN_BARE_SITE.match(obj):
+        from friday.calendar.create import open_in_chrome
+
+        url = "https://www.google.com"
+        info = open_in_chrome(url)
+        return DirectResult(
+            True, True, f"Opened {url} in {info.get('browser') or 'browser'}", "open_url"
+        )
+    for pat in (_OPEN_SITE, _OPEN_KNOWN):
+        m = pat.match(obj)
+        if not m:
+            continue
+        target = (m.groupdict().get("target") or "").strip()
+        url = _resolve_site_url(target)
+        if not url:
+            continue
+        from friday.calendar.create import open_in_chrome
+
+        info = open_in_chrome(url)
+        browser = info.get("browser") or "browser"
+        return DirectResult(True, True, f"Opened {url} in {browser}", "open_url")
 
     m = _OPEN_GCAL.match(obj)
     if m:
@@ -860,11 +974,24 @@ def try_direct(objective: str, *, workspace: str | None = None,
 
     m = _OPEN_APP.match(obj)
     if m:
-        app = m.group("app").lower()
+        app = m.group("app").lower().strip()
         rest = (m.group("rest") or "").strip()
         # If the rest looks like a full GUI task (type/save), leave for other routers.
         if re.search(r"\b(type|write|save|click)\b", rest, re.I):
             return DirectResult(False)
+        # Chrome / browser → open Google in Chrome (never Windows Search for "browser").
+        if app in {"chrome", "google chrome", "browser"} or app.startswith("chrome"):
+            from friday.calendar.create import open_in_chrome
+
+            url = _resolve_site_url(rest) if rest else "https://www.google.com"
+            url = url or "https://www.google.com"
+            info = open_in_chrome(url)
+            return DirectResult(
+                True,
+                True,
+                f"Opened {url} in {info.get('browser') or 'chrome'}",
+                "open_url",
+            )
         cmd = _APP_CMDS.get(app)
         if not cmd:
             return DirectResult(False)

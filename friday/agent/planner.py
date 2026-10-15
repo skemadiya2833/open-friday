@@ -107,6 +107,9 @@ HARD RULES:
 2b. TYPE / PASTE MUST include the FULL literal string in "text". Never leave "text" empty. If the objective is to write code, put the complete code in "text" on this tick.
 3. Do NOT repeat a successful recent action. If stuck, WAIT, dismiss a popup, or change strategy.
 4. WIN_SEARCH opens apps — never re-launch an app that is already open/focused.
+   NEVER use WIN_SEARCH for Chrome, Edge, Firefox, or the word "browser". To open a site or browser,
+   use NAVIGATE with the full https URL if a browser is already open, or RUN_SHELL
+   with Start-Process chrome \"https://…\" — never type \"browser\" into Windows Search.
 5. TYPE text must be the FULL literal string — never placeholders like "[lyrics]" or "insert content".
 6. COMPLETE only when the objective is visibly achieved. Set "completion_evidence" to the on-screen proof.
 7. OBSERVE-ONLY OBJECTIVES: If the user only asked what is on screen / to describe the desktop / "can you see…", do NOT click or type. On the FIRST tick output COMPLETE with completion_evidence summarizing what you see, and put that summary in "observation" and "message".
@@ -117,7 +120,7 @@ HARD RULES:
 12. REAL CONTENT ONLY: If the objective needs text you do not already know verbatim (song lyrics, articles, quotes, long facts), use KNOWLEDGE_SEARCH once. It returns titles/snippets in knowledge notes. Then COMPLETE or PASTE from those notes — do not open extra tabs.
 13. NO-PROGRESS GUARD: If the screen looks unchanged after your last action, do NOT repeat it — change target, WAIT for it to settle, or use a keyboard route.
 14. Prefer WAIT over blind retries when loaders/spinners are visible.
-15. KEYBOARD FIRST: Prefer reliable keyboard routes over pixel clicks whenever both work: WIN_SEARCH to open apps, NAVIGATE for URLs, SAVE_FILE with a full path, HOTKEY {{"keys":["alt","tab"]}} to switch windows, SELECT_ALL/COPY to grab page text. Clicks are for targets with no keyboard route.
+15. KEYBOARD FIRST: Prefer reliable keyboard routes over pixel clicks whenever both work: WIN_SEARCH for non-browser apps only, NAVIGATE for URLs, RUN_SHELL to launch Chrome with a URL, SAVE_FILE with a full path, HOTKEY {{"keys":["alt","tab"]}} to switch windows, SELECT_ALL/COPY to grab page text. Clicks are for targets with no keyboard route.
 16. PRECISION / CROP: If the target is small or you are unsure of exact pixels (chat input, icon, button), first use FOCUS with x,y near the target center (amount≈220). The next tick receives a zoomed crop — then CLICK/TYPE accurately. Use CLEAR_FOCUS to return to full desktop.
 17. DO NOT click unrelated UI (Commit, Source Control, random IDE chrome) unless the objective explicitly asks for it.
 18. TERMINAL-FIRST / RUN_SHELL: If the objective is files, git, npm/pip/uv, winget, processes, services, disk, network, env, or "run this in PowerShell/terminal", output RUN_SHELL with the full command in "text" on the FIRST tick. Do NOT open Terminal.exe / Windows Terminal and type into it. Do NOT click a terminal UI to run a command. GUI clicks are for dialogs, drawing, and apps with no shell route. Shell requires approval; the UI shows what ran.
@@ -281,6 +284,11 @@ def _validate_step(step: ActionStep, plan: dict) -> ActionStep | None:
     if action == "WIN_SEARCH" and not (step.text or step.query or "").strip():
         print("[Planner] Rejected WIN_SEARCH: empty query.")
         return None
+    if action == "WIN_SEARCH":
+        q = (step.text or step.query or "").strip().lower()
+        if re.search(r"\b(chrome|edge|firefox|browser|msedge|google chrome)\b", q):
+            print("[Planner] Rejected WIN_SEARCH for browser — use NAVIGATE / RUN_SHELL instead.")
+            return None
 
     if action == "NAVIGATE" and not (step.url or step.text or "").strip():
         print("[Planner] Rejected NAVIGATE: empty url.")
