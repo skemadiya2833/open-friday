@@ -77,10 +77,17 @@ def is_empty_task_capture(text: str) -> bool:
             return False
     if re.search(r"\b(1[\).:]|first[,:]|second[,:]|third[,:])\s+\S", t, re.I):
         return False
-    # Strip the capture framing; leftover substance means they already named something.
+    # Strip capture framing + politeness wrappers; leftover substance = they named items.
     stripped = _TASK_CAPTURE.sub(" ", t)
     stripped = re.sub(
-        r"(?i)\b(hey\s+)?friday\b|\bplease\b|\bfor\s+me\b|\bfor\s+today\b|\btoday\b|\bnow\b",
+        r"(?i)\b("
+        r"(hey\s+)?friday|"
+        r"please|"
+        r"i\s+want\s+you\s+to|i\s+need\s+you\s+to|i'?d\s+like\s+you\s+to|"
+        r"can\s+you|could\s+you|would\s+you|will\s+you|"
+        r"for\s+me|for\s+today|today|now|"
+        r"just|kindly|maybe"
+        r")\b",
         " ",
         stripped,
     )

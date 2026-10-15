@@ -1,10 +1,12 @@
 """Role-based model map (installed models only). Defaults unchanged until measured.
 
 Roles:
-  fast   — routing, greetings, fillers, short answers → qwen3.5:4b
+  fast   — short/urgent replies (defaults to same 9b as main; set FRIDAY_MODEL_FAST to override)
   main   — planning + chat → qwen3.5:9b (current default)
   vision — screen grounding → qwen3-vl:8b-instruct or qwen3.5:9b (measure)
   coder  — on-demand text/tree/code → qwen3-coder:30b (MoE, spills on 16 GB; never co-resident)
+
+Owner preference: keep a single quality model hot (9b). Avoid co-resident 4b+9b.
 """
 
 from __future__ import annotations
@@ -25,9 +27,12 @@ class ModelRoles:
 
 
 def get_model_roles() -> ModelRoles:
+    main = os.getenv("FRIDAY_MODEL_MAIN", os.getenv("CHAT_MODEL", "qwen3.5:9b")).strip() or "qwen3.5:9b"
+    # Fast defaults to main (9b) — no second resident model unless explicitly set.
+    fast = os.getenv("FRIDAY_MODEL_FAST", main).strip() or main
     return ModelRoles(
-        fast=os.getenv("FRIDAY_MODEL_FAST", "qwen3.5:4b").strip(),
-        main=os.getenv("FRIDAY_MODEL_MAIN", os.getenv("CHAT_MODEL", "qwen3.5:9b")).strip() or "qwen3.5:9b",
+        fast=fast,
+        main=main,
         vision=os.getenv("FRIDAY_MODEL_VISION", os.getenv("VISION_MODEL", "qwen3.5:9b")).strip() or "qwen3.5:9b",
         coder=os.getenv("FRIDAY_MODEL_CODER", "qwen3-coder:30b").strip(),
         embed=os.getenv("EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text",

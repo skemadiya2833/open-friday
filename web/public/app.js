@@ -119,15 +119,66 @@ function suspendMic() {
   try { recognition?.stop(); } catch (_) {}
 }
 
+let voiceWatchIv = null;
+let lastSpeechActivityAt = 0;
+
 /** Chrome SpeechRecognition often ends after silence/errors; restart with retries. */
 function kickRecognition(retries = 6) {
   if (!voiceMode || !recognition || micSuspended) return;
   if (voiceBusy && voiceHoldMode()) return;
   try {
     recognition.start();
+    lastSpeechActivityAt = Date.now();
   } catch (_) {
-    if (retries <= 0) return;
+    if (retries <= 0) {
+      // Dead mic while HUD still says LISTENING — force a fresh recognition object.
+      pushActivity("Mic stalled · re-arming…", { live: false });
+      try {
+        const Rec = SpeechRec();
+        if (Rec && voiceMode) {
+          const old = recognition;
+          recognition = new Rec();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = "en-US";
+          recognition.onresult = old?.onresult;
+          recognition.onerror = old?.onerror;
+          recognition.onend = old?.onend;
+          recognition.onspeechstart = old?.onspeechstart;
+          recognition.onspeechend = old?.onspeechend;
+          try { recognition.start(); } catch (_) {}
+        }
+      } catch (_) {}
+      return;
+    }
     setTimeout(() => kickRecognition(retries - 1), 140);
+  }
+}
+
+function startVoiceWatchdog() {
+  if (voiceWatchIv) return;
+  voiceWatchIv = setInterval(() => {
+    if (!voiceMode) return;
+    const now = Date.now();
+    // Stuck suspended after a turn (releaseMicAfter loop / missed arm).
+    if (micSuspended && !voiceBusy && !releaseMicTimer && now > listenCooldownUntil + 400) {
+      pushActivity("Mic re-arm…", { live: false });
+      armMicNow();
+      return;
+    }
+    // HUD says listening but Chrome died and onend never re-kicked.
+    if (!micSuspended && !voiceBusy && uiState === "listening"
+        && now - (lastSpeechActivityAt || now) > 9000) {
+      kickRecognition(8);
+      lastSpeechActivityAt = now;
+    }
+  }, 1500);
+}
+
+function stopVoiceWatchdog() {
+  if (voiceWatchIv) {
+    clearInterval(voiceWatchIv);
+    voiceWatchIv = null;
   }
 }
 
@@ -1099,6 +1150,7 @@ function stopVoiceMode() {
   micSuspended = false;
   listenCooldownUntil = 0;
   lastHoldReason = "";
+  stopVoiceWatchdog();
   if (releaseMicTimer) {
     clearTimeout(releaseMicTimer);
     releaseMicTimer = null;
@@ -1243,6 +1295,7 @@ async function startVoiceMode() {
   };
 
   recognition.onresult = (event) => {
+    lastSpeechActivityAt = Date.now();
     // Hold mode / cool-down: ignore everything — speaker bleed must not open a turn.
     if (micSuspended || Date.now() < listenCooldownUntil) return;
     let interim = "";
@@ -1305,6 +1358,8 @@ async function startVoiceMode() {
     kickRecognition(8);
   };
 
+  lastSpeechActivityAt = Date.now();
+  startVoiceWatchdog();
   try {
     recognition.start();
   } catch (err) {

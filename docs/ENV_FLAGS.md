@@ -42,7 +42,7 @@ Everyday knobs (persona, agent backend, tools-first, memory, approvals, shell to
 | CHAT_NUM_PREDICT | `256` | Chat reply cap |
 | CHAT_NUM_CTX | `4096` | Chat context |
 | FRIDAY_MODEL_ROLES | `false` | Enable fast/main/vision/coder map |
-| FRIDAY_MODEL_FAST | `qwen3.5:4b` | Role: fast |
+| FRIDAY_MODEL_FAST | same as MAIN | Role: fast (defaults to 9b; set 4b only if splitting) |
 | FRIDAY_MODEL_MAIN | `qwen3.5:9b` | Role: main |
 | FRIDAY_MODEL_VISION | `qwen3.5:9b` | Role: vision |
 | FRIDAY_MODEL_CODER | `qwen3-coder:30b` | Role: coder (heavy) |

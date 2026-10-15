@@ -28,17 +28,17 @@
       energyThresh: 0.045,
     },
     medium: {
-      completeSilenceMs: 750,
-      incompleteSilenceMs: 1800,
-      maxWaitMs: 3800,
-      energyQuietMs: 320,
+      completeSilenceMs: 900,
+      incompleteSilenceMs: 2200,
+      maxWaitMs: 5200,
+      energyQuietMs: 360,
       energyThresh: 0.04,
     },
     low: {
-      completeSilenceMs: 1000,
-      incompleteSilenceMs: 2400,
-      maxWaitMs: 6500,
-      energyQuietMs: 400,
+      completeSilenceMs: 1200,
+      incompleteSilenceMs: 2800,
+      maxWaitMs: 7500,
+      energyQuietMs: 420,
       energyThresh: 0.035,
     },
   };
@@ -178,12 +178,16 @@
     const quietEnough = sinceHot >= c.energyQuietMs && !this._speaking;
     const waitedMax = sinceResult >= c.maxWaitMs;
 
-    if (hasInterim) {
+    // Chrome often leaves an interim hypothesis open forever — still commit on max wait
+    // so we never freeze on LISTENING with a full transcript and no send.
+    if (hasInterim && !waitedMax) {
       this.onHold({ reason: "interim", score, needSilence, text });
       this._timer = setTimeout(() => this._rearm(), 120);
       return;
     }
-    if (!quietEnough && !waitedMax) {
+    // No usable mic energy meter → don't wait forever for "quiet".
+    const energyUnknown = micLevel() <= 0 && sinceResult > 600;
+    if (!quietEnough && !waitedMax && !energyUnknown) {
       this.onHold({ reason: "mic_hot", score, needSilence, text });
       this._timer = setTimeout(() => this._rearm(), 80);
       return;

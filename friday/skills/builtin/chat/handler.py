@@ -35,7 +35,9 @@ class SkillHandler(Skill):
         system += (
             "\n\nYou have the whole conversation above this message. "
             "Never claim you cannot remember earlier turns. "
-            "You are a real assistant on this PC — prefer concrete help over empty offers."
+            "You are a real assistant on this PC — prefer concrete help over empty offers. "
+            "Do-or-deny: act with tools when the ask is actionable; if you cannot, say you cannot "
+            "and what you need — never invent completed work, open documents, metrics, or status."
         )
         if ctx.history:
             system += "\nOngoing conversation — do not greet or introduce yourself."

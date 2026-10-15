@@ -41,6 +41,8 @@ def test_empty_task_capture_asks_not_invents(plan_dir, monkeypatch):
     monkeypatch.setenv("FRIDAY_HUMOR", "off")
     assert is_empty_task_capture("note down my tasks for today")
     assert is_empty_task_capture("write down my todos")
+    assert is_empty_task_capture("I want you to note down my tasks for today")
+    assert is_empty_task_capture("can you jot down my todos please")
     assert not is_empty_task_capture("what's on my tasks for today")
     assert not is_empty_task_capture("note down buy milk and call mom")
 

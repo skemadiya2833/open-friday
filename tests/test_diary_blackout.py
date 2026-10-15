@@ -17,6 +17,25 @@ def test_diary_record_and_continuity(tmp_path, monkeypatch):
     blurb = D.continuity_blurb()
     assert "Today so far" in blurb
     assert "Shipped HUD polish" in blurb
+    # Body must not reinject — assistant invents used to poison greetings.
+    assert "Reports and Systems" not in blurb
+
+
+def test_continuity_skips_poisoned_assistant_body(tmp_path, monkeypatch):
+    import friday.config as cfg
+    from friday.runtime import diary as D
+
+    monkeypatch.setattr(cfg, "DATA_DIR", Path(tmp_path))
+    monkeypatch.delenv("FRIDAY_DIARY_DIR", raising=False)
+    D.record(
+        "I want you to note down my tasks for today",
+        'I\'ve noted down your task for today: "Review quarterly financial reports".',
+        kind="tasks",
+    )
+    blurb = D.continuity_blurb()
+    assert "quarterly" not in blurb.lower()
+    assert "financial reports" not in blurb.lower()
+    assert "note down my tasks" not in blurb.lower()
 
 
 def test_blackout_blocks_research_and_web_tool(monkeypatch):

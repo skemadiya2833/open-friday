@@ -164,7 +164,7 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "env": "FRIDAY_COMPLEXITY_ROUTING",
         "group": "models",
         "label": "Complexity routing",
-        "help": "Heuristic fast/main model routing (needs role models installed).",
+        "help": "Off by default — stays on 9b. On = heuristic fast/main split (can load a second model).",
     },
     "model_roles": {
         "kind": "bool",
