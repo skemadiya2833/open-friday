@@ -68,12 +68,15 @@ class SkillHandler(Skill):
                 from friday.tasks.scheduler import get_scheduler
 
                 title = "Morning check-in on today's ventures"
-                job = get_scheduler().add_job(
+                sch = get_scheduler()
+                sch.dedupe_cron_titles(title)
+                job = sch.add_job(
                     prompt=title,
                     skill_id="reminder",
                     run_at=when.run_at,
                     cron=when.cron,
                     title=title[:80],
+                    unique=True,
                 )
                 ping = {"job": job, "when": when.label, "title": title}
                 ctx.emit("reminder_set", {"title": title, "when": when.label, "job_id": job["id"]})
@@ -151,7 +154,73 @@ class SkillHandler(Skill):
             return SkillResult(reply="Here's what's coming up:\n" + "\n".join(lines), skill_id="tasks")
 
         from friday.humor import maybe_append_quip
-        from friday.tasks.day_plan import compose_day_plan_reply, is_meta_plan_request
+        from friday.persona import owner_name
+        from friday.tasks.day_plan import (
+            ASKED_FOR_TASKS,
+            compose_day_plan_reply,
+            compose_task_capture_reply,
+            extract_proposed_from_assistant,
+            is_empty_task_capture,
+            is_meta_plan_request,
+            parse_lock_in_confirmation,
+            split_task_dictation,
+        )
+
+        # Follow-up after we proposed / asked for today's list.
+        last_assistant = ""
+        pending_tasks = False
+        for turn in reversed(ctx.history or []):
+            if turn.get("role") == "assistant":
+                last_assistant = turn.get("content") or ""
+                pending_tasks = bool(ASKED_FOR_TASKS.search(last_assistant))
+                break
+        if pending_tasks:
+            from friday.tasks.plan import add_item, format_for_prompt, get_plan
+
+            # Confirmations lock the prior proposal — never treat "yes"/"lock these in" as a task title.
+            if parse_lock_in_confirmation(msg):
+                items = extract_proposed_from_assistant(last_assistant)
+            else:
+                items = split_task_dictation(msg)
+            if not items:
+                return SkillResult(
+                    reply=(
+                        f"Still waiting on the list, {owner_name()}. "
+                        "Confirm to lock my proposal, or dictate the tasks."
+                    ),
+                    skill_id="tasks",
+                    metadata={"awaiting_tasks": True},
+                )
+            added = [add_item(raw) for raw in items]
+            if ctx.voice_mode:
+                reply = "Locked in: " + "; ".join(it["text"] for it in added) + "."
+            else:
+                lines = "\n".join(f"• {it['text']}" for it in added)
+                reply = (
+                    f"Got it, {owner_name()} — locked in for today:\n{lines}\n\n"
+                    f"Full agenda:\n{format_for_prompt()}"
+                )
+            reply = maybe_append_quip(reply, user_text=msg, context="agenda_add")
+            return SkillResult(
+                reply=reply,
+                skill_id="tasks",
+                metadata={"added": added, "plan": get_plan()},
+            )
+
+        # "Note down my tasks" — use calendar/agenda/diary/profile + model; never invent from thin air.
+        if is_empty_task_capture(msg):
+            built = compose_task_capture_reply(user_text=msg, voice_mode=bool(ctx.voice_mode))
+            reply = maybe_append_quip(built["reply"], user_text=msg, context="agenda_add")
+            return SkillResult(
+                reply=reply,
+                skill_id="tasks",
+                metadata={
+                    "awaiting_tasks": True,
+                    "proposed": built.get("proposed") or [],
+                    "used_senses": built.get("used_senses"),
+                    "plan": built.get("plan"),
+                },
+            )
 
         # "Plan my day" / organise today — propose an outline; never save the request as a task.
         if _PLAN_DAY.search(msg) or is_meta_plan_request(msg):
@@ -219,7 +288,9 @@ class SkillHandler(Skill):
             system_overlay=(
                 "You manage Friday's local agenda. "
                 "For 'today / agenda / we'll be doing X' use plan_add / plan_list / plan_done. "
-                "For timed reminders use schedule_task."
+                "For timed reminders use schedule_task. "
+                "NEVER invent tasks the owner did not name. "
+                "If they asked to note tasks but gave none, ask what to add — do not call plan_add with guesses."
             ),
             history=ctx.history,
             emit=ctx.emit,

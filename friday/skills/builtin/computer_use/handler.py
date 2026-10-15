@@ -51,6 +51,9 @@ class SkillHandler(Skill):
         direct = try_direct(msg)
         if direct.handled:
             # HTML / PowerShell / notepad — never seize the mouse. Final reply streams via done.
+            if direct.tool == "shell_first":
+                ctx.emit("activity", {"step": "shell", "message": "Running PowerShell…"})
+                ctx.emit("status", {"status": "acting"})
             short = (direct.message or "").split("\n")[0][:100]
             ctx.emit("activity", {"step": "direct", "message": short or "Done"})
             ctx.emit("status", {"status": "idle"})

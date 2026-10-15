@@ -116,11 +116,11 @@ SCHEMA: dict[str, dict[str, Any]] = {
     },
     "shell_tools": {
         "kind": "bool",
-        "default": False,
+        "default": True,
         "env": "SHELL_TOOLS_ENABLED",
         "group": "safety",
         "label": "Shell tools",
-        "help": "Allow PowerShell tool (still needs per-call approval). Keep off unless you need it.",
+        "help": "Allow PowerShell for terminal-first work (still needs per-call approval). Turn off to force GUI-only.",
     },
     "sensors": {
         "kind": "bool",

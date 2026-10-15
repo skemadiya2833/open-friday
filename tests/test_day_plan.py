@@ -15,8 +15,15 @@ from friday.tasks import plan as plan_mod
 @pytest.fixture()
 def plan_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("FRIDAY_HUMOR", "off")
+    db = str(tmp_path / "tasks.sqlite")
     monkeypatch.setattr("friday.config.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("friday.config.TASKS_DB", db)
+    monkeypatch.setattr("friday.store.db.TASKS_DB", db)
     monkeypatch.setattr("friday.tasks.plan.DATA_DIR", str(tmp_path))
+    # Force schema re-init against the temp DB.
+    import friday.store.db as store_db
+
+    monkeypatch.setattr(store_db, "_schema_ready", False)
     yield tmp_path
 
 
@@ -26,6 +33,93 @@ def test_meta_plan_detection():
     assert not is_meta_plan_request("what's the plan")  # list path, not meta-add
     assert not is_meta_plan_request("we'll be doing deep work this afternoon")
     assert not is_meta_plan_request("add ship release notes to my plan")
+
+
+def test_empty_task_capture_asks_not_invents(plan_dir, monkeypatch):
+    from friday.tasks.day_plan import is_empty_task_capture
+
+    monkeypatch.setenv("FRIDAY_HUMOR", "off")
+    assert is_empty_task_capture("note down my tasks for today")
+    assert is_empty_task_capture("write down my todos")
+    assert not is_empty_task_capture("what's on my tasks for today")
+    assert not is_empty_task_capture("note down buy milk and call mom")
+
+    # No senses → ask, do not invent quarterly chores.
+    with patch("friday.tasks.day_plan._model_task_proposals", return_value=[]):
+        with patch("friday.tasks.day_plan.gather_day_context", return_value={
+            "plan": plan_mod.get_plan(),
+            "open_items": [],
+            "calendar": [],
+            "diary": [],
+            "profile": "",
+            "knowledge": [],
+            "has_signal": False,
+        }):
+            ctx = SkillContext(
+                message="note down my tasks for today", session_id="t", history=[], voice_mode=True
+            )
+            result = SkillHandler().run(ctx)
+    assert "hit me with the tasks" in result.reply.lower() or "don't have" in result.reply.lower()
+    assert "quarterly" not in result.reply.lower()
+    assert result.metadata.get("awaiting_tasks") is True
+    assert not (plan_mod.get_plan().get("items") or [])
+
+    follow = SkillContext(
+        message="inbox zero, ship the Friday HUD, and gym at 6",
+        session_id="t",
+        history=[
+            {"role": "user", "content": "note down my tasks for today"},
+            {"role": "assistant", "content": result.reply},
+        ],
+        voice_mode=True,
+    )
+    locked = SkillHandler().run(follow)
+    assert "locked in" in locked.reply.lower()
+    texts = " ".join(it.get("text") or "" for it in plan_mod.get_plan().get("items") or []).lower()
+    assert "inbox" in texts and "friday" in texts
+
+
+def test_task_capture_proposes_from_senses(plan_dir, monkeypatch):
+    monkeypatch.setenv("FRIDAY_HUMOR", "off")
+    with patch(
+        "friday.tasks.day_plan._model_task_proposals",
+        return_value=["Standup with design", "Ship Friday HUD polish"],
+    ):
+        with patch(
+            "friday.tasks.day_plan.gather_day_context",
+            return_value={
+                "plan": plan_mod.get_plan(),
+                "open_items": [],
+                "calendar": ["10:00 Standup with design"],
+                "diary": ["HUD polish yesterday"],
+                "profile": "",
+                "knowledge": [],
+                "has_signal": True,
+            },
+        ):
+            ctx = SkillContext(
+                message="note down my tasks for today", session_id="t", history=[], voice_mode=True
+            )
+            result = SkillHandler().run(ctx)
+    assert "from what i can see" in result.reply.lower() or "i'd put" in result.reply.lower()
+    assert "standup" in result.reply.lower()
+    assert "quarterly" not in result.reply.lower()
+    assert result.metadata.get("proposed")
+
+    locked = SkillHandler().run(
+        SkillContext(
+            message="lock these in",
+            session_id="t",
+            history=[
+                {"role": "user", "content": "note down my tasks for today"},
+                {"role": "assistant", "content": result.reply},
+            ],
+            voice_mode=True,
+        )
+    )
+    assert "locked in" in locked.reply.lower()
+    texts = " ".join(it.get("text") or "" for it in plan_mod.get_plan().get("items") or []).lower()
+    assert "standup" in texts or "hud" in texts
 
 
 def test_plan_my_day_does_not_add_utterance(plan_dir, monkeypatch):

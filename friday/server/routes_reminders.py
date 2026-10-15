@@ -108,16 +108,7 @@ def memory_overview(limit: int = 300) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"plan: {exc}")
 
-    try:
-        from friday.tasks.scheduler import get_scheduler
-
-        for j in get_scheduler().list_jobs():
-            if j["status"] in ("scheduled", "paused"):
-                items.append({"id": j["id"], "collection": "jobs", "kind": "reminder", "source": "scheduler",
-                              "text": f"{j['title']} ({'repeats ' + j['cron'] if j['cron'] else time.strftime('%a %d %b %H:%M', time.localtime(j['run_at'] or 0))})",
-                              "created_at": float(j.get("created_at") or 0), "deletable": True})
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"jobs: {exc}")
+    # Scheduled jobs live on Tasks — not Memory Core (they were cluttering the lattice).
 
     items.sort(key=lambda i: i["created_at"], reverse=True)
     counts: dict[str, int] = {}

@@ -436,12 +436,22 @@ def run_research_report(
     emit: EmitFn | None = None,
     allow_web: bool | None = None,
     save: bool = True,
+    open_browser: bool | None = None,
 ) -> dict[str, Any]:
-    """Run the full pipeline. ``mode``: quick | deep | think."""
+    """Run the research pipeline. ``mode``: quick | deep | think.
+
+    Quick = one search + simple HTML brief (seconds). Deep/think = full dossier.
+    """
     # Lazy: avoid package-init cycles with store under concurrent ASGI imports.
     from friday.reports.store import save_report
 
     mode = mode if mode in ("quick", "deep", "think") else "quick"
+    if mode == "quick":
+        from friday.reports.quick_html import run_quick_html_report
+
+        open_html = True if open_browser is None else bool(open_browser)
+        return run_quick_html_report(query, emit=emit, save=save, open_browser=open_html)
+
     use_web = (mode != "think") if allow_web is None else bool(allow_web)
     rid = uuid.uuid4().hex[:12]
     created = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -608,5 +618,6 @@ def dig_deeper(report_id: str, finding_id: str, *, emit: EmitFn | None = None) -
         mode="quick",
         emit=emit,
         save=True,
+        open_browser=False,
     )
     return sub

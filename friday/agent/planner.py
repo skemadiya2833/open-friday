@@ -120,7 +120,7 @@ HARD RULES:
 15. KEYBOARD FIRST: Prefer reliable keyboard routes over pixel clicks whenever both work: WIN_SEARCH to open apps, NAVIGATE for URLs, SAVE_FILE with a full path, HOTKEY {{"keys":["alt","tab"]}} to switch windows, SELECT_ALL/COPY to grab page text. Clicks are for targets with no keyboard route.
 16. PRECISION / CROP: If the target is small or you are unsure of exact pixels (chat input, icon, button), first use FOCUS with x,y near the target center (amount≈220). The next tick receives a zoomed crop — then CLICK/TYPE accurately. Use CLEAR_FOCUS to return to full desktop.
 17. DO NOT click unrelated UI (Commit, Source Control, random IDE chrome) unless the objective explicitly asks for it.
-18. RUN_SHELL: For Windows commands / terminal work, prefer RUN_SHELL with the full command in "text" instead of trying to click through a terminal UI. It requires approval and the UI shows what ran.
+18. TERMINAL-FIRST / RUN_SHELL: If the objective is files, git, npm/pip/uv, winget, processes, services, disk, network, env, or "run this in PowerShell/terminal", output RUN_SHELL with the full command in "text" on the FIRST tick. Do NOT open Terminal.exe / Windows Terminal and type into it. Do NOT click a terminal UI to run a command. GUI clicks are for dialogs, drawing, and apps with no shell route. Shell requires approval; the UI shows what ran.
 19. CURSOR / IDE CHAT: When the objective is to type into Cursor/VS Code AI chat:
     - Open chat with HOTKEY {{"keys":["ctrl","l"]}} (fallback {{"keys":["ctrl","i"]}}).
     - Command Palette: HOTKEY {{"keys":["ctrl","shift","p"]}} then TYPE a command name.

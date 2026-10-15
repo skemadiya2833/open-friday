@@ -135,7 +135,7 @@ Do NOT perform the task. ONLY classify so the right skill can act.
 MODES:
 - talk: opinions, explanations, brainstorming, greetings (no PC control this turn)
 - look: user wants to KNOW what is on screen / describe desktop (NO clicking)
-- act: user wants the PC controlled (open apps, click, type, save, fix, send, create on desktop)
+- act: user wants the PC to DO something (open apps, files, shell/git/install, click, type, save, fix, send, create on desktop). Terminal/shell work is still act — the skill prefers PowerShell before mouse.
 - remember: store or recall durable personal notes
 - research: look something up on the web
 - files: read/write files in the workspace
@@ -147,7 +147,8 @@ AVAILABLE SKILLS:
 
 RULES:
 - Prefer capability: if they want something DONE on the machine, choose act (or research/files/schedule as appropriate) — not talk.
-- Imperatives (open, launch, click, type, write, save, send, fix, install, create on desktop) → act
+- Imperatives (open, launch, click, type, write, save, send, fix, install, create on desktop, git, run in terminal/powershell) → act
+- Shell-shaped asks (list files, git status, winget, processes, disk space) → act (computer_use will try PowerShell first)
 - Questions about seeing/describing the screen only → look (never act)
 - "Can you see…" / "what's on my desktop" with no ask to change anything → look
 - If unsure between look and act → look
@@ -372,7 +373,8 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     if _RM.is_agenda_briefing(msg) or re.search(
         r"\b((help (me )?)?(plan|organise|organize|schedule)\s+(my |the |a )?(day|today|agenda)"
         r"|plan my day|make (me )?(a )?(day )?plan|"
-        r"we('?ll| will) be doing|for today|today'?s (plan|agenda)|"
+        r"we('?ll| will) be doing|for today|today'?s (plan|agenda|tasks)|"
+        r"(note|write|jot|take)\s*(down)?\s+(my\s+)?(tasks?|to-?dos?|agenda)|"
         r"add .{0,40}\b(to )?(my )?(plan|agenda)|what('?s| is) (on )?my (plan|agenda)|"
         r"what('?s| is) the plan)\b",
         msg,
@@ -413,8 +415,27 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Local memory recall — must beat bare "search …" which used to fall into web research.
+    if re.search(
+        r"\b((search|check|scan|look( in)?|dig)\b.{0,40}\b(your |my |the )?(memory|memories|notes)\b|"
+        r"what do you (remember|know|have (on|about))|"
+        r"(search|check) (up )?your memory|"
+        r"did I (ever )?(tell|mention)|what did I (tell|say) you)\b",
+        msg,
+        re.I,
+    ):
+        return Intent(
+            mode="remember",
+            skill_id="memory",
+            confidence=0.94,
+            objective=msg,
+            reason="deterministic: memory recall",
+            source="policy",
+        )
+
     # Web lookup (news, google, "what's the weather") is research — not desktop control.
     # Do not treat "open google calendar/maps/…" as a search.
+    # Bare "search" alone is NOT enough (that caught "search your memory").
     if (
         _RESEARCH.search(msg)
         and not _DESKTOP_TARGET.search(msg)
@@ -527,7 +548,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
 
 
 _RESEARCH = re.compile(
-    r"\b(search( the web| google| online)?|google\b|look ?up|research|find out|"
+    r"\b(search (the web|google|online)|google\b|look ?up|research|find out|"
     r"what('?s| is) (the |today'?s )?(news|weather)|how('?s| is) the weather|"
     r"headlines|breaking news|latest news|weather (today|now|in)|who won)\b",
     re.I,

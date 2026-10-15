@@ -388,16 +388,13 @@
     fillers(speaker, kind) {
       let timer = 0, spoken = 0, stopped = false, idx = Math.floor(Math.random() * 5);
       let audioChain = Promise.resolve();
-      // Realtime streams the reply ASAP — spoken fillers only add TTS delay.
-      // Captions still show so the HUD feels alive while the model thinks.
-      const audioOk = () => !Voice.cfg().streamSpeech;
+      // Speak fillers in every pace mode — abort as soon as the real reply TTS starts.
       const say = (type) => {
         if (stopped || spoken >= 2) return;
         const list = Live.FILLERS[type] || Live.FILLERS.thinking;
         const text = list[idx++ % list.length];
         spoken++;
         Live.friday(text, { filler: true });
-        if (!audioOk()) return;
         audioChain = audioChain.then(async () => {
           if (stopped) return;
           if (typeof window.speakFiller === "function") {
@@ -409,7 +406,13 @@
         }).catch(() => {});
       };
       return {
-        start() { timer = setTimeout(() => say(kind || "thinking"), Voice.cfg().fillerMs); },
+        // Realtime: speak sooner so "hold on boss" lands before a fast reply.
+        start() {
+          const ms = Voice.cfg().streamSpeech
+            ? Math.min(220, Voice.cfg().fillerMs || 280)
+            : (Voice.cfg().fillerMs || 900);
+          timer = setTimeout(() => say(kind || "thinking"), ms);
+        },
         agent() { clearTimeout(timer); say("acting"); },
         lookup() { if (!spoken) { clearTimeout(timer); timer = setTimeout(() => say("lookup"), 400); } },
         looking() { clearTimeout(timer); say("looking"); },

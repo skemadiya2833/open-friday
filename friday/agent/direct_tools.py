@@ -103,6 +103,41 @@ _SHOW_SPECS_ON_SCREEN = re.compile(
     rf"^\s*(?:please\s+)?{_SPECS_TOPIC}\s*\??\s*$",
     re.I,
 )
+# Terminal-shaped work — prefer PowerShell over vision/mouse.
+_SHELL_FIRST = re.compile(
+    r"\b("
+    r"git\b|npm\b|npx\b|pnpm\b|yarn\b|pip\b|uv\b|cargo\b|dotnet\b|go\b|"
+    r"winget\b|choco\b|scoop\b|"
+    r"run (this )?(in )?(powershell|pwsh|cmd|the terminal|terminal)|"
+    r"(in|via|using|with)\s+(powershell|pwsh|cmd|the terminal|a terminal)|"
+    r"powershell\b|pwsh\b|"
+    r"(list|show|check|get|what)\b.{0,50}\b(files?|dirs?|directories|folder|processes?|ports?|"
+    r"services?|disk|drives?|path|env|environment|ip|hostname|uptime)|"
+    r"processes?\b.{0,40}\b(using|cpu|ram|memory|running)|"
+    r"(disk|free)\s+space|whoami|hostname|"
+    r"(create|make)\b.{0,30}\b(folder|directory)|"
+    r"(delete|remove)\b.{0,30}\b(file|folder|directory)|"
+    r"kill (?:process|pid)|stop[- ]process|restart[- ]service|"
+    r"clone\b.{0,40}\b(repo|git)|"
+    r"install\b.{0,40}\b(package|dependency|dependencies|winget|npm|pip)|"
+    r"what(?:'s| is) (?:my )?(?:ip|hostname|uptime)|"
+    r"ls\b|dir\b|pwd\b"
+    r")",
+    re.I,
+)
+_GUI_REQUIRED = re.compile(
+    r"\b("
+    r"click|double[- ]?click|drag|draw|paint|mouse|"
+    r"fill (?:out |in )?(?:the )?(?:form|dialog|field)|"
+    r"in (?:chrome|edge|firefox|word|excel|photoshop|figma|discord|slack|notepad)\b|"
+    r"on (?:the |my )?screen (?:and )?(?:click|type|select|drag)|"
+    r"browser (?:ui|button)|"
+    r"visual(?:ly)?\b|"
+    r"see (?:if|whether) .{0,50}\b(?:button|dialog|window|pixel)"
+    r")",
+    re.I,
+)
+
 # Inventory: cameras, USB, displays, audio, printers — measured via PowerShell / OpenCV.
 _PERIPHERALS = re.compile(
     r"\b(?:list|show|what|which|enumerate|inventory)\b.{"
@@ -1047,4 +1082,88 @@ def try_direct(objective: str, *, workspace: str | None = None,
         ok = "focused" in msg.lower()
         return DirectResult(True, ok, msg or "focus attempted", "focus_window")
 
+    # Terminal-first: PowerShell before the vision desktop agent.
+    shell = _try_shell_first(obj)
+    if shell.handled:
+        return shell
+
     return DirectResult(False)
+
+
+def is_shell_first_candidate(text: str) -> bool:
+    """True when the ask is terminal-shaped and does not clearly require a GUI."""
+    t = (text or "").strip()
+    if not t or len(t) > 500:
+        return False
+    if _GUI_REQUIRED.search(t):
+        return False
+    return bool(_SHELL_FIRST.search(t))
+
+
+def _propose_powershell(user_text: str) -> str | None:
+    """Ask the local model for one PowerShell command, or None / GUI."""
+    try:
+        from friday.models.local import query_model_text
+
+        prompt = (
+            "You are Friday on Windows. Propose ONE PowerShell command for the owner request.\n"
+            "Rules:\n"
+            "- Output ONLY the command line — no markdown, no commentary.\n"
+            "- Prefer built-in cmdlets (Get-ChildItem, Get-Process, Get-PSDrive, winget, git).\n"
+            "- Never Format-Volume, diskpart wipe, or recursive wipe of system roots.\n"
+            "- If this needs a GUI (clicking buttons, drawing, filling a visual form), output exactly: GUI\n"
+            f"Owner: {user_text[:400]}\n"
+            "Command:"
+        )
+        out = query_model_text(
+            prompt,
+            format_json=False,
+            think=False,
+            num_predict=120,
+            num_ctx=1024,
+        )
+        text = (out.get("message") or out.get("raw") or "").strip()
+        if not text or "unreachable" in text.lower():
+            return None
+        # First non-empty line; strip fences.
+        line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        line = re.sub(r"^```(?:powershell|ps1|pwsh)?\s*", "", line, flags=re.I)
+        line = re.sub(r"\s*```$", "", line).strip().strip("`")
+        if not line or re.match(r"(?i)^gui\b", line):
+            return None
+        if len(line) > 800:
+            return None
+        return line
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _try_shell_first(obj: str) -> DirectResult:
+    if not is_shell_first_candidate(obj):
+        return DirectResult(False)
+    cmd = _propose_powershell(obj)
+    if not cmd:
+        # Detector said shell-shaped but model declined — let vision try, or ask.
+        return DirectResult(False)
+    try:
+        from friday.tools.registry import call_tool_result
+
+        result = call_tool_result("run_shell", {"command": cmd, "timeout_seconds": 60}, caller="direct_tools")
+        text = (result.text() or "").strip()
+        if result.denied:
+            return DirectResult(
+                True,
+                False,
+                "That needs PowerShell. Enable Shell tools in Systems (still per-command approval), "
+                "or approve the next prompt.",
+                "shell_first",
+            )
+        if not text:
+            text = "(no output)"
+        # Cap spoken/chat dump
+        brief = text if len(text) <= 1200 else text[:1200] + "\n…[truncated]"
+        ok = not result.is_error
+        header = f"Ran in PowerShell:\n`{cmd}`\n\n"
+        return DirectResult(True, ok, header + brief, "shell_first")
+    except Exception as exc:  # noqa: BLE001
+        return DirectResult(True, False, f"Shell path failed: {exc}", "shell_first")

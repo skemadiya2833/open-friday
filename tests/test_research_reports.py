@@ -163,7 +163,8 @@ def test_pipeline_with_mocked_search_and_model(tmp_path, monkeypatch):
 
     from friday.reports.pipeline import run_research_report
 
-    doc = run_research_report("AlphaCorp revenue research report", mode="quick", save=True)
+    # Full dossier path (Quick is search→HTML and skips model synthesis).
+    doc = run_research_report("AlphaCorp revenue research report", mode="deep", save=True)
     assert doc["schema_version"] == "1"
     assert doc["claims"] or doc["findings"]
     assert not doc.get("fallback_plain")

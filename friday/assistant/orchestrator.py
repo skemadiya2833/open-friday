@@ -154,25 +154,48 @@ def handle_message(
             "metadata": {"awaiting_confirmation": True, "intent": intent.to_dict()},
         }
 
-    # Clarify mode: answer with a question, don't dispatch tools blindly.
+    # Clarify mode: ask one question — unless the classifier meant a real skill
+    # (e.g. memory recall). Speaking the objective as the answer caused "search memory…"
+    # to be read aloud instead of running memory_search.
     if intent.mode == "clarify":
-        reply = intent.objective if intent.objective != message else (
-            "Should I look at your screen, chat, or control the desktop?"
-            if voice_mode
-            else (
-                "I want to help — should I just look at your screen, chat about it, "
-                "or actually control the desktop (open/click/type)?"
+        if intent.skill_id in {"memory", "research", "tasks", "files", "observe", "camera", "computer_use"}:
+            from friday.assistant.intent import Intent as _Intent
+
+            mode_for = {
+                "memory": "remember",
+                "research": "research",
+                "tasks": "schedule",
+                "files": "files",
+                "observe": "look",
+                "camera": "look",
+                "computer_use": "act",
+            }.get(intent.skill_id, "talk")
+            intent = _Intent(
+                mode=mode_for,  # type: ignore[arg-type]
+                skill_id=intent.skill_id,
+                confidence=intent.confidence,
+                objective=message,
+                reason=f"clarify→{intent.skill_id}",
+                source=intent.source,
             )
-        )
-        store.append(session, "assistant", reply, skill_id="chat")
-        emit("status", {"status": "idle"})
-        return {
-            "reply": reply,
-            "session_id": session.id,
-            "skill_id": "chat",
-            "events": events,
-            "metadata": {"intent": intent.to_dict()},
-        }
+        else:
+            reply = intent.objective if intent.objective != message else (
+                "Should I look at your screen, chat, or control the desktop?"
+                if voice_mode
+                else (
+                    "I want to help — should I just look at your screen, chat about it, "
+                    "or actually control the desktop (open/click/type)?"
+                )
+            )
+            store.append(session, "assistant", reply, skill_id="chat")
+            emit("status", {"status": "idle"})
+            return {
+                "reply": reply,
+                "session_id": session.id,
+                "skill_id": "chat",
+                "events": events,
+                "metadata": {"intent": intent.to_dict()},
+            }
 
     mem_hits: list[str] = []
     try:
@@ -197,7 +220,7 @@ def handle_message(
         except Exception as exc:
             emit("warning", {"message": f"memory unavailable: {exc}"})
 
-    # Always give chat/skills a light view of today's open agenda.
+    # Today's agenda lines the owner saved — NOT open files, NOT permission to invent docs.
     try:
         from friday.tasks.plan import format_for_prompt, get_plan
 
@@ -206,7 +229,9 @@ def handle_message(
         if open_items:
             mem_hits.insert(
                 0,
-                "TODAY'S PLAN:\n" + format_for_prompt(),
+                "TODAY'S PLAN (owner-saved agenda text only — these are not desktop files, "
+                "reports, or auditor threads; never invent documents or statuses from them):\n"
+                + format_for_prompt(),
             )
     except Exception:
         pass

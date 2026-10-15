@@ -900,7 +900,9 @@ async function sendMessage(text, { fromVoice = false } = {}) {
 
     if (epoch !== turnEpoch) return;
     const textOut = (finalReply || streamed || "").trim()
-      || (useVoice ? "I didn't catch a reply — say that once more." : "No reply.");
+      || (useVoice
+        ? "I blanked on that reply — give me a second and say it again."
+        : "No reply came back from the model.");
     fridayReply = textOut;
     liveBody.textContent = textOut;
     if (window.FridayLive && FridayLive.isOpen()) {
@@ -954,8 +956,10 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     finalBuffer = "";
     interimText = "";
     if (voiceMode) {
-      // Brief echo-tail so speaker bleed doesn't re-trigger STT; keep it snappy.
-      const cool = voiceHoldMode() ? 220 : 120;
+      // Mark listening immediately so the HUD never freezes on thinking/speaking,
+      // then briefly mute for echo before arming the mic for real.
+      setState("listening", { force: true });
+      const cool = voiceHoldMode() ? 280 : 160;
       releaseMicAfter(cool);
     } else {
       setState("idle", { force: true });
@@ -1422,7 +1426,7 @@ async function refreshSkills() {
 let memFilter = "all";
 const MEM_KINDS = [
   ["all", "Everything"], ["learned", "Learned about you"], ["note", "Notes"], ["desktop", "Desktop"],
-  ["experience", "Experience"], ["plan", "Plan"], ["reminder", "Reminders"],
+  ["experience", "Experience"], ["plan", "Plan"],
 ];
 let memItems = [];
 
@@ -1480,8 +1484,27 @@ $("#btnMemSearch").addEventListener("click", async () => {
   try {
     if (!q.trim()) return refreshMemory();
     const items = await (await apiFetch(`/api/memory/search?q=${encodeURIComponent(q)}`)).json();
-    renderMemCards(items.map((m) => ({ ...m, kind: "note", source: (m.metadata && m.metadata.source) || "memory", deletable: true, collection: "memories", created_at: (m.metadata && m.metadata.created_at) || 0 })));
-  } catch (_) {}
+    const mapped = (items || []).map((m) => ({
+      ...m,
+      kind: "note",
+      source: (m.metadata && m.metadata.source) || "memory",
+      deletable: true,
+      collection: "memories",
+      created_at: (m.metadata && m.metadata.created_at) || 0,
+    }));
+    if (!mapped.length) {
+      const list = $("#memList");
+      if (list) {
+        list.innerHTML = `<div class="muted">No memory hits for “${escapeHtml(q.trim())}”. This is vector memory — not web research. Use Reports → Run report for topics like that.</div>`;
+      }
+      $("#memStats").textContent = "0 matches";
+      return;
+    }
+    renderMemCards(mapped);
+  } catch (_) {
+    const list = $("#memList");
+    if (list) list.innerHTML = `<div class="muted">Memory search failed.</div>`;
+  }
 });
 
 $("#btnForgetAll")?.addEventListener("click", async () => {
@@ -1534,7 +1557,7 @@ async function refreshPlan() {
       row.innerHTML = `
         <div class="plan-check ${it.done ? "on" : ""}" data-id="${it.id}" title="Toggle done">${it.done ? "âœ“" : ""}</div>
         <div class="plan-text">${escapeHtml(it.text || "")}${it.note ? `<div class="muted">${escapeHtml(it.note)}</div>` : ""}</div>
-        <button type="button" data-del="${it.id}">DEL</button>`;
+        <button type="button" class="plan-del" data-del="${it.id}" title="Remove from today's plan">Delete</button>`;
       list.appendChild(row);
     }
     list.querySelectorAll(".plan-check").forEach((el) => {
@@ -1574,18 +1597,34 @@ async function refreshTasks() {
     const jobs = await (await apiFetch("/api/tasks")).json();
     const list = $("#taskList");
     list.innerHTML = "";
-    for (const j of jobs) {
+    const active = (jobs || []).filter((j) => j.status === "scheduled" || j.status === "paused");
+    if (!active.length) {
+      list.innerHTML = `<div class="muted">No queued jobs. Morning briefing / weekly review live in Systems if enabled — one-off reminders show here.</div>`;
+      return;
+    }
+    for (const j of active) {
+      const when = j.cron
+        ? `repeats ${j.cron}`
+        : j.run_at
+          ? new Date(j.run_at * 1000).toLocaleString([], {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })
+          : "queued";
       const card = document.createElement("div");
       card.className = "card";
       card.innerHTML = `
         <div>
           <h3>${escapeHtml(j.title || "Task")}</h3>
           <p>${escapeHtml(j.prompt || "")}</p>
-          <p class="muted">${j.status} · ${j.skill_id} · ${j.id.slice(0, 8)}</p>
+          <p class="muted">${escapeHtml(j.status)} · ${escapeHtml(j.skill_id || "")} · ${escapeHtml(when)}</p>
         </div>
         <div class="actions">
-          <button class="ghost" data-run="${j.id}">Run</button>
-          <button class="ghost" data-cancel="${j.id}">Cancel</button>
+          <button class="ghost" data-run="${j.id}">Run now</button>
+          <button class="ghost danger" data-cancel="${j.id}">Delete</button>
         </div>`;
       list.appendChild(card);
     }

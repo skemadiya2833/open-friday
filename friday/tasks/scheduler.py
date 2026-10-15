@@ -94,6 +94,49 @@ class TaskScheduler:
             if when > datetime.now():
                 self._scheduler.add_job(_fire, DateTrigger(run_date=when), id=jid, replace_existing=True)
 
+    def find_similar_scheduled(
+        self,
+        *,
+        title: str,
+        cron: str | None = None,
+        skill_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Return an existing scheduled job with the same title+cron (or skill+cron)."""
+        title_l = (title or "").strip().lower()
+        for j in self.list_jobs():
+            if j.get("status") not in ("scheduled", "paused"):
+                continue
+            if cron and j.get("cron") != cron:
+                continue
+            if title_l and (j.get("title") or "").strip().lower() == title_l:
+                return j
+            if skill_id and j.get("skill_id") == skill_id and cron and j.get("cron") == cron:
+                return j
+        return None
+
+    def dedupe_cron_titles(self, title: str) -> int:
+        """Keep the oldest scheduled job with this title+cron; cancel newer duplicates."""
+        title_l = (title or "").strip().lower()
+        if not title_l:
+            return 0
+        by_cron: dict[str, list[dict[str, Any]]] = {}
+        for j in self.list_jobs():
+            if j.get("status") != "scheduled":
+                continue
+            if (j.get("title") or "").strip().lower() != title_l:
+                continue
+            key = str(j.get("cron") or j.get("run_at") or "")
+            by_cron.setdefault(key, []).append(j)
+        cancelled = 0
+        for group in by_cron.values():
+            if len(group) < 2:
+                continue
+            group.sort(key=lambda x: float(x.get("created_at") or 0))
+            for dup in group[1:]:
+                if self.cancel(dup["id"]):
+                    cancelled += 1
+        return cancelled
+
     def add_job(
         self,
         *,
@@ -103,10 +146,15 @@ class TaskScheduler:
         run_at: str | float | None = None,
         cron: str | None = None,
         title: str = "Friday task",
+        unique: bool = False,
     ) -> dict[str, Any]:
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("prompt required")
+        if unique and cron:
+            existing = self.find_similar_scheduled(title=title, cron=cron, skill_id=skill_id)
+            if existing:
+                return existing
         jid = str(uuid.uuid4())
         ts = time.time()
         run_ts: float | None = None

@@ -100,6 +100,12 @@ Step {step + 1}/{steps}. Decide.
             reasoning_mode=False,
         )
         text = (result.get("message") or result.get("raw") or "").strip()
+        # Structured-output models sometimes return {} / empty — don't treat as a final answer.
+        if not text or text in ("{}", "[]", "null"):
+            observations += (
+                "\n(Empty model output.) Call a tool if needed, or output FINAL: with a short answer.\n"
+            )
+            continue
         transcript.append(text)
         emit("thinking_token", {"token": text[:400]})
 
@@ -140,7 +146,7 @@ Step {step + 1}/{steps}. Decide.
         final_reply = text
         break
 
-    if not final_reply:
+    if not final_reply or final_reply.strip() in ("{}", "[]", "null"):
         if tool_trace:
             last = tool_trace[-1]
             final_reply = last.get("result") or "Done."
@@ -148,8 +154,19 @@ Step {step + 1}/{steps}. Decide.
                 from friday.persona import owner_name
 
                 final_reply = f"Scheduled, {owner_name()}. I'll remind you when it's due."
+            elif last.get("tool") == "memory_search":
+                from friday.persona import owner_name
+
+                hit = (last.get("result") or "").strip()
+                final_reply = (
+                    hit
+                    if hit and not hit.lower().startswith("no ")
+                    else f"Nothing in memory on that, {owner_name()}."
+                )
         else:
-            final_reply = "I could not complete that request."
+            from friday.persona import owner_name
+
+            final_reply = f"I couldn't finish that cleanly, {owner_name()}. Try once more."
 
     # Never show raw tool JSON to the owner.
     if re.search(r'"tool"\s*:' , final_reply) or final_reply.strip().startswith("```"):

@@ -438,6 +438,7 @@
               hour12: true,
             })
           : "";
+        const row = el("div", "report-hist-row");
         const label = when ? `${r.query || r.id} · ${when}` : (r.query || r.id);
         const btn = el("button", "ghost report-hist", label);
         btn.type = "button";
@@ -451,7 +452,17 @@
           renderReport(doc);
           showReportsView();
         });
-        host.appendChild(btn);
+        const del = el("button", "ghost danger", "Delete");
+        del.type = "button";
+        del.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const res = await apiFetch(`/api/reports/${r.id}`, { method: "DELETE" });
+          if (res.ok) refreshHistory();
+          else setLive("Could not delete report.");
+        });
+        row.appendChild(btn);
+        row.appendChild(del);
+        host.appendChild(row);
       });
       if (window.FridayMotion && FridayMotion.restagger) FridayMotion.restagger(host);
     } catch (_) {
@@ -505,7 +516,18 @@
       body: JSON.stringify({ query, mode: mode || "quick" }),
     });
     if (!res.ok) {
-      setLive(res.status === 403 ? "Tools role required." : res.status === 409 ? "Another run is active." : "Could not start.");
+      let detail = "";
+      try { detail = (await res.json()).detail || ""; } catch (_) {}
+      const msg =
+        res.status === 403 ? "Tools role required — approve this device or use the PC."
+        : res.status === 409 ? "Another run is active — Cancel first."
+        : detail ? String(detail).slice(0, 120)
+        : `Could not start (${res.status}).`;
+      setLive(msg);
+      if (canvas) {
+        clear(canvas);
+        canvas.appendChild(el("p", "report-empty", msg));
+      }
       clearInterval(timerIv);
       return;
     }
@@ -514,18 +536,25 @@
     if (es) es.close();
     es = new EventSource(`/api/runs/${run_id}/events`);
     let reportId = null;
+    const pl = (data) => (data && data.payload && typeof data.payload === "object" ? data.payload : data) || {};
     es.onmessage = (ev) => {
       let data;
       try { data = JSON.parse(ev.data); } catch (_) { return; }
       const t = data.type || "";
-      if (t === "report_plan") setLive(`Plan · ${(data.sub_questions || []).join("; ") || data.query || ""}`);
-      if (t === "report_query") setLive(`Query · ${data.query || ""}`);
-      if (t === "report_source_found") setLive(`Source · ${data.domain || ""} — ${data.title || ""}`);
-      if (t === "report_note") setLive(`Note · ${(data.text || "").slice(0, 80)}`);
-      if (t === "report_validation") setLive(`Validation · ${(data.issues || []).length} issue(s)`);
+      const p = pl(data);
+      if (t === "report_plan") setLive(`Plan · ${(p.sub_questions || []).join("; ") || p.query || ""}`);
+      if (t === "report_query") setLive(`Query · ${p.query || ""}`);
+      if (t === "report_source_found") setLive(`Source · ${p.domain || ""} — ${p.title || ""}`);
+      if (t === "report_note") setLive(`Note · ${(p.text || "").slice(0, 80)}`);
+      if (t === "report_validation") setLive(`Validation · ${(p.issues || []).length} issue(s)`);
       if (t === "report_final") {
-        reportId = data.report_id;
-        setLive(data.fallback ? `Fallback · ${data.reason || ""}` : `Done · ${data.claims || 0} claims`);
+        reportId = p.report_id || data.report_id;
+        const n = (p.findings || p.claims || 0);
+        setLive(
+          p.fallback
+            ? `Fallback · ${p.reason || "thin results"}`
+            : (p.html_opened ? `Opened HTML · ${n} hits` : `Done · ${n} hits`)
+        );
         document.dispatchEvent(new CustomEvent("friday:report", { detail: { ready: true, reportId } }));
       }
       if (t === "stream_end" || t === "run_end") {
@@ -533,6 +562,9 @@
         clearInterval(timerIv);
         if (reportId) {
           apiFetch(`/api/reports/${reportId}`).then((r) => r.json()).then(renderReport).then(refreshHistory);
+        } else if (t === "stream_end") {
+          setLive("Run finished but no report id — check History or try again.");
+          refreshHistory();
         }
       }
     };

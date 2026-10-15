@@ -55,11 +55,10 @@ def _get(url: str, timeout: float = 10.0) -> str:
     from friday.security.ssrf import assert_url_safe
 
     assert_url_safe(url, resolve=True)
+    # Wikimedia rejects generic browser UAs on api.php; identify the app.
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Friday/1.0"
-        ),
+        "User-Agent": "OpenFriday/1.0 (local research assistant; https://localhost)",
+        "Api-User-Agent": "OpenFriday/1.0 (local research assistant; https://localhost)",
         "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
     }
@@ -70,41 +69,61 @@ def _get(url: str, timeout: float = 10.0) -> str:
         return r.text
 
 
+def _wiki_summary_doc(title: str) -> dict[str, Any] | None:
+    import json
+
+    summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(
+        title.replace(" ", "_"), safe=""
+    )
+    doc = json.loads(_get(summary_url, timeout=8.0))
+    if not isinstance(doc, dict) or doc.get("type") == "https://mediawiki.org/wiki/HyperSwitch/errors/not_found":
+        return None
+    return doc
+
+
 def wikipedia_brief(query: str) -> dict[str, Any] | None:
-    """OpenSearch → REST summary (extract + thumbnail)."""
+    """Resolve a topic → Wikipedia extract + thumbnail (REST, no fragile scraping)."""
     q = (query or "").strip()
     if len(q) < 2:
         return None
     try:
-        api = (
-            "https://en.wikipedia.org/w/api.php?action=opensearch&limit=1&namespace=0&format=json&search="
-            + urllib.parse.quote_plus(q)
-        )
         import json
 
-        raw = _get(api, timeout=8.0)
-        data = json.loads(raw)
-        titles = data[1] if isinstance(data, list) and len(data) > 1 else []
-        if not titles:
+        title = q
+        # Prefer title search over action=opensearch (often 403 with scrapers).
+        try:
+            sraw = _get(
+                "https://en.wikipedia.org/w/rest.php/v1/search/title?q="
+                + urllib.parse.quote_plus(q)
+                + "&limit=1",
+                timeout=8.0,
+            )
+            hits = (json.loads(sraw).get("pages") or []) if sraw else []
+            if hits and isinstance(hits[0], dict) and hits[0].get("title"):
+                title = str(hits[0]["title"])
+        except Exception:  # noqa: BLE001
+            title = q
+
+        doc = _wiki_summary_doc(title) or _wiki_summary_doc(q.title())
+        if not doc:
             return None
-        title = titles[0]
-        summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(
-            title.replace(" ", "_"), safe=""
-        )
-        sraw = _get(summary_url, timeout=8.0)
-        doc = json.loads(sraw)
         extract = _strip(str(doc.get("extract") or ""))[:4000]
+        if not extract:
+            return None
         thumb = ""
         t = doc.get("thumbnail") or {}
         if isinstance(t, dict):
             thumb = str(t.get("source") or "")
+        # Prefer original/larger when present
+        orig = doc.get("originalimage") or {}
+        if isinstance(orig, dict) and orig.get("source"):
+            thumb = str(orig.get("source") or thumb)
+        page_title = str(doc.get("title") or title)
         page_url = str((doc.get("content_urls") or {}).get("desktop", {}).get("page") or "")
         if not page_url:
-            page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
-        if not extract:
-            return None
+            page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(page_title.replace(' ', '_'))}"
         return {
-            "title": str(doc.get("title") or title),
+            "title": page_title,
             "url": page_url,
             "snippet": extract[:400],
             "text": extract,
@@ -115,6 +134,99 @@ def wikipedia_brief(query: str) -> dict[str, Any] | None:
     except Exception as exc:  # noqa: BLE001
         print(f"[Enrich] wikipedia failed: {exc}")
         return None
+
+
+def wikimedia_images(query: str, *, limit: int = 6) -> list[dict[str, str]]:
+    """Image hits from Wikimedia Commons search (stable, no bot challenge)."""
+    q = (query or "").strip()
+    if len(q) < 2 or limit <= 0:
+        return []
+    try:
+        import json
+
+        raw = _get(
+            "https://commons.wikimedia.org/w/api.php?"
+            + urllib.parse.urlencode(
+                {
+                    "action": "query",
+                    "format": "json",
+                    "generator": "search",
+                    "gsrsearch": q,
+                    "gsrlimit": max(limit, 3),
+                    "gsrnamespace": 6,
+                    "prop": "imageinfo",
+                    "iiprop": "url",
+                    "iiurlwidth": 640,
+                }
+            ),
+            timeout=10.0,
+        )
+        pages = (json.loads(raw).get("query") or {}).get("pages") or {}
+        if not isinstance(pages, dict):
+            return []
+        out: list[dict[str, str]] = []
+        for page in pages.values():
+            if not isinstance(page, dict):
+                continue
+            info = (page.get("imageinfo") or [{}])[0]
+            if not isinstance(info, dict):
+                continue
+            img = _safe_http(str(info.get("thumburl") or info.get("url") or ""))
+            if not img:
+                continue
+            title = _strip(str(page.get("title") or "").removeprefix("File:"))[:200]
+            page_url = _safe_http(str(info.get("descriptionurl") or info.get("url") or "")) or img
+            out.append({"image": img, "url": page_url, "title": title or "Image"})
+            if len(out) >= limit:
+                break
+        return out
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Enrich] commons images failed: {exc}")
+        return []
+
+
+def collect_topic_images(
+    query: str,
+    *,
+    limit: int = 6,
+    wiki: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Best-effort gallery: Wikipedia thumb → Commons → DuckDuckGo (often empty)."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(rows: list[dict[str, str]]) -> None:
+        for row in rows:
+            src = (row.get("image") or row.get("url") or "").strip()
+            if not src.startswith("http") or src in seen:
+                continue
+            seen.add(src)
+            out.append(
+                {
+                    "image": row.get("image") or src,
+                    "url": row.get("url") or src,
+                    "title": (row.get("title") or "Image")[:200],
+                }
+            )
+            if len(out) >= limit:
+                return
+
+    brief = wiki if wiki is not None else wikipedia_brief(query)
+    if brief and brief.get("image"):
+        _add(
+            [
+                {
+                    "image": brief["image"],
+                    "url": brief.get("url") or brief["image"],
+                    "title": brief.get("title") or query,
+                }
+            ]
+        )
+    if len(out) < limit:
+        _add(wikimedia_images(query, limit=limit - len(out)))
+    if len(out) < limit:
+        _add(duckduckgo_images(query, limit=limit - len(out)))
+    return out[:limit]
 
 
 def fetch_article(url: str, *, max_chars: int = 6000) -> dict[str, Any]:

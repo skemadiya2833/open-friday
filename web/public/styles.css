@@ -638,12 +638,17 @@ select:focus, input:focus, textarea:focus {
   font-size: 0.98rem;
 }
 .plan-item.done .plan-text { text-decoration: line-through; color: var(--muted); }
-.plan-item button {
+.plan-item button, .plan-item .plan-del {
   appearance: none; border: 1px solid var(--line); background: transparent;
   color: var(--muted); cursor: pointer; font-family: var(--mono); font-size: 0.7rem;
-  padding: 4px 8px;
+  padding: 4px 10px; letter-spacing: 0.06em; text-transform: uppercase;
 }
-.plan-item button:hover { color: var(--cyan); border-color: var(--cyan); }
+.plan-item button:hover, .plan-item .plan-del:hover {
+  color: #ff8a8a; border-color: rgba(255, 80, 80, 0.55);
+}
+.card .actions .danger {
+  border-color: rgba(255, 80, 80, 0.45); color: #ff8a8a;
+}
 .plan-check {
   width: 18px; height: 18px; border: 1px solid var(--cyan); cursor: pointer;
   display: grid; place-items: center; color: var(--ok); font-size: 0.75rem;
@@ -1320,7 +1325,9 @@ body.live-open { overflow: hidden; }
 .report-table th, .report-table td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
 .claim-row { margin: 6px 0; }
 .report-history { display: flex; flex-direction: column; gap: 6px; }
-.report-hist { text-align: left; width: 100%; }
+.report-hist-row { display: flex; gap: 8px; align-items: center; }
+.report-hist { text-align: left; flex: 1; }
+.report-hist-row .danger { flex: 0 0 auto; }
 .report-empty { color: var(--muted); font-size: 0.9rem; margin: 4px 0; }
 .warn { color: var(--warn); }
 
