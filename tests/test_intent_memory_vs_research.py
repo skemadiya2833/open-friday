@@ -24,6 +24,9 @@ def test_web_search_still_research():
         "google the weather in London",
         "look up the latest news on OLED",
         "what's the weather today",
+        "bring some design references",
+        "find me UI inspiration for a dark dashboard",
+        "show design references for a landing page",
     ):
         intent = classify_intent(msg)
         assert intent.skill_id == "research", msg

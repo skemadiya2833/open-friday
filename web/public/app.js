@@ -106,6 +106,13 @@ function setState(state, { force = false } = {}) {
   document.dispatchEvent(new CustomEvent("friday:state", { detail: { state, prev } }));
 }
 
+let voiceWatchIv = null;
+let lastSpeechActivityAt = 0;
+let recognitionAlive = false;
+let recreateBusy = false;
+let ignoreRecognitionEnd = false;
+
+/** Hold mode: deaf to results, but do NOT stop() — Chrome often refuses to restart the same instance. */
 function suspendMic() {
   micSuspended = true;
   clearPauseTimer();
@@ -116,42 +123,90 @@ function suspendMic() {
   finalBuffer = "";
   interimText = "";
   setListeningLine("");
-  try { recognition?.stop(); } catch (_) {}
 }
 
-let voiceWatchIv = null;
-let lastSpeechActivityAt = 0;
+function wireRecognition(rec) {
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = "en-US";
+  rec.onspeechstart = () => {
+    lastSpeechActivityAt = Date.now();
+    recognitionAlive = true;
+    if (micSuspended || voiceBusy) return;
+    ensureTurnDetector()?.noteSpeechStart();
+    if (uiState !== "listening") setState("listening");
+  };
+  rec.onspeechend = () => {
+    if (micSuspended || voiceBusy) return;
+    ensureTurnDetector()?.noteSpeechEnd();
+  };
+  rec.onresult = onRecognitionResult;
+  rec.onerror = onRecognitionError;
+  rec.onend = onRecognitionEnd;
+}
 
-/** Chrome SpeechRecognition often ends after silence/errors; restart with retries. */
-function kickRecognition(retries = 6) {
-  if (!voiceMode || !recognition || micSuspended) return;
-  if (voiceBusy && voiceHoldMode()) return;
+function _bootRecognition(Rec) {
+  if (!voiceMode) {
+    recreateBusy = false;
+    ignoreRecognitionEnd = false;
+    return false;
+  }
+  try {
+    recognition = new Rec();
+    wireRecognition(recognition);
+    recognition.start();
+    recognitionAlive = true;
+    lastSpeechActivityAt = Date.now();
+    recreateBusy = false;
+    ignoreRecognitionEnd = false;
+    return true;
+  } catch (_) {
+    recognition = null;
+    recognitionAlive = false;
+    recreateBusy = false;
+    ignoreRecognitionEnd = false;
+    setTimeout(() => { if (voiceMode) recreateRecognition(); }, 280);
+    return false;
+  }
+}
+
+/** Fresh SpeechRecognition instance. Sync when idle; brief delay only when replacing a live one. */
+function recreateRecognition() {
+  if (!voiceMode || recreateBusy) return;
+  const Rec = SpeechRec();
+  if (!Rec) return;
+  recreateBusy = true;
+  const had = !!recognition;
+  if (had) {
+    ignoreRecognitionEnd = true;
+    try { recognition?.abort?.(); } catch (_) {}
+    try { recognition?.stop?.(); } catch (_) {}
+    recognitionAlive = false;
+    recognition = null;
+    setTimeout(() => _bootRecognition(Rec), 60);
+    return;
+  }
+  _bootRecognition(Rec);
+}
+
+/** Restart recognition; recreate immediately if start() fails (Chrome InvalidState / dead session). */
+function kickRecognition(retries = 4) {
+  if (!voiceMode) return;
+  if (!recognition) {
+    recreateRecognition();
+    return;
+  }
   try {
     recognition.start();
+    recognitionAlive = true;
     lastSpeechActivityAt = Date.now();
   } catch (_) {
     if (retries <= 0) {
-      // Dead mic while HUD still says LISTENING — force a fresh recognition object.
-      pushActivity("Mic stalled · re-arming…", { live: false });
-      try {
-        const Rec = SpeechRec();
-        if (Rec && voiceMode) {
-          const old = recognition;
-          recognition = new Rec();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = "en-US";
-          recognition.onresult = old?.onresult;
-          recognition.onerror = old?.onerror;
-          recognition.onend = old?.onend;
-          recognition.onspeechstart = old?.onspeechstart;
-          recognition.onspeechend = old?.onspeechend;
-          try { recognition.start(); } catch (_) {}
-        }
-      } catch (_) {}
+      pushActivity("Mic stalled · fresh session…", { live: false });
+      recreateRecognition();
       return;
     }
-    setTimeout(() => kickRecognition(retries - 1), 140);
+    setTimeout(() => kickRecognition(retries - 1), 120);
   }
 }
 
@@ -160,19 +215,21 @@ function startVoiceWatchdog() {
   voiceWatchIv = setInterval(() => {
     if (!voiceMode) return;
     const now = Date.now();
-    // Stuck suspended after a turn (releaseMicAfter loop / missed arm).
-    if (micSuspended && !voiceBusy && !releaseMicTimer && now > listenCooldownUntil + 400) {
-      pushActivity("Mic re-arm…", { live: false });
-      armMicNow();
+    // Stuck deaf after a turn (timer lost / missed arm).
+    if (micSuspended && !voiceBusy && now > listenCooldownUntil + 500) {
+      if (!releaseMicTimer) {
+        pushActivity("Mic re-arm…", { live: false });
+        armMicNow();
+      }
       return;
     }
-    // HUD says listening but Chrome died and onend never re-kicked.
+    // Chrome died mid-listen — recreate, don't just start() the corpse.
     if (!micSuspended && !voiceBusy && uiState === "listening"
-        && now - (lastSpeechActivityAt || now) > 9000) {
-      kickRecognition(8);
+        && now - (lastSpeechActivityAt || now) > 4500) {
+      recreateRecognition();
       lastSpeechActivityAt = now;
     }
-  }, 1500);
+  }, 1200);
 }
 
 function stopVoiceWatchdog() {
@@ -188,21 +245,20 @@ function armMicNow() {
   finalBuffer = "";
   interimText = "";
   setState("listening", { force: true });
-  // Chrome often needs a beat after stop() before start() sticks.
-  kickRecognition(6);
+  // Always fresh SpeechRecognition after a turn — reuse-after-stop is the halt bug.
+  recreateRecognition();
   pushActivity("Listening", { live: false });
 }
 
 function releaseMicAfter(cooldownMs) {
-  micSuspended = true; // stay deaf through cool-down
+  micSuspended = true; // ignore results through cool-down (engine may stay running)
   listenCooldownUntil = Date.now() + Math.max(0, cooldownMs);
   if (releaseMicTimer) clearTimeout(releaseMicTimer);
   releaseMicTimer = setTimeout(() => {
     releaseMicTimer = null;
     if (!voiceMode) return;
-    // Still in a turn — retry shortly instead of leaving the mic dead forever.
     if (voiceBusy) {
-      releaseMicAfter(300);
+      releaseMicAfter(250);
       return;
     }
     armMicNow();
@@ -640,16 +696,18 @@ function interruptTurn() {
   window.FridayLive && FridayLive.interrupt();
   stopSpeech();
   voiceBusy = false;
-  micSuspended = false;
-  listenCooldownUntil = 0;
   if (releaseMicTimer) {
     clearTimeout(releaseMicTimer);
     releaseMicTimer = null;
   }
   finalBuffer = "";
   interimText = "";
-  setState(voiceMode ? "listening" : "idle", { force: true });
-  if (voiceMode) resumeRecognition();
+  if (voiceMode) {
+    armMicNow();
+  } else {
+    micSuspended = false;
+    setState("idle", { force: true });
+  }
   pushActivity("Interrupted · listening", { live: false });
 }
 
@@ -1002,19 +1060,21 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     pushActivity(`Error · ${err.message}`, { live: false });
   } finally {
     filler && filler.stop();
-    if (epoch !== turnEpoch) return;
+    // Always clear busy — even if interrupted (epoch mismatch). Skipping this left the mic deaf.
     voiceBusy = false;
     finalBuffer = "";
     interimText = "";
-    if (voiceMode) {
-      // Mark listening immediately so the HUD never freezes on thinking/speaking,
-      // then briefly mute for echo before arming the mic for real.
-      setState("listening", { force: true });
-      const cool = voiceHoldMode() ? 280 : 160;
-      releaseMicAfter(cool);
-    } else {
+    if (!voiceMode) {
       setState("idle", { force: true });
+      return;
     }
+    if (epoch !== turnEpoch) {
+      // Newer turn owns the mic; still ensure we are not stuck suspended without a timer.
+      if (micSuspended && !releaseMicTimer) armMicNow();
+      return;
+    }
+    setState("listening", { force: true });
+    releaseMicAfter(voiceHoldMode() ? 200 : 120);
   }
 }
 
@@ -1135,13 +1195,76 @@ function scheduleProcess(delay) {
 
 function pauseRecognition() {
   clearPauseTimer();
-  try {
-    recognition?.stop();
-  } catch (_) {}
+  try { recognition?.abort?.(); } catch (_) {}
+  try { recognition?.stop?.(); } catch (_) {}
+  recognitionAlive = false;
 }
 
 function resumeRecognition() {
-  kickRecognition(4);
+  recreateRecognition();
+}
+
+function onRecognitionResult(event) {
+  lastSpeechActivityAt = Date.now();
+  recognitionAlive = true;
+  if (micSuspended || Date.now() < listenCooldownUntil) return;
+  let interim = "";
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const piece = event.results[i][0].transcript;
+    if (event.results[i].isFinal) {
+      finalBuffer = `${finalBuffer} ${piece}`.trim();
+    } else {
+      interim += piece;
+    }
+  }
+  interimText = interim;
+  const shown = `${finalBuffer} ${interim}`.trim();
+  if (voiceBusy) {
+    if (voiceHoldMode()) return;
+    if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) return;
+    const stopWord = /^(stop|wait|hold on|hang on|enough|cancel)\b/i.test(shown.trim());
+    const longEnough = !interim && finalBuffer
+      && (shown.trim().split(/\s+/).filter(Boolean).length >= 4 || shown.trim().length >= 18);
+    if (stopWord || longEnough) {
+      interruptTurn();
+      finalBuffer = shown;
+      setListeningLine(shown, { interim: false });
+      scheduleProcess(stopWord ? 80 : 220);
+    }
+    return;
+  }
+  if (!shown) return;
+  if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) {
+    finalBuffer = "";
+    interimText = "";
+    if (turnDetector) turnDetector.reset();
+    return;
+  }
+  setListeningLine(shown, { interim: !finalBuffer || !!interim });
+  if (uiState !== "listening") setState("listening");
+  scheduleProcess();
+}
+
+function onRecognitionError(event) {
+  if (event.error === "aborted" || event.error === "no-speech") return;
+  if (event.error === "not-allowed") {
+    addBubble("assistant", "Mic permission blocked. Allow microphone access for this site.");
+    stopVoiceMode();
+    return;
+  }
+  pushActivity(`Mic · ${event.error}`, { live: false });
+  // network / no-speech aftermath: force a fresh engine on next end.
+  recognitionAlive = false;
+}
+
+function onRecognitionEnd() {
+  recognitionAlive = false;
+  if (!voiceMode || ignoreRecognitionEnd || recreateBusy) return;
+  // Natural Chrome end — try start() first; recreate only if the instance is dead.
+  setTimeout(() => {
+    if (!voiceMode || ignoreRecognitionEnd || recreateBusy) return;
+    kickRecognition(2);
+  }, 100);
 }
 
 function stopVoiceMode() {
@@ -1276,95 +1399,22 @@ async function startVoiceMode() {
     setSpeakEnabled(true);
   }
 
-  recognition = new Rec();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "en-US";
   ensureTurnDetector();
   if (turnDetector) turnDetector.reset();
-
-  // Browser speech lifecycle — use as hints, never as hard commits (Chrome finals ≠ end of thought).
-  recognition.onspeechstart = () => {
-    if (micSuspended || voiceBusy) return;
-    ensureTurnDetector()?.noteSpeechStart();
-    if (uiState !== "listening") setState("listening");
-  };
-  recognition.onspeechend = () => {
-    if (micSuspended || voiceBusy) return;
-    ensureTurnDetector()?.noteSpeechEnd();
-  };
-
-  recognition.onresult = (event) => {
-    lastSpeechActivityAt = Date.now();
-    // Hold mode / cool-down: ignore everything — speaker bleed must not open a turn.
-    if (micSuspended || Date.now() < listenCooldownUntil) return;
-    let interim = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const piece = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalBuffer = `${finalBuffer} ${piece}`.trim();
-      } else {
-        interim += piece;
-      }
-    }
-    interimText = interim;
-    const shown = `${finalBuffer} ${interim}`.trim();
-    if (voiceBusy) {
-      // Interrupt mode only: mic is still live. Hold mode never reaches here (mic suspended).
-      if (voiceHoldMode()) return;
-      if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) return;
-      const stopWord = /^(stop|wait|hold on|hang on|enough|cancel)\b/i.test(shown.trim());
-      const longEnough = !interim && finalBuffer
-        && (shown.trim().split(/\s+/).filter(Boolean).length >= 4 || shown.trim().length >= 18);
-      if (stopWord || longEnough) {
-        interruptTurn();
-        finalBuffer = shown;
-        setListeningLine(shown, { interim: false });
-        scheduleProcess(stopWord ? 80 : 220);
-      }
-      return;
-    }
-    if (shown) {
-      if (looksLikeEcho(shown) || looksLikeFridayPrompt(shown)) {
-        finalBuffer = "";
-        interimText = "";
-        if (turnDetector) turnDetector.reset();
-        return;
-      }
-      setListeningLine(shown, { interim: !finalBuffer || !!interim });
-      // Stay on listening visually — don't poke setState every interim (flicker source).
-      if (uiState !== "listening") setState("listening");
-      // Semantic + energy turn detector — Chrome isFinal alone never commits.
-      scheduleProcess();
-    }
-  };
-
-  recognition.onerror = (event) => {
-    if (event.error === "aborted" || event.error === "no-speech") return;
-    if (event.error === "not-allowed") {
-      addBubble("assistant", "Mic permission blocked. Allow microphone access for this site.");
-      stopVoiceMode();
-      return;
-    }
-    // network / service-not-allowed: onend will re-kick; surface once.
-    pushActivity(`Mic · ${event.error}`, { live: false });
-  };
-
-  recognition.onend = () => {
-    // Hold: stay stopped while suspended. Interrupt: keep recognition alive for barge-in.
-    if (!voiceMode || micSuspended) return;
-    if (voiceBusy && voiceHoldMode()) return;
-    // Single failed start() used to leave UI on "listening" with a dead mic.
-    kickRecognition(8);
-  };
-
   lastSpeechActivityAt = Date.now();
   startVoiceWatchdog();
-  try {
-    recognition.start();
-  } catch (err) {
-    addBubble("assistant", `Mic error: ${err.message}`);
+  recreateRecognition();
+  // recreateRecognition boots sync on first start; only fail if the API is missing.
+  if (!SpeechRec()) {
+    addBubble("assistant", "Mic error: speech recognition is not available in this browser.");
     stopVoiceMode();
+  } else if (!recognition && !recreateBusy) {
+    // Immediate sync boot failed — one more try, then surface.
+    recreateRecognition();
+    if (!recognition) {
+      addBubble("assistant", "Mic error: speech recognition failed to start. Allow the mic and try again.");
+      stopVoiceMode();
+    }
   }
 }
 
@@ -2092,9 +2142,9 @@ async function openReminderFromUrl() {
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden || !voiceMode || micSuspended || voiceBusy) return;
-  // Chromium often kills SpeechRecognition while the tab is backgrounded.
-  kickRecognition(8);
+  if (document.hidden || !voiceMode) return;
+  // Chromium kills SpeechRecognition while backgrounded — always fresh instance.
+  setTimeout(() => { if (voiceMode) recreateRecognition(); }, 150);
 });
 
 (async function init() {

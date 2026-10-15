@@ -273,6 +273,24 @@ def handle_message(
         emit=emit,
     )
     result = skill.run(ctx)
+    # Chat sometimes roleplays "I'll pull that up" without tools — force research once.
+    if result.skill_id == "chat" and _fake_action_promise(result.reply or "", message):
+        research = get_registry().get("research")
+        if research is not None:
+            emit("activity", {"step": "reroute", "message": "Actually looking that up…"})
+            emit("status", {"status": "thinking"})
+            result = research.run(
+                SkillContext(
+                    message=message,
+                    session_id=session.id,
+                    history=history,
+                    memory_hits=mem_hits,
+                    skill_override="research",
+                    voice_mode=voice_mode,
+                    emit=emit,
+                    metadata={"report_mode": True},
+                )
+            )
     # Voice mode: keep spoken replies punchy even if a skill was wordy.
     reply = (result.reply or "").strip()
     if not reply:
@@ -290,6 +308,31 @@ def handle_message(
     # Desktop completions stay in the session / experience store — do not dump
     # every task string into vector memory.
     _maybe_diary(result.skill_id, message, reply, result.metadata or {})
+    try:
+        from friday.runtime.debug_log import log_turn
+
+        log_turn(
+            {
+                "session_id": session.id,
+                "voice": voice_mode,
+                "user": message,
+                "intent": intent.to_dict(),
+                "skill": result.skill_id,
+                "reply": reply,
+                "meta": {
+                    k: result.metadata.get(k)
+                    for k in ("report_id", "open_report", "fallback_plain", "error", "tools")
+                    if result.metadata and k in result.metadata
+                },
+                "events": [
+                    {"type": e.get("type"), "message": (e.get("message") or e.get("status") or "")[:120]}
+                    for e in events[-12:]
+                    if isinstance(e, dict)
+                ],
+            }
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
     store.append(session, "assistant", reply, skill_id=result.skill_id)
     return {
@@ -299,6 +342,27 @@ def handle_message(
         "events": events,
         "metadata": {**(result.metadata or {}), "intent": intent.to_dict(), "voice_mode": voice_mode},
     }
+
+
+_FAKE_PROMISE = re.compile(
+    r"(?i)\b("
+    r"i('?ll| will) (pull|bring|look|open|get|fetch|search|find)|"
+    r"let me (pull|bring|look|open|get|fetch|search|find)|"
+    r"stand by|holding on|one (sec|moment|second)|"
+    r"pulling that up|looking that up|on (it|your screen)"
+    r")\b"
+)
+_ASKS_LOOKUP = re.compile(
+    r"(?i)\b(references?|inspiration|examples?|research|look ?up|search|google|"
+    r"find|bring|show|pull up|fetch|news|weather)\b"
+)
+
+
+def _fake_action_promise(reply: str, user: str) -> bool:
+    """True when chat promised a lookup/action but no tool skill ran."""
+    if not reply or not _FAKE_PROMISE.search(reply):
+        return False
+    return bool(_ASKS_LOOKUP.search(user or ""))
 
 
 def _maybe_diary(skill_id: str, message: str, reply: str, meta: dict) -> None:

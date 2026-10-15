@@ -63,7 +63,19 @@ class SkillHandler(Skill):
                 metadata={"open_report": rid},
             )
 
-        want_report = bool(_REPORT.search(msg)) or (ctx.metadata or {}).get("report_mode")
+        # Visual / reference hunts → quick HTML brief (search + gallery), not chat theater.
+        want_refs = bool(
+            re.search(
+                r"\b(references?|inspiration|examples?|mood ?boards?|design\s+refs?)\b",
+                msg,
+                re.I,
+            )
+        )
+        want_report = (
+            bool(_REPORT.search(msg))
+            or want_refs
+            or (ctx.metadata or {}).get("report_mode")
+        )
         mode = "quick"
         if re.search(r"\bdeep\b", msg, re.I):
             mode = "deep"

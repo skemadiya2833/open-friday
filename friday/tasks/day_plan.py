@@ -267,7 +267,7 @@ def compose_task_capture_reply(*, user_text: str = "", voice_mode: bool = False)
     if proposed:
         if voice_mode:
             reply = (
-                f"From what I can see, I'd put: "
+                "From what I can see, I'd put: "
                 + "; ".join(proposed[:5])
                 + f". Say lock these in, or tell me what to change, {owner_name()}."
             )

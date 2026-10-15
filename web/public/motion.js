@@ -80,11 +80,6 @@
   }
 
   function fadeView(fromEl, toEl, fn) {
-    if (!motionAllowed()) {
-      fn();
-      refreshStaggerForView(toEl);
-      return;
-    }
     const run = () => {
       fn();
       if (toEl) {
@@ -95,15 +90,31 @@
       }
       refreshStaggerForView(toEl);
     };
-    if (VT) {
-      document.startViewTransition(run);
+    // View Transitions throw InvalidStateError when the document is hidden
+    // (tab switch / minimize) — never leave that as an uncaught rejection.
+    if (!motionAllowed() || !VT) {
+      if (!motionAllowed()) {
+        run();
+        return;
+      }
+      if (fromEl) fromEl.classList.add("hud-view-out");
+      setTimeout(() => {
+        if (fromEl) fromEl.classList.remove("hud-view-out");
+        run();
+      }, 110);
       return;
     }
-    if (fromEl) fromEl.classList.add("hud-view-out");
-    setTimeout(() => {
-      if (fromEl) fromEl.classList.remove("hud-view-out");
+    try {
+      const tx = document.startViewTransition(run);
+      const quiet = (p) => {
+        if (p && typeof p.then === "function") p.catch(() => {});
+      };
+      quiet(tx && tx.ready);
+      quiet(tx && tx.finished);
+      quiet(tx && tx.updateCallbackDone);
+    } catch (_) {
       run();
-    }, 110);
+    }
   }
 
   function hookShowView() {

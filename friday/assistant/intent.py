@@ -550,7 +550,10 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
 _RESEARCH = re.compile(
     r"\b(search (the web|google|online)|google\b|look ?up|research|find out|"
     r"what('?s| is) (the |today'?s )?(news|weather)|how('?s| is) the weather|"
-    r"headlines|breaking news|latest news|weather (today|now|in)|who won)\b",
+    r"headlines|breaking news|latest news|weather (today|now|in)|who won|"
+    r"(design|ui|ux|visual)\s+(references?|inspiration|examples?|mood ?boards?)|"
+    r"(bring|get|find|show|pull up|fetch)\b.{0,60}\b(references?|inspiration|examples?|samples?|mood ?boards?)|"
+    r"(references?|inspiration|examples?|mood ?boards?)\b.{0,40}\b(for|of|about)\b)",
     re.I,
 )
 _DESKTOP_TARGET = re.compile(
