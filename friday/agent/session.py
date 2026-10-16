@@ -156,6 +156,14 @@ class AgentSession:
             parts.append(f"PREVIOUS ACTION (verify its effect on screen):\n{self.last_action_summary}")
         if self.knowledge:
             parts.append(f"GATHERED KNOWLEDGE:\n{self.format_knowledge()}")
+        try:
+            from friday.runtime.doctrine import prompt_block
+
+            doctrine = prompt_block(limit_topics=3, limit_bullets=6)
+            if doctrine:
+                parts.append(doctrine)
+        except Exception:  # noqa: BLE001
+            pass
         if self.last_observation:
             parts.append(f"PREVIOUS MODEL OBSERVATION (may be stale — trust the current frame):\n{self.last_observation}")
         if self.stuck_count >= 2:

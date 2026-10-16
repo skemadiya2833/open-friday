@@ -273,22 +273,37 @@ def handle_message(
         emit=emit,
     )
     result = skill.run(ctx)
-    # Chat sometimes roleplays "I'll pull that up" without tools — force research once.
-    if result.skill_id == "chat" and _fake_action_promise(result.reply or "", message):
-        research = get_registry().get("research")
-        if research is not None:
-            emit("activity", {"step": "reroute", "message": "Actually looking that up…"})
-            emit("status", {"status": "thinking"})
-            result = research.run(
+    # Chat sometimes roleplays work OR invents cloud limits ("I can't browse…") — force a real skill.
+    force_action = result.skill_id == "chat" and (
+        _fake_action_promise(result.reply or "", message)
+        or _false_capability_denial(result.reply or "")
+    )
+    if force_action:
+        objective, skill_name = _recover_action_objective(message, history, result.reply or "")
+        target = get_registry().get(skill_name) or get_registry().get("research")
+        if target is not None:
+            emit(
+                "activity",
+                {
+                    "step": "reroute",
+                    "message": (
+                        "Actually doing it…"
+                        if skill_name == "computer_use"
+                        else "Actually looking that up…"
+                    ),
+                },
+            )
+            emit("status", {"status": "acting" if skill_name == "computer_use" else "thinking"})
+            result = target.run(
                 SkillContext(
-                    message=message,
+                    message=objective,
                     session_id=session.id,
                     history=history,
                     memory_hits=mem_hits,
-                    skill_override="research",
+                    skill_override=skill_name,
                     voice_mode=voice_mode,
                     emit=emit,
-                    metadata={"report_mode": True},
+                    metadata={"report_mode": skill_name == "research", "forced_from_chat": True},
                 )
             )
     # Voice mode: keep spoken replies punchy even if a skill was wordy.
@@ -346,23 +361,66 @@ def handle_message(
 
 _FAKE_PROMISE = re.compile(
     r"(?i)\b("
-    r"i('?ll| will) (pull|bring|look|open|get|fetch|search|find)|"
-    r"let me (pull|bring|look|open|get|fetch|search|find)|"
-    r"stand by|holding on|one (sec|moment|second)|"
-    r"pulling that up|looking that up|on (it|your screen)"
+    r"i('?ll| will) (pull|bring|look|open|get|fetch|search|find|launch|navigate)|"
+    r"let me (pull|bring|look|open|get|fetch|search|find|launch)|"
+    r"i('?m| am) (opening|launching|pulling|searching|looking|navigating)|"
+    r"opening (a |the |your )?(browser|chrome|powershell|tab|window|site)|"
+    r"stand by|holding on|one (sec|moment|second)|give me a moment|"
+    r"pulling that up|looking that up|on (it|your screen)|"
+    r"consider it handled|queued in powershell|browser is open|search query is queued|"
+    r"i'll take care|working on that now"
     r")\b"
 )
-_ASKS_LOOKUP = re.compile(
-    r"(?i)\b(references?|inspiration|examples?|research|look ?up|search|google|"
-    r"find|bring|show|pull up|fetch|news|weather)\b"
+
+# Model roleplays as a limited cloud bot — nonsense on a local Friday install.
+_FALSE_CAPABILITY = re.compile(
+    r"(?i)\b("
+    r"i can'?t browse( external)?( websites?)?|"
+    r"cannot browse( external)?( websites?)?|"
+    r"unable to browse|"
+    r"don'?t have (real-?time |live )?access to (the )?(web|internet|websites?|documents?)|"
+    r"can'?t read documents in real-?time|"
+    r"internal knowledge base|"
+    r"as an ai (language )?model|"
+    r"i don'?t have (the )?ability to (browse|search|open|read files)"
+    r")\b"
 )
 
 
 def _fake_action_promise(reply: str, user: str) -> bool:
-    """True when chat promised a lookup/action but no tool skill ran."""
+    """True when chat promised desktop/web work but no tool skill ran."""
     if not reply or not _FAKE_PROMISE.search(reply):
         return False
-    return bool(_ASKS_LOOKUP.search(user or ""))
+    # Any fake promise from chat is enough — confirmations like "yes do that" have no lookup verbs.
+    return True
+
+
+def _false_capability_denial(reply: str) -> bool:
+    """True when chat invents cloud-assistant limits Friday does not have."""
+    return bool(reply and _FALSE_CAPABILITY.search(reply))
+
+
+def _recover_action_objective(
+    message: str, history: list[dict[str, str]], reply: str
+) -> tuple[str, str]:
+    """Pick a real objective + skill when chat faked an action or capability denial."""
+    from friday.assistant.intent import _last_substantive_user
+
+    prior = _last_substantive_user(history) or message
+    blob = f"{message} {prior} {reply}".lower()
+    if re.search(r"\b(click|type|notepad|desktop|screen|chrome|browser|powershell|open)\b", blob):
+        # Prefer research for web lookups; computer_use when clearly desktop.
+        if re.search(r"\b(reference|website|sites?|search|google|article|learn|research)\b", blob):
+            return prior, "research"
+        if re.search(r"\b(click|type|notepad|desktop|drag|save file)\b", blob):
+            return prior, "computer_use"
+        return prior, "research"
+    if re.search(
+        r"\b(article|learn|research|search|google|website|reference|document|checklist|skill)\b",
+        blob,
+    ):
+        return prior, "research"
+    return prior, "research"
 
 
 def _maybe_diary(skill_id: str, message: str, reply: str, meta: dict) -> None:

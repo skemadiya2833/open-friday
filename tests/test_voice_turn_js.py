@@ -28,4 +28,9 @@ def test_completeness_patterns_present():
     assert "TRAIL_OPEN" in TURN
     assert "SHORT_DONE" in TURN
     assert "IMPERATIVE" in TURN
-    assert re.search(r"maxWaitMs:\s*3800", TURN)  # medium eagerness band
+    # Medium eagerness band (value may tune; must sit between high and low caps).
+    medium = re.search(r"medium:\s*\{[^}]*?maxWaitMs:\s*(\d+)", TURN, re.S)
+    high = re.search(r"high:\s*\{[^}]*?maxWaitMs:\s*(\d+)", TURN, re.S)
+    low = re.search(r"low:\s*\{[^}]*?maxWaitMs:\s*(\d+)", TURN, re.S)
+    assert medium and high and low
+    assert int(high.group(1)) < int(medium.group(1)) < int(low.group(1))

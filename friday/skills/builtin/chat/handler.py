@@ -37,8 +37,18 @@ class SkillHandler(Skill):
             "Never claim you cannot remember earlier turns. "
             "You are a real assistant on this PC — prefer concrete help over empty offers. "
             "Do-or-deny: act with tools when the ask is actionable; if you cannot, say you cannot "
-            "and what you need — never invent completed work, open documents, metrics, or status."
+            "and what you need — never invent completed work, open documents, metrics, or status. "
+            "Never say you cannot browse websites or only have an 'internal knowledge base' — "
+            "research and file tools exist; if they did not run, ask one clarifying question instead."
         )
+        try:
+            from friday.runtime.doctrine import prompt_block
+
+            doctrine = prompt_block()
+            if doctrine:
+                system += "\n\n" + doctrine
+        except Exception:  # noqa: BLE001
+            pass
         if ctx.history:
             system += "\nOngoing conversation — do not greet or introduce yourself."
 

@@ -78,6 +78,18 @@ def test_allowed_context_does_append_quip(monkeypatch):
     assert len(out) > len("All set for the afternoon.")
 
 
+def test_cant_browse_reply_blocks_quip():
+    """Capability lies must not get a 'noted/handled' aside glued on."""
+    reply = (
+        "I can't browse external websites or read documents in real-time, "
+        "but I have access to my internal knowledge base."
+    )
+    assert blocked_context(user_text="learn assistant skills", reply=reply) is not None
+    out = maybe_append_quip(reply, user_text="learn assistant skills")
+    assert out == reply
+    assert "filed under" not in out.lower()
+
+
 def test_feedback_throttle_and_clear(tmp_path):
     store = FeedbackStore(tmp_path / "f.json")
     set_feedback_store(store)

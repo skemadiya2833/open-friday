@@ -12,6 +12,90 @@ _REPORT = re.compile(
     re.I,
 )
 _OPEN = re.compile(r"\bopen (the |my )?(research )?report\b", re.I)
+_LEARN = re.compile(
+    r"\b("
+    r"learn (from|about|how)|study (how|about)|read (up )?(on|about)|"
+    r"read articles|absorb|internalize|"
+    r"teach yourself|research and (learn|remember|memorize)"
+    r")\b",
+    re.I,
+)
+
+
+def _learn_from_web(topic: str, emit) -> SkillResult:
+    """Search → distill principles → durable doctrine + memory (for future actions)."""
+    from friday.knowledge.search import fetch_web_results, format_results
+    from friday.models.local import query_model_text
+    from friday.persona import owner_name
+    from friday.runtime import doctrine as DOC
+
+    q = re.sub(
+        r"(?i)\b(please|friday|learn|study|read( articles)?|about|how to|for me)\b",
+        " ",
+        topic,
+    )
+    q = re.sub(r"\s+", " ", q).strip() or topic
+    search_q = q if len(q) > 8 else f"how to {topic}"
+    emit("activity", {"step": "learn", "message": f"Studying · {search_q[:80]}"})
+    rows = fetch_web_results(search_q, limit=6)
+    if not rows:
+        return SkillResult(
+            reply=f"I couldn't reach search to study that, {owner_name()}. Try again in a moment.",
+            skill_id="research",
+            metadata={"learned": False},
+        )
+    brief = format_results(search_q, rows)
+    prompt = (
+        "Distill lasting operating principles for a local PC AI assistant from these search hits.\n"
+        f"Topic: {search_q}\n\n{brief}\n\n"
+        "Return JSON only: {\"topic\": string, \"lessons\": [5 to 8 short imperative bullets], "
+        "\"tldr\": one sentence}. No fluff. Lessons must be actionable on a desktop assistant."
+    )
+    out = query_model_text(prompt, format_json=True, num_predict=700, num_ctx=4096)
+    raw = out.get("message") or out.get("raw") or {}
+    if isinstance(raw, str):
+        import json
+
+        try:
+            raw = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            raw = {}
+    lessons = [str(x).strip() for x in (raw.get("lessons") or []) if str(x).strip()]
+    topic_label = str(raw.get("topic") or search_q)[:120]
+    tldr = str(raw.get("tldr") or "").strip()
+    if len(lessons) < 3:
+        # Fallback: use titles/snippets as soft lessons
+        lessons = [
+            (r.get("snippet") or r.get("title") or "")[:200]
+            for r in rows[:5]
+            if (r.get("snippet") or r.get("title"))
+        ]
+    sources = [r.get("url") or "" for r in rows if r.get("url")]
+    rec = DOC.add_lessons(topic_label, lessons, sources=sources)
+    # Also pin a single memory blob for semantic recall.
+    try:
+        from friday.memory import get_memory
+
+        blob = (
+            f"Doctrine · {topic_label}: "
+            + "; ".join(rec.get("bullets") or lessons)[:900]
+        )
+        get_memory().add(blob, metadata={"kind": "doctrine", "topic": topic_label})
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Research] doctrine memory write failed: {exc}")
+    n = len(rec.get("bullets") or lessons)
+    spoken = tldr or f"Studied {topic_label} — kept {n} principles for next time."
+    spoken = f"{spoken} I'll apply them on future turns, {owner_name()}."
+    return SkillResult(
+        reply=spoken,
+        skill_id="research",
+        metadata={
+            "learned": True,
+            "topic": topic_label,
+            "lessons": n,
+            "sources": sources[:4],
+        },
+    )
 
 
 class SkillHandler(Skill):
@@ -62,6 +146,9 @@ class SkillHandler(Skill):
                 skill_id="research",
                 metadata={"open_report": rid},
             )
+
+        if _LEARN.search(msg):
+            return _learn_from_web(msg, ctx.emit)
 
         # Visual / reference hunts → quick HTML brief (search + gallery), not chat theater.
         want_refs = bool(

@@ -33,9 +33,11 @@ def test_ui_overrides_env(tmp_path, monkeypatch):
 def test_reset_to_optima(tmp_path, monkeypatch):
     monkeypatch.setattr(prefs, "_path", lambda: tmp_path / "runtime_prefs.json")
     prefs.clear_cache()
-    prefs.update({"shell_tools": True, "humor": "roast"})
+    prefs.update({"shell_tools": False, "humor": "roast"})
     prefs.reset_to_optima()
-    assert prefs.get("shell_tools") is False
+    # Optima = SCHEMA defaults (terminal-first → shell_tools on).
+    assert prefs.get("shell_tools") is prefs.SCHEMA["shell_tools"]["default"]
+    assert prefs.get("shell_tools") is True
     assert prefs.get("humor") == "dry"
     assert prefs.get("tools_first") is True
     assert prefs.get("agent_backend") == "auto"

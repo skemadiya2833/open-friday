@@ -349,6 +349,22 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # "Yes / do that / go ahead" → resolve prior ask and actually run a skill (never chat theater).
+    follow = _resolve_confirm_followup(msg, history)
+    if follow is not None:
+        return follow
+
+    # Study / read articles / learn → research skill with learn metadata (via objective wording).
+    if _LEARN.search(msg):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.94,
+            objective=msg,
+            reason="deterministic: learn-from-web",
+            source="policy",
+        )
+
     # Reminders / timers — explicit verbs only (not bare "every day" inside planning talk).
     from friday.tasks import reminders as _RM
 
@@ -553,9 +569,115 @@ _RESEARCH = re.compile(
     r"headlines|breaking news|latest news|weather (today|now|in)|who won|"
     r"(design|ui|ux|visual)\s+(references?|inspiration|examples?|mood ?boards?)|"
     r"(bring|get|find|show|pull up|fetch)\b.{0,60}\b(references?|inspiration|examples?|samples?|mood ?boards?)|"
-    r"(references?|inspiration|examples?|mood ?boards?)\b.{0,40}\b(for|of|about)\b)",
+    r"(references?|inspiration|examples?|mood ?boards?)\b.{0,40}\b(for|of|about)\b|"
+    r"business(?:es)?\s+like|"
+    r"e-?commerce\s+platforms?|"
+    r"platforms?\s+for\b)",
     re.I,
 )
+_LEARN = re.compile(
+    r"\b("
+    r"learn (from|about|how)|study (how|about)|read (up )?(on|about)|"
+    r"read articles|absorb|internalize|"
+    r"teach yourself|research and (learn|remember|memorize)|"
+    r"remember (this|these|how|what).{0,40}\b(for next time|going forward)"
+    r")\b",
+    re.I,
+)
+_CONFIRM_DO = re.compile(
+    r"^\s*("
+    r"yes|yeah|yep|yup|sure|ok|okay|alright|all right|"
+    r"do (it|that)|go ahead|please do|just do (it|that)|"
+    r"do that for me|(you|he|she) (has|have|must|should|need) to do|"
+    r"put (them|it|that) on (my |the )?screen|"
+    r"i prefer .{0,60}on (my |the )?screen"
+    r")\b",
+    re.I,
+)
+
+
+def _last_substantive_user(history: list[dict[str, str]] | None) -> str:
+    if not history:
+        return ""
+    for turn in reversed(history):
+        if turn.get("role") != "user":
+            continue
+        text = (turn.get("content") or "").strip()
+        if not text or _CONFIRM_DO.search(text):
+            continue
+        if len(text) < 4:
+            continue
+        return text
+    return ""
+
+
+def _resolve_confirm_followup(
+    msg: str, history: list[dict[str, str]] | None
+) -> Intent | None:
+    """Map short confirmations onto the prior real ask so we act instead of chatting."""
+    if not _CONFIRM_DO.search(msg):
+        return None
+    prior = _last_substantive_user(history)
+    last_a = ""
+    if history:
+        last_a = next(
+            (t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"),
+            "",
+        )
+    # Prefer prior user topic; fall back to what the assistant offered to do.
+    objective = prior
+    if not objective and last_a:
+        m = re.search(
+            r"(?:shall i|i can|let me|want me to)\s+(.{12,160}?)(?:\?|$)",
+            last_a,
+            re.I,
+        )
+        if m:
+            objective = m.group(1).strip()
+    if not objective:
+        return None
+    blob = f"{msg} {objective} {last_a}".lower()
+    if _LEARN.search(objective) or _LEARN.search(last_a):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.93,
+            objective=objective,
+            reason="deterministic: confirm→learn",
+            source="policy",
+        )
+    if (
+        _RESEARCH.search(objective)
+        or re.search(r"\b(reference|website|search|browser|sites?)\b", blob, re.I)
+    ):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.93,
+            objective=objective,
+            reason="deterministic: confirm→research",
+            source="policy",
+        )
+    if _IMPERATIVE.search(objective) or re.search(
+        r"\b(screen|desktop|chrome|notepad|open|click|type)\b", blob, re.I
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.92,
+            objective=objective,
+            reason="deterministic: confirm→act",
+            source="policy",
+        )
+    # Default: treat confirmation of a prior topic as research (look it up for real).
+    return Intent(
+        mode="research",
+        skill_id="research",
+        confidence=0.9,
+        objective=objective,
+        reason="deterministic: confirm→research-default",
+        source="policy",
+    )
 _DESKTOP_TARGET = re.compile(
     r"\b(notepad|chrome|edge|firefox|browser window|desktop|click|type in|"
     r"calendar|google calendar|"

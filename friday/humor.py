@@ -18,15 +18,16 @@ from typing import Deque
 _humor_override: ContextVar[str | None] = ContextVar("friday_humor_override", default=None)
 
 # Hand-written originals only — no film quotes.
+# Avoid "done / handled / noted" theater — those sound like work finished when glued to a stall.
 _BANK = [
-    "Noted, and filed under 'things that will try us again later'.",
-    "Consider it handled — with the usual quiet competence.",
-    "Done. I'll pretend that was the easy part.",
-    "On it. Try not to look too impressed.",
-    "Sorted. Coffee optional; competence mandatory.",
+    "Dry wit, wet work — preferably the latter.",
+    "Competence over commentary. Always.",
+    "I'll pretend that was the easy part.",
+    "Try not to look too impressed.",
+    "Coffee optional; competence mandatory.",
     "That's the ticket. Moving on before it gets ideas.",
-    "Finished. The universe remains unimpressed, as usual.",
-    "All set. I'll keep the victory lap to a walk.",
+    "The universe remains unimpressed, as usual.",
+    "I'll keep the victory lap to a walk.",
 ]
 
 _recent: Deque[str] = deque(maxlen=20)
@@ -37,7 +38,9 @@ _STRESS = re.compile(
 )
 _ERR_MARKERS = re.compile(
     r"\b(error|failed|failure|denied|blocked|unauthorized|approval required|"
-    r"couldn.?t|cannot|unable|bad news|refused)\b",
+    r"couldn.?t|can'?t|cannot|unable|bad news|refused|"
+    r"don'?t have access|no access to|internal knowledge base|"
+    r"can'?t browse|cannot browse|unable to browse)\b",
     re.I,
 )
 _SECURITY = re.compile(
