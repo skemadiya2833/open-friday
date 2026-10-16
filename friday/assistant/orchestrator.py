@@ -273,10 +273,11 @@ def handle_message(
         emit=emit,
     )
     result = skill.run(ctx)
-    # Chat sometimes roleplays work OR invents cloud limits ("I can't browse…") — force a real skill.
+    # Chat sometimes roleplays work, invents cloud limits, or asks the owner to run shell — force a real skill.
     force_action = result.skill_id == "chat" and (
         _fake_action_promise(result.reply or "", message)
         or _false_capability_denial(result.reply or "")
+        or _asks_owner_to_run_shell(result.reply or "")
     )
     if force_action:
         objective, skill_name = _recover_action_objective(message, history, result.reply or "")
@@ -386,6 +387,17 @@ _FALSE_CAPABILITY = re.compile(
     r")\b"
 )
 
+# Asks the owner to run a shell command and paste output — Friday should run it herself.
+_ASK_USER_SHELL = re.compile(
+    r"(?i)\b("
+    r"run\b.{0,80}\b(wmic|powershell|cmd|get-ciminstance|get-wmiobject)\b|"
+    r"open powershell and (run|execute)|"
+    r"tell me what it (lists|says|returns|shows)|"
+    r"paste (the |that )?(output|result)|"
+    r"i('?ll| will) interpret (the )?(output|result)"
+    r")\b"
+)
+
 
 def _fake_action_promise(reply: str, user: str) -> bool:
     """True when chat promised desktop/web work but no tool skill ran."""
@@ -400,6 +412,11 @@ def _false_capability_denial(reply: str) -> bool:
     return bool(reply and _FALSE_CAPABILITY.search(reply))
 
 
+def _asks_owner_to_run_shell(reply: str) -> bool:
+    """True when chat tells the owner to run PowerShell/WMIC instead of doing it."""
+    return bool(reply and _ASK_USER_SHELL.search(reply))
+
+
 def _recover_action_objective(
     message: str, history: list[dict[str, str]], reply: str
 ) -> tuple[str, str]:
@@ -408,6 +425,11 @@ def _recover_action_objective(
 
     prior = _last_substantive_user(history) or message
     blob = f"{message} {prior} {reply}".lower()
+    if re.search(
+        r"\b(monitor|display|camera|webcam|peripheral|device|usb|wmic|hardware|screen)\b",
+        blob,
+    ):
+        return prior, "computer_use"
     if re.search(r"\b(click|type|notepad|desktop|screen|chrome|browser|powershell|open)\b", blob):
         # Prefer research for web lookups; computer_use when clearly desktop.
         if re.search(r"\b(reference|website|sites?|search|google|article|learn|research)\b", blob):

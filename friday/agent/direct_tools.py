@@ -354,6 +354,38 @@ def _system_status() -> str:
         return out.stdout.strip() or "status unavailable"
 
 
+def _peripherals_spoken_brief(full: str) -> str:
+    """One short line for chat/voice — never speak the raw inventory dump."""
+    cams = re.search(r"Cameras \(OpenCV\):\s*(\d+)", full)
+    screens = re.search(r"Active screens:\s*(\d+)", full)
+    displays = re.search(r"Displays:\s*(\d+)", full)
+    audio = re.search(r"Audio devices:\s*(\d+)", full)
+    bits: list[str] = []
+    n_cam = int(cams.group(1)) if cams else 0
+    if n_cam:
+        # Grab a couple of friendly camera names from OpenCV lines.
+        names = re.findall(
+            r"^\s*\[[^\]]+\]\s+(.+?)\s+\d+×\d+",
+            full,
+            re.M,
+        )
+        label = ", ".join(n.strip() for n in names[:2]) if names else f"{n_cam} cameras"
+        bits.append(f"{n_cam} camera{'s' if n_cam != 1 else ''}" + (f" ({label})" if names else ""))
+    else:
+        bits.append("no cameras seen")
+    n_scr = int(screens.group(1)) if screens else (int(displays.group(1)) if displays else 0)
+    if n_scr:
+        res = re.findall(r"DISPLAY\d+\s+(\d+x\d+)", full)
+        if res:
+            bits.append(f"{n_scr} screen{'s' if n_scr != 1 else ''} at {' and '.join(res[:2])}")
+        else:
+            bits.append(f"{n_scr} display{'s' if n_scr != 1 else ''}")
+    n_aud = int(audio.group(1)) if audio else 0
+    if n_aud:
+        bits.append(f"{n_aud} audio device{'s' if n_aud != 1 else ''}")
+    return "I counted " + "; ".join(bits) + "."
+
+
 def _collect_peripherals() -> str:
     """Cameras (OpenCV + PnP), displays, audio, USB, printers — measured, not invented."""
     lines: list[str] = ["Friday — Peripherals / devices", "=============================="]
@@ -1121,10 +1153,12 @@ def try_direct(objective: str, *, workspace: str | None = None,
             text = _collect_peripherals()
             # Always open HTML so live mode users can actually see the list.
             html_path = _open_specs_html(text, stem="friday-peripherals")
+            # Short spoken/chat reply only — raw dump is for the HTML page (TTS murders PnP names).
+            brief = _peripherals_spoken_brief(text)
             return DirectResult(
                 True,
                 True,
-                f"{text}\n\nOpened as HTML ({html_path.name}).",
+                f"{brief} Full inventory is on screen ({html_path.name}).",
                 "list_peripherals",
             )
         except Exception as exc:  # noqa: BLE001

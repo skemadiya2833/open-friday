@@ -105,7 +105,8 @@ class SkillHandler(Skill):
         description="Web research and structured reports",
         tools=["web_search", "memory_search"],
         system_overlay=(
-            "You look things up for the owner. Call web_search ONCE with a precise query. "
+            "You look things up for the owner. Call web_search ONCE with a precise query FIRST. "
+            "Never say 'Searching the web…' or 'Looking that up…' as your answer — that is not a tool call. "
             "The observation is the actual results — titles and snippets. Then output FINAL: "
             "as a short briefing of what you found (what happened, who, when). "
             "Never search the same query twice. Never mention tabs or Google. "

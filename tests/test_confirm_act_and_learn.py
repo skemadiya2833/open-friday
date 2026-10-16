@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 from friday.assistant.intent import classify_intent
 from friday.runtime import doctrine as DOC
@@ -63,3 +62,13 @@ def test_false_capability_denial_detects_cloud_theater():
         "but I have access to my internal knowledge base on business productivity."
     )
     assert not _false_capability_denial("Opened three reference tabs for 3D printing.")
+
+
+def test_asks_owner_to_run_shell():
+    from friday.assistant.orchestrator import _asks_owner_to_run_shell
+
+    assert _asks_owner_to_run_shell(
+        "Run wmic monitor get name in PowerShell and tell me what it lists — "
+        "I'll interpret the output for you."
+    )
+    assert not _asks_owner_to_run_shell("I listed your two displays at 1920x1080.")

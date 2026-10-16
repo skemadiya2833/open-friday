@@ -15,6 +15,56 @@ _TOOL_RE = re.compile(
     re.S,
 )
 
+# Model roleplays "Searching the web…" instead of calling a tool — reject as FINAL.
+_TOOL_THEATER = re.compile(
+    r"(?i)\b("
+    r"searching (the )?(web|internet|online|for)|"
+    r"looking (that |it |this )?(up|into)|"
+    r"let me (search|look|check|find|pull|browse)|"
+    r"i('?ll| will) (search|look|check|find|pull|browse|open)|"
+    r"i('?m| am) (searching|looking|checking|pulling|browsing)|"
+    r"hold on|one (sec|moment|second)|give me a (sec|moment|second)|"
+    r"pulling (that |it )?up|checking (the web|online|that now)|"
+    r"stand by|working on (that|it)"
+    r")\b"
+)
+
+
+def _is_tool_theater(text: str, *, allowed_tools: list[str], tool_trace: list) -> bool:
+    """True when the model narrates work but no tool has run yet."""
+    if tool_trace or not text:
+        return False
+    if not _TOOL_THEATER.search(text):
+        return False
+    return bool(allowed_tools)
+
+
+def _force_first_tool(
+    message: str,
+    *,
+    allowed_tools: list[str],
+    emit: Callable[[str, dict[str, Any]], None],
+    tool_trace: list[dict[str, Any]],
+) -> str | None:
+    """Last-resort: run web_search (or memory_search) from the user ask."""
+    if "web_search" in allowed_tools:
+        q = re.sub(r"\s+", " ", (message or "").strip())[:200]
+        if not q:
+            return None
+        emit("tool_call", {"tool": "web_search", "args": {"query": q}})
+        out = call_tool_result("web_search", {"query": q}, caller="react").text()
+        emit("tool_result", {"tool": "web_search", "result": out[:1000]})
+        tool_trace.append({"tool": "web_search", "args": {"query": q}, "result": out[:2000]})
+        return out
+    if "memory_search" in allowed_tools:
+        q = re.sub(r"\s+", " ", (message or "").strip())[:200]
+        emit("tool_call", {"tool": "memory_search", "args": {"query": q}})
+        out = call_tool_result("memory_search", {"query": q}, caller="react").text()
+        emit("tool_result", {"tool": "memory_search", "result": out[:1000]})
+        tool_trace.append({"tool": "memory_search", "args": {"query": q}, "result": out[:2000]})
+        return out
+    return None
+
 
 def _extract_tool_call(text: str) -> dict[str, Any] | None:
     for match in _TOOL_RE.finditer(text):
@@ -109,9 +159,28 @@ Step {step + 1}/{steps}. Decide.
         transcript.append(text)
         emit("thinking_token", {"token": text[:400]})
 
+        must_tool = ("web_search" in allowed_tools) and not tool_trace
+        body = text[6:].strip() if text.upper().startswith("FINAL:") else text
+
         if text.upper().startswith("FINAL:"):
-            final_reply = text[6:].strip()
+            if must_tool or _is_tool_theater(
+                body, allowed_tools=allowed_tools, tool_trace=tool_trace
+            ):
+                observations += (
+                    "\nDo not answer yet. Call web_search with a JSON tool call first, "
+                    "then FINAL: from the observations.\n"
+                )
+                continue
+            final_reply = body
             break
+
+        if _is_tool_theater(body, allowed_tools=allowed_tools, tool_trace=tool_trace):
+            observations += (
+                "\nDo not narrate searching or looking things up. "
+                "Output a tool JSON call now (web_search with a precise query), "
+                "then FINAL: only after you have observations.\n"
+            )
+            continue
 
         call = _extract_tool_call(text)
         if call:
@@ -142,9 +211,37 @@ Step {step + 1}/{steps}. Decide.
                 )
             continue
 
-        # No tool call — treat entire response as final
+        # Plain text with web_search still unused → nudge, don't hang up on narration.
+        if must_tool:
+            observations += (
+                "\nCall web_search now (JSON tool call). Do not reply in plain text yet.\n"
+            )
+            continue
+
         final_reply = text
         break
+
+    # Still no tools after the loop (model kept narrating) → search once, then brief.
+    if not tool_trace and "web_search" in allowed_tools:
+        forced = _force_first_tool(
+            message, allowed_tools=allowed_tools, emit=emit, tool_trace=tool_trace
+        )
+        if forced:
+            brief_prompt = (
+                f"{overlay}\n\nUSER: {message}\n\nObservation from web_search:\n{forced}\n\n"
+                "Output FINAL: as a short briefing of what you found. No more tools."
+            )
+            brief = query_model_text(brief_prompt, format_json=False, reasoning_mode=False)
+            final_reply = (brief.get("message") or brief.get("raw") or "").strip()
+            if final_reply.upper().startswith("FINAL:"):
+                final_reply = final_reply[6:].strip()
+            if (
+                not final_reply
+                or _is_tool_theater(
+                    final_reply, allowed_tools=allowed_tools, tool_trace=tool_trace
+                )
+            ):
+                final_reply = forced[:900]
 
     if not final_reply or final_reply.strip() in ("{}", "[]", "null"):
         if tool_trace:
@@ -163,6 +260,8 @@ Step {step + 1}/{steps}. Decide.
                     if hit and not hit.lower().startswith("no ")
                     else f"Nothing in memory on that, {owner_name()}."
                 )
+            elif last.get("tool") == "web_search":
+                final_reply = last.get("result") or final_reply
         else:
             from friday.persona import owner_name
 

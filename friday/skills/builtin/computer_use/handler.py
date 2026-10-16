@@ -54,11 +54,20 @@ class SkillHandler(Skill):
             if direct.tool == "shell_first":
                 ctx.emit("activity", {"step": "shell", "message": "Running PowerShell…"})
                 ctx.emit("status", {"status": "acting"})
-            short = (direct.message or "").split("\n")[0][:100]
-            ctx.emit("activity", {"step": "direct", "message": short or "Done"})
+            # Prefer a short activity line — never dump inventory into the HUD/TTS path.
+            act_msg = {
+                "list_peripherals": "Listing devices…",
+                "show_specs_on_screen": "Collecting specs…",
+                "shell_first": "Running PowerShell…",
+            }.get(direct.tool or "", "") or (direct.message or "").split("\n")[0][:80]
+            ctx.emit("activity", {"step": "direct", "message": act_msg or "Done"})
             ctx.emit("status", {"status": "idle"})
+            reply = direct.message if direct.ok else f"That didn't work: {direct.message}"
+            # Voice: hard-cap so TTS never reads a multi-line hardware dump.
+            if ctx.voice_mode and reply and len(reply) > 280:
+                reply = reply.split("\n")[0][:240].rstrip(" .") + "."
             return SkillResult(
-                reply=direct.message if direct.ok else f"That didn't work: {direct.message}",
+                reply=reply,
                 skill_id="computer_use",
                 metadata={
                     "status": "completed" if direct.ok else "failed",

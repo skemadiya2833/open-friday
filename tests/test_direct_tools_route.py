@@ -6,6 +6,24 @@ from friday.agent import direct_tools as DT
 from friday.agent import router as RT
 
 
+def test_peripherals_spoken_brief_is_short():
+    sample = (
+        "Cameras (OpenCV): 3\n"
+        "  [MSMF:0] Snap Camera 1280×720\n"
+        "  [MSMF:1] SNAP U2 1920×1080\n"
+        "Active screens: 2\n"
+        "  · \\\\.\\DISPLAY1 1920x1080 (primary)\n"
+        "  · \\\\.\\DISPLAY2 1920x1080\n"
+        "Audio devices: 4\n"
+    )
+    brief = DT._peripherals_spoken_brief(sample)
+    assert "3 camera" in brief
+    assert "2 screen" in brief
+    assert "PnP" not in brief
+    assert "DISPLAY1" not in brief
+    assert len(brief) < 220
+
+
 def test_open_url_pattern(monkeypatch):
     opened = []
     monkeypatch.setattr(
