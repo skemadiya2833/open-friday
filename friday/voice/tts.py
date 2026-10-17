@@ -179,10 +179,10 @@ def _worker_synth_wav(engine: str, text: str, *, voice: str, speed: float = 1.0)
         return None
 
 
-def _kokoro_bytes(text: str, rate: str | None = None) -> bytes | None:
+def _kokoro_bytes(text: str, rate: str | None = None, *, voice: str | None = None) -> bytes | None:
     if not _kokoro_ready():
         return None
-    voice = _resolve_kokoro_voice(_configured_voice())
+    voice = _resolve_kokoro_voice(voice or _configured_voice())
     return _worker_synth_wav("kokoro", text, voice=voice, speed=_speed_from_rate(rate))
 
 
@@ -192,16 +192,20 @@ def _piper_neural_bytes(text: str) -> bytes | None:
     return _worker_synth_wav("piper", text, voice=_DEFAULT_PIPER_VOICE, speed=1.0)
 
 
-def _edge_voice_candidates(*, max_voices: int = 2) -> list[str]:
-    voice_name = VOICE_TTS_VOICE
-    try:
-        from friday.runtime.prefs import get as pref
+def _edge_voice_candidates(*, max_voices: int = 2, voice: str | None = None) -> list[str]:
+    voice_name = (voice or "").strip() or VOICE_TTS_VOICE
+    if not voice:
+        try:
+            from friday.runtime.prefs import get as pref
 
-        voice_name = str(pref("tts_voice") or VOICE_TTS_VOICE)
-    except Exception:  # noqa: BLE001
-        pass
+            voice_name = str(pref("tts_voice") or VOICE_TTS_VOICE)
+        except Exception:  # noqa: BLE001
+            pass
     primary = _resolve_edge_voice(voice_name)
     out = [primary]
+    # Preview of a specific Edge voice: try only that name (no silent fallback swap).
+    if voice and primary == _resolve_edge_voice(voice):
+        return out[:1]
     for alt in _EDGE_FALLBACKS:
         if alt not in out:
             out.append(alt)
@@ -230,7 +234,9 @@ def edge_available() -> bool:
     return time.monotonic() >= _edge_cooldown_until
 
 
-def _edge_tts_bytes(text: str, rate: str | None = None) -> bytes | None:
+def _edge_tts_bytes(
+    text: str, rate: str | None = None, *, voice: str | None = None
+) -> bytes | None:
     global _edge_cooldown_until
 
     try:
@@ -243,16 +249,16 @@ def _edge_tts_bytes(text: str, rate: str | None = None) -> bytes | None:
 
     rate_s = _normalize_rate(rate)
     # One primary + one alt max; abort the whole Edge path on auth failure.
-    for voice in _edge_voice_candidates(max_voices=2):
+    for cand in _edge_voice_candidates(max_voices=2 if not voice else 1, voice=voice):
         try:
             data = asyncio.run(
-                asyncio.wait_for(_edge_bytes(text, voice, rate_s), timeout=_EDGE_ATTEMPT_TIMEOUT_S)
+                asyncio.wait_for(_edge_bytes(text, cand, rate_s), timeout=_EDGE_ATTEMPT_TIMEOUT_S)
             )
             if data and len(data) > 44:
                 return data
             raise RuntimeError("empty audio")
         except Exception as exc:  # noqa: BLE001
-            print(f"[TTS] edge-tts {voice} failed: {exc}")
+            print(f"[TTS] edge-tts {cand} failed: {exc}")
             if _is_edge_auth_block(exc):
                 _edge_cooldown_until = time.monotonic() + _EDGE_COOLDOWN_S
                 print(
@@ -261,6 +267,24 @@ def _edge_tts_bytes(text: str, rate: str | None = None) -> bytes | None:
                 )
                 return None
     return None
+
+
+def _engine_for_preview(voice: str | None, engine: str | None) -> str:
+    """Pick which synthesizer hears a Systems preview of ``voice``.
+
+    Voice identity wins so selecting Ava plays Ava (Edge), not a Kokoro stand-in.
+    """
+    v = (voice or "").strip()
+    if v in _KOKORO_VOICES or v.startswith(("af_", "bf_")):
+        return "kokoro"
+    if "Neural" in v or v.startswith("en-"):
+        return "edge"
+    if v.startswith("en_US") or v.endswith(("-medium", ".onnx")):
+        return "piper"
+    eng = (engine or "").strip().lower()
+    if eng and eng != "auto":
+        return eng
+    return (_tts_engine_pref() or "auto").strip().lower() or "auto"
 
 
 def _edge_tts(text: str, out: Path, rate: str | None = None) -> bool:
@@ -390,12 +414,19 @@ def _scrub(text: str) -> str:
         return clean
 
 
-def _synthesize_pipeline(clean: str, rate: str | None = None) -> tuple[bytes, str]:
+def _synthesize_pipeline(
+    clean: str,
+    rate: str | None = None,
+    *,
+    voice: str | None = None,
+    engine: str | None = None,
+) -> tuple[bytes, str]:
     """Run the preferred engine chain. Returns (bytes, mime) or empty text/plain."""
-    engine = _tts_engine_pref()
+    engine = _engine_for_preview(voice, engine) if (voice or engine) else _tts_engine_pref()
+    voice_ov = (voice or "").strip() or None
 
     def try_kokoro() -> tuple[bytes, str] | None:
-        data = _kokoro_bytes(clean, rate=rate)
+        data = _kokoro_bytes(clean, rate=rate, voice=voice_ov)
         return (data, "audio/wav") if data else None
 
     def try_piper() -> tuple[bytes, str] | None:
@@ -403,7 +434,7 @@ def _synthesize_pipeline(clean: str, rate: str | None = None) -> tuple[bytes, st
         return (data, "audio/wav") if data else None
 
     def try_edge() -> tuple[bytes, str] | None:
-        data = _edge_tts_bytes(clean, rate=rate)
+        data = _edge_tts_bytes(clean, rate=rate, voice=voice_ov)
         return (data, "audio/mpeg") if data else None
 
     def try_gtts() -> tuple[bytes, str] | None:
@@ -460,13 +491,23 @@ def synthesize_to_file(text: str, out_path: str | Path, rate: str | None = None)
     return txt
 
 
-def synthesize_bytes(text: str, rate: str | None = None, *, allow_local: bool = True) -> tuple[bytes, str]:
-    """Return audio bytes for the HTTP speak API."""
+def synthesize_bytes(
+    text: str,
+    rate: str | None = None,
+    *,
+    allow_local: bool = True,
+    voice: str | None = None,
+    engine: str | None = None,
+) -> tuple[bytes, str]:
+    """Return audio bytes for the HTTP speak API.
+
+    Optional ``voice`` / ``engine`` override prefs (Systems voice preview).
+    """
     clean = _scrub(text)
     if not clean:
         return b"", "text/plain"
 
-    data, mime = _synthesize_pipeline(clean, rate=rate)
+    data, mime = _synthesize_pipeline(clean, rate=rate, voice=voice, engine=engine)
     if data:
         return data, mime
     if not allow_local:

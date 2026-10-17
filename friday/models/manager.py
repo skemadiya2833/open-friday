@@ -10,8 +10,8 @@ import httpx
 from friday.config import (
     EMBED_MODEL,
     OLLAMA_HOST,
-    VISION_MODEL,
     resolve_chat_model,
+    resolve_vision_model,
 )
 from friday.runtime.resource_policy import keep_alive_for_role
 
@@ -26,7 +26,7 @@ class ModelManager:
 
     def model_for(self, role: Role) -> str:
         if role == "vision":
-            return VISION_MODEL
+            return resolve_vision_model()
         if role == "embed":
             return EMBED_MODEL
         return resolve_chat_model()
@@ -43,16 +43,17 @@ class ModelManager:
                 return name
 
             # Already hot with this exact model — skip another warmup round-trip.
-            if self._loaded == role and self._loaded_name == name:
+            if self._loaded_name == name:
+                self._loaded = role
                 return name
 
-            if self._loaded in ("vision", "chat") and self._loaded != role:
-                other = self.model_for(self._loaded)
-                if other != name:
-                    self._unload(other)
-                    self._loaded_name = None
+            # Different GPU model → unload whoever is hot (chat↔vision swap on 16GB).
+            if self._loaded_name and self._loaded_name != name:
+                self._unload(self._loaded_name)
+                self._loaded_name = None
 
-            self._warmup(name, keep_alive=keep_alive_for_role("main"))
+            keep = keep_alive_for_role("vision" if role == "vision" else "main")
+            self._warmup(name, keep_alive=keep)
             self._loaded = role
             self._loaded_name = name
             return name

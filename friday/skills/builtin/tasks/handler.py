@@ -22,8 +22,15 @@ _ADD_TODAY = re.compile(
     re.I,
 )
 _LIST_TODAY = re.compile(
-    r"\b(what('?s| is) (on )?(my )?(plan|agenda|today)|show (my )?plan|"
-    r"today'?s (plan|agenda|tasks)|list (my )?(plan|agenda)|what('?s| is) the plan)\b",
+    r"\b("
+    r"what('?s| is) (on |up for |up with )?(my )?(plan|agenda|today)|"
+    r"what('?s| is) up( for today| today)?|"
+    r"(tell me |read (me )?|give me )?(the |my |today'?s )?(plan|agenda)( for today)?|"
+    r"show (me )?(my |the |today'?s )?(plan|agenda)|"
+    r"today'?s (plan|agenda|tasks)|list (my )?(plan|agenda)|"
+    r"what('?s| is) the plan( for today)?|"
+    r"plan for today|agenda for today"
+    r")\b",
     re.I,
 )
 _DONE = re.compile(r"\b(done|finished|completed|check off)\b", re.I)
@@ -230,14 +237,7 @@ class SkillHandler(Skill):
 
         # Fast path: today's agenda without a full ReAct loop.
         if _LIST_TODAY.search(msg) and not _ADD_TODAY.search(msg):
-            from friday.tasks.day_plan import scrub_meta_items
-            from friday.tasks.plan import format_for_prompt, get_plan
-
-            scrub_meta_items()
-            data = get_plan()
-            reply = f"Today's plan ({data.get('date')}):\n{format_for_prompt()}"
-            reply = maybe_append_quip(reply, user_text=msg, context="agenda_list")
-            return SkillResult(reply=reply, skill_id="tasks", metadata={"plan": data})
+            return self._reply_today_plan(ctx, msg, maybe_append_quip)
 
         if _ADD_TODAY.search(msg):
             from friday.tasks.plan import add_item, format_for_prompt, get_plan
@@ -279,7 +279,10 @@ class SkillHandler(Skill):
             result = call_tool("plan_done", {"text": msg})
             return SkillResult(reply=result, skill_id="tasks")
 
-        # Never dump tool JSON at the owner. Timed work is handled above; leftover agenda goes through tools internally.
+        # Last resort for agenda: always answer from the local plan — never a hollow "try once more".
+        if re.search(r"(?i)\b(today|plan|agenda|tasks?|to-?dos?)\b", msg):
+            return self._reply_today_plan(ctx, msg, maybe_append_quip)
+
         from friday.tools.react import run_react
 
         reply, meta = run_react(
@@ -295,4 +298,31 @@ class SkillHandler(Skill):
             history=ctx.history,
             emit=ctx.emit,
         )
+        # Replace useless ReAct failure with a real agenda read.
+        if not (reply or "").strip() or re.search(
+            r"(?i)couldn'?t finish that cleanly|try once more", reply or ""
+        ):
+            return self._reply_today_plan(ctx, msg, maybe_append_quip)
         return SkillResult(reply=reply, skill_id="tasks", metadata=meta)
+
+    def _reply_today_plan(self, ctx: SkillContext, msg: str, maybe_append_quip) -> SkillResult:
+        from friday.persona import owner_name
+        from friday.tasks.day_plan import scrub_meta_items
+        from friday.tasks.plan import format_for_prompt, get_plan
+
+        scrub_meta_items()
+        data = get_plan()
+        open_items = [it for it in (data.get("items") or []) if not it.get("done")]
+        if not open_items:
+            reply = (
+                f"Board's clear for today, {owner_name()}. "
+                "Say what to lock in and I'll put it on the agenda."
+            )
+        elif ctx.voice_mode:
+            tops = "; ".join((it.get("text") or "")[:60] for it in open_items[:4])
+            more = f" — plus {len(open_items) - 4} more" if len(open_items) > 4 else ""
+            reply = f"On today's agenda: {tops}{more}."
+        else:
+            reply = f"Today's plan ({data.get('date')}):\n{format_for_prompt()}"
+        reply = maybe_append_quip(reply, user_text=msg, context="agenda_list")
+        return SkillResult(reply=reply, skill_id="tasks", metadata={"plan": data})

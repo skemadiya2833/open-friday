@@ -43,8 +43,9 @@ Everyday knobs (persona, agent backend, tools-first, memory, approvals, shell to
 | CHAT_NUM_CTX | `4096` | Chat context |
 | FRIDAY_MODEL_ROLES | `false` | Enable fast/main/vision/coder map |
 | FRIDAY_MODEL_FAST | same as MAIN | Role: fast (defaults to 9b; set 4b only if splitting) |
-| FRIDAY_MODEL_MAIN | `qwen3.5:9b` | Role: main |
-| FRIDAY_MODEL_VISION | `qwen3.5:9b` | Role: vision |
+| FRIDAY_MODEL_MAIN | `qwen3-vl:8b-instruct` | Role: main (same VL as vision on 16GB; see `models/README.md`) |
+| FRIDAY_MODEL_VISION | `qwen3-vl:8b-instruct` | Screen/camera — must be a VL tag |
+| FRIDAY_VISION_KEEP_ALIVE | `-1` / `3m` | Keep VL loaded; use `3m` only if swapping with a separate MAIN |
 | FRIDAY_MODEL_CODER | `qwen3-coder:30b` | Role: coder (heavy) |
 | FRIDAY_COMPLEXITY_ROUTING | `false` | Heuristic 4b/9b routing |
 | FRIDAY_AUTOSTART_OLLAMA | `true` | Start Ollama if missing |

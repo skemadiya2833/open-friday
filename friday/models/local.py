@@ -315,11 +315,14 @@ def query_aim_verification(
         overlay.set_status("verifying")
 
     try:
+        from friday.models.manager import get_model_manager
+
+        vision_tag = get_model_manager().ensure_loaded("vision")
         accumulated, _ = _stream_chat(
             messages,
             format_json=True,
             reasoning_mode=False,
-            model=VISION_MODEL or MODEL_NAME,
+            model=vision_tag,
         )
     except RuntimeError as exc:
         print(f"[Aim Verify] Model error: {exc}")
@@ -365,9 +368,10 @@ def describe_screen(
     """Answer a question about the current screenshot in plain text (no actions)."""
     from friday.config import CHAT_NUM_CTX, CHAT_NUM_PREDICT
     from friday.models.manager import get_model_manager
-    from friday.persona import system_prompt
+    from friday.persona import owner_name, system_prompt
 
-    get_model_manager().mark_used("vision")
+    # Unload text chat (e.g. 27B) and load a VL tag — never send images to a text GGUF.
+    vision_tag = get_model_manager().ensure_loaded("vision")
     if voice_mode:
         prompt = f"{system_prompt('observe_voice')}\n\nUser question: {question.strip()}"
         predict = 96
@@ -380,15 +384,19 @@ def describe_screen(
             messages,
             reasoning_mode=False,
             think=False,
-            model=VISION_MODEL or MODEL_NAME,
+            model=vision_tag,
             num_predict=predict,
-            num_ctx=CHAT_NUM_CTX,
+            num_ctx=min(4096, CHAT_NUM_CTX),
             on_token=on_token,
         )
     except RuntimeError as exc:
-        from friday.persona import owner_name
-
-        return f"Couldn't read the screen, {owner_name()} ({exc})."
+        err = str(exc)
+        if "500" in err or "Internal Server Error" in err:
+            return (
+                f"Screen look failed on {vision_tag}, {owner_name()}. "
+                "The vision model may still be loading — try once more in a few seconds."
+            )
+        return f"Couldn't read the screen, {owner_name()}. {err.split('For more information')[0].strip()}"
     return accumulated.strip()
 
 
@@ -414,15 +422,17 @@ def query_model_vision(
         emit("thinking_clear")
 
     try:
+        from friday.models.manager import get_model_manager
         from friday.models.roles import PLANNER_SCHEMA
 
+        vision_tag = get_model_manager().ensure_loaded("vision")
         accumulated, _ = _stream_chat(
             [user_msg],
             format_json=True,
             format_schema=PLANNER_SCHEMA,
             reasoning_mode=False,
             think=False,
-            model=VISION_MODEL or MODEL_NAME,
+            model=vision_tag,
             num_predict=min(512, MODEL_NUM_PREDICT),
         )
     except RuntimeError as exc:

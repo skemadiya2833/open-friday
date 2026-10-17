@@ -964,8 +964,11 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       }
       if (ev.type === "error") {
         setCameraLooking(false);
-        liveBody.textContent = ev.message || "Error";
-        pushActivity(`Error · ${ev.message || "failed"}`, { live: false });
+        const errText = (ev.message || "Error").trim();
+        liveBody.textContent = errText;
+        // So the post-stream fallback does not overwrite with the voice "blanked" line.
+        finalReply = errText;
+        pushActivity(`Error · ${errText}`, { live: false });
         document.dispatchEvent(new CustomEvent("friday:task", { detail: { kind: "error" } }));
       }
     };

@@ -244,10 +244,21 @@ def apply_policy(intent: Intent, message: str) -> Intent:
 
     # 3) Act requires imperative language OR high confidence + imperative objective.
     if intent.mode == "act" or intent.skill_id == "computer_use":
+        # Measuring this PC is a real tool action even when phrased as a question.
+        measure_hw = bool(
+            "measure hardware" in (intent.reason or "")
+            or re.search(
+                r"\b(system specs?|hardware (?:status|check|report|info|specs?)|"
+                r"system hardware|pc specs?|my (?:system )?specs?)\b",
+                msg,
+                re.I,
+            )
+        )
         has_imperative = bool(
             _IMPERATIVE.search(msg)
             or _IMPERATIVE.search(intent.objective)
             or _SHOW_ON_SCREEN.search(msg)
+            or measure_hw
         )
         if not has_imperative:
             # Downgrade: question without action verbs → look if screen-related else talk
@@ -275,18 +286,23 @@ def apply_policy(intent: Intent, message: str) -> Intent:
             intent.reason += "; policy: low confidence act"
             intent.source = "policy"
 
-    # 3) Bare questions without imperatives should not act.
+    # 3) Bare questions without imperatives should not act (except measured hardware).
     if _QUESTION.search(msg) and not _IMPERATIVE.search(msg):
-        if intent.mode == "act":
-            return Intent(
-                mode="talk",
-                skill_id="chat",
-                confidence=0.75,
-                objective=msg,
-                reason="policy: vetoed act on interrogative",
-                source="policy",
-                raw=intent.raw,
-            )
+        if intent.mode == "act" and "measure hardware" not in (intent.reason or ""):
+            if not re.search(
+                r"\b(system specs?|hardware (?:status|check|report)|pc specs?)\b",
+                msg,
+                re.I,
+            ):
+                return Intent(
+                    mode="talk",
+                    skill_id="chat",
+                    confidence=0.75,
+                    objective=msg,
+                    reason="policy: vetoed act on interrogative",
+                    source="policy",
+                    raw=intent.raw,
+                )
 
     # Ensure skill exists / enabled
     skill = get_registry().get(intent.skill_id)
@@ -354,6 +370,11 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     if follow is not None:
         return follow
 
+    # After "what should I search?" → this turn is the topic (run research, don't chat).
+    topic_follow = _resolve_research_topic_reply(msg, history)
+    if topic_follow is not None:
+        return topic_follow
+
     # Study / read articles / learn → research skill with learn metadata (via objective wording).
     if _LEARN.search(msg):
         return Intent(
@@ -392,7 +413,8 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"we('?ll| will) be doing|for today|today'?s (plan|agenda|tasks)|"
         r"(note|write|jot|take)\s*(down)?\s+(my\s+)?(tasks?|to-?dos?|agenda)|"
         r"add .{0,40}\b(to )?(my )?(plan|agenda)|what('?s| is) (on )?my (plan|agenda)|"
-        r"what('?s| is) the plan)\b",
+        r"what('?s| is) (up for )?today|what('?s| is) the plan( for today)?|"
+        r"(tell me |read )?(the |my )?plan for today|agenda for today)\b",
         msg,
         re.I,
     ):
@@ -449,14 +471,35 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Vague "do a search / look something up" with no topic → ask once, then research.
+    if _is_vague_research_ask(msg):
+        return Intent(
+            mode="clarify",
+            skill_id="chat",
+            confidence=0.96,
+            objective="What should I search for — give me a topic or question.",
+            reason="deterministic: vague research → clarify topic",
+            source="policy",
+        )
+
     # Web lookup (news, google, "what's the weather") is research — not desktop control.
     # Do not treat "open google calendar/maps/…" as a search.
     # Bare "search" alone is NOT enough (that caught "search your memory").
     if (
-        _RESEARCH.search(msg)
+        (_RESEARCH.search(msg) or _SEARCH_VERB.search(msg))
         and not _DESKTOP_TARGET.search(msg)
         and not re.search(r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b", msg, re.I)
+        and not re.search(r"\b(your |my )?memory\b", msg, re.I)
     ):
+        if not _research_topic_residue(msg):
+            return Intent(
+                mode="clarify",
+                skill_id="chat",
+                confidence=0.95,
+                objective="What should I search for — give me a topic or question.",
+                reason="deterministic: research missing topic",
+                source="policy",
+            )
         return Intent(
             mode="research",
             skill_id="research",
@@ -520,16 +563,31 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
-    # Put/show specs/resources on screen → computer_use (tools-first HTML/PowerShell, not vision).
-    if _SHOW_ON_SCREEN.search(msg) or (
-        re.search(
-            r"\b(system specs?|system info(?:rmation)?|system resources?|hardware (?:info|specs?|resources?)|"
-            r"pc specs?|resources?.{0,40}on (the )?system)\b",
-            msg,
-            re.I,
-        )
-        and re.search(r"\b(screen|desktop|notepad|display|monitor|html|browser|show|list|bring)\b", msg, re.I)
+    # Hardware / specs — always measure via PowerShell (never let chat invent a 4090).
+    if re.search(
+        r"\b("
+        r"system specs?|system info(?:rmation)?|system resources?|"
+        r"hardware (?:info|specs?|resources?|status|check|report|summary)|"
+        r"system hardware|current hardware|(?:my )?hardware status|"
+        r"pc specs?|computer specs?|my specs?|"
+        r"resources?.{0,40}on (the )?system|"
+        r"(?:where(?:'s| is)|what(?:'s| is)|check|show|list|get)\b.{0,50}\b"
+        r"(?:hardware|system specs?|pc specs?|gpu|vram|ram)\b"
+        r")\b",
+        msg,
+        re.I,
     ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.96,
+            objective=msg,
+            reason="deterministic: measure hardware",
+            source="policy",
+        )
+
+    # Put/show other content on screen → computer_use (tools-first, not vision).
+    if _SHOW_ON_SCREEN.search(msg):
         return Intent(
             mode="act",
             skill_id="computer_use",
@@ -575,6 +633,109 @@ _RESEARCH = re.compile(
     r"platforms?\s+for\b)",
     re.I,
 )
+# Broader search verb (needs a topic residue — otherwise clarify).
+_SEARCH_VERB = re.compile(
+    r"\b("
+    r"search|searches|searching|look\s*ups?|looking\s+up|"
+    r"look\s+(?:\w+\s+){0,3}up|"
+    r"research(?:ing|es)?|google|"
+    r"do\s+(?:a\s+|me\s+a\s+)?(?:little\s+|quick\s+|small\s+|fast\s+)?(?:web\s+|online\s+)?search"
+    r")\b",
+    re.I,
+)
+_VAGUE_SEARCH_ASK = re.compile(
+    r"(?i)^\s*(?:(?:hey|hi|ok|okay)\s+)?(?:friday[,:]?\s*)?"
+    r"(?:(?:can|could|would|will)\s+you\s+)?"
+    r"(?:please\s+)?"
+    r"(?:"
+    r"(?:do|run|perform)\s+(?:a\s+|me\s+a\s+)?(?:little\s+|quick\s+|small\s+|fast\s+)?"
+    r"(?:web\s+|google\s+|online\s+)?(?:search|lookup|research)\b|"
+    r"(?:search|look\s*up|research|google)\s*(?:(?:the\s+)?(?:web|internet|online))?\s*"
+    r"(?:for\s+me|something|stuff|things?)?\b|"
+    r"(?:search|look\s*up|research)\s+(?:something|stuff|things?)\b|"
+    r"look\s+(?:something|stuff|things?)\s+up\b"
+    r")"
+    r"(?:\s+for\s+me)?(?:\s+please)?(?:\s+real\s+quick)?\s*[.?!]*\s*$"
+)
+_ASKED_RESEARCH_TOPIC = re.compile(
+    r"(?i)\b("
+    r"what should i search|"
+    r"what (?:do you want|should i|shall i) (?:me to )?(?:search|look up|research|google)|"
+    r"what topic|"
+    r"give me a topic|"
+    r"search for —|"
+    r"what (?:are we|am i) (?:looking|searching) up"
+    r")\b"
+)
+
+
+def _research_topic_residue(msg: str) -> str:
+    """Strip search scaffolding; leftover is the real topic (empty → ask)."""
+    t = re.sub(
+        r"(?i)\b("
+        r"please|hey|hi|ok|okay|friday|boss|"
+        r"can you|could you|would you|will you|"
+        r"do (?:a |me a )?(?:little |quick |small |fast )?(?:web |google |online )?(?:search|lookup|research)|"
+        r"search(?:es|ing)?(?: the web| google| online| for me)?|"
+        r"look(?:ing)?\s*ups?|research(?:ing|es)?|google|find out|"
+        r"for me|real quick|quickly|something|stuff|things?|a bit|a little|"
+        r"the web|online|internet"
+        r")\b",
+        " ",
+        msg or "",
+    )
+    t = re.sub(r"\s+", " ", t).strip(" .?!,;:\"'")
+    # Need a real noun/phrase — not just "it" / "that".
+    if len(t) < 3 or t.lower() in {"it", "that", "this", "them", "those", "one"}:
+        return ""
+    return t
+
+
+def _is_vague_research_ask(msg: str) -> bool:
+    if _VAGUE_SEARCH_ASK.match(msg or ""):
+        return True
+    if (_RESEARCH.search(msg or "") or _SEARCH_VERB.search(msg or "")) and not _research_topic_residue(msg):
+        # "search your memory" is memory, not vague web.
+        if re.search(r"(?i)\b(your |my )?memory\b", msg or ""):
+            return False
+        return True
+    return False
+
+
+def _resolve_research_topic_reply(
+    msg: str, history: list[dict[str, str]] | None
+) -> Intent | None:
+    """If Friday just asked for a search topic, treat this utterance as that topic."""
+    if not history or not (msg or "").strip():
+        return None
+    last_a = next(
+        (t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"),
+        "",
+    )
+    if not _ASKED_RESEARCH_TOPIC.search(last_a):
+        return None
+    if _LOOK_ONLY.search(msg) or _CAMERA_LOOK.search(msg):
+        return None
+    if re.search(r"(?i)\b(never ?mind|cancel|forget it|stop)\b", msg):
+        return Intent(
+            mode="talk",
+            skill_id="chat",
+            confidence=0.9,
+            objective=msg,
+            reason="deterministic: research topic cancelled",
+            source="policy",
+        )
+    topic = _research_topic_residue(msg) or msg.strip()
+    if len(topic) < 2:
+        return None
+    return Intent(
+        mode="research",
+        skill_id="research",
+        confidence=0.95,
+        objective=topic,
+        reason="deterministic: research-topic-reply",
+        source="policy",
+    )
 _LEARN = re.compile(
     r"\b("
     r"learn (from|about|how)|study (how|about)|read (up )?(on|about)|"
@@ -584,15 +745,28 @@ _LEARN = re.compile(
     r")\b",
     re.I,
 )
+# Short confirms only — whole utterance. "yeah do that research" must NOT match
+# (that is handled by _CONFIRM_RESEARCH or web lookup with a real topic).
 _CONFIRM_DO = re.compile(
-    r"^\s*("
-    r"yes|yeah|yep|yup|sure|ok|okay|alright|all right|"
-    r"do (it|that)|go ahead|please do|just do (it|that)|"
-    r"do that for me|(you|he|she) (has|have|must|should|need) to do|"
-    r"put (them|it|that) on (my |the )?screen|"
-    r"i prefer .{0,60}on (my |the )?screen"
-    r")\b",
+    r"^\s*(?:"
+    r"(?:yes|yeah|yep|yup|sure|ok|okay|alright|all right)"
+    r"(?:\s+(?:please|do (?:it|that)|go ahead|just do (?:it|that)|do that for me))*|"
+    r"do (?:it|that)|go ahead|please do|just do (?:it|that)|do that for me|"
+    r"(?:you|he|she) (?:has|have|must|should|need) to do|"
+    r"put (?:them|it|that) on (?:my |the )?screen|"
+    r"i prefer .{0,60}on (?:my |the )?screen"
+    r")"
+    r"(?:\s+(?:please|thanks|thank you|for me|now|then|boss)){0,3}"
+    r"(?:\s*[.\!\,]*)?\s*$",
     re.I,
+)
+# "do that research" / "yeah run the research" — confirm an offered lookup, not a new topic.
+_CONFIRM_RESEARCH = re.compile(
+    r"(?i)^\s*(?:(?:yes|yeah|yep|yup|sure|ok|okay)\s+)?"
+    r"(?:please\s+)?"
+    r"(?:do|run|start|begin)\s+(?:that|the|this|my)\s+"
+    r"(?:little\s+|quick\s+)?research\b"
+    r"(?:\s+for\s+me)?(?:\s+please)?(?:\s*[.\!\,]*)?\s*$"
 )
 
 
@@ -603,11 +777,34 @@ def _last_substantive_user(history: list[dict[str, str]] | None) -> str:
         if turn.get("role") != "user":
             continue
         text = (turn.get("content") or "").strip()
-        if not text or _CONFIRM_DO.search(text):
+        if not text or _CONFIRM_DO.search(text) or _CONFIRM_RESEARCH.search(text):
             continue
         if len(text) < 4:
             continue
+        # Skip vague "do some research" — not a usable topic.
+        if _is_vague_research_ask(text):
+            continue
         return text
+    return ""
+
+
+def _assistant_offered_research_topic(last_a: str) -> str:
+    """Pull the concrete topic Friday offered to look up."""
+    if not (last_a or "").strip():
+        return ""
+    patterns = (
+        r"(?i)\b(?:that|the|this)\s+(.{3,80}?)\s+research\b",
+        r"(?i)\bresearch\s+(?:on|about|into|for)\s+(.{3,100}?)(?:\.|\?|$|,|\s+—)",
+        r"(?i)\b(?:for the|about the|on the)\s+(.{5,90}?)(?:\s+plan|\s+landscape|\.|want me|,)",
+        r"(?i)(?:shall i|i can|let me|want me to)\s+(.{12,160}?)(?:\?|$)",
+    )
+    for pat in patterns:
+        m = re.search(pat, last_a)
+        if not m:
+            continue
+        topic = re.sub(r"\s+", " ", m.group(1)).strip(" .?!,;:\"'")
+        if len(topic) >= 4 and topic.lower() not in {"it", "that", "this", "them"}:
+            return topic
     return ""
 
 
@@ -615,7 +812,8 @@ def _resolve_confirm_followup(
     msg: str, history: list[dict[str, str]] | None
 ) -> Intent | None:
     """Map short confirmations onto the prior real ask so we act instead of chatting."""
-    if not _CONFIRM_DO.search(msg):
+    confirm_research = bool(_CONFIRM_RESEARCH.search(msg))
+    if not confirm_research and not _CONFIRM_DO.search(msg):
         return None
     prior = _last_substantive_user(history)
     last_a = ""
@@ -624,26 +822,52 @@ def _resolve_confirm_followup(
             (t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"),
             "",
         )
-    # Prefer prior user topic; fall back to what the assistant offered to do.
-    objective = prior
-    if not objective and last_a:
-        m = re.search(
-            r"(?:shall i|i can|let me|want me to)\s+(.{12,160}?)(?:\?|$)",
-            last_a,
-            re.I,
-        )
-        if m:
-            objective = m.group(1).strip()
+    offered = _assistant_offered_research_topic(last_a)
+    # Prefer what Friday just offered; then prior user topic with substance.
+    objective = offered or prior
     if not objective:
         return None
+    # Confirming a greeting / empty chat → ask for a real topic instead of googling "hey".
+    if _is_vague_research_ask(objective) or (
+        confirm_research
+        and not offered
+        and not _research_topic_residue(objective)
+        and not _RESEARCH.search(objective)
+    ):
+        return Intent(
+            mode="clarify",
+            skill_id="chat",
+            confidence=0.96,
+            objective="What should I search for — give me a topic or question.",
+            reason="deterministic: confirm research but no topic",
+            source="policy",
+        )
+    if re.search(r"(?i)^\s*(hey|hi|hello|what'?s going on|how are you)\b", objective):
+        return Intent(
+            mode="clarify",
+            skill_id="chat",
+            confidence=0.96,
+            objective="What should I search for — give me a topic or question.",
+            reason="deterministic: confirm→stale greeting, ask topic",
+            source="policy",
+        )
     blob = f"{msg} {objective} {last_a}".lower()
-    if _LEARN.search(objective) or _LEARN.search(last_a):
+    if confirm_research or _LEARN.search(objective) or _LEARN.search(last_a):
+        if _LEARN.search(objective) or _LEARN.search(last_a):
+            return Intent(
+                mode="research",
+                skill_id="research",
+                confidence=0.93,
+                objective=objective,
+                reason="deterministic: confirm→learn",
+                source="policy",
+            )
         return Intent(
             mode="research",
             skill_id="research",
             confidence=0.93,
             objective=objective,
-            reason="deterministic: confirm→learn",
+            reason="deterministic: confirm→research",
             source="policy",
         )
     if (

@@ -236,6 +236,77 @@ def resolve_chat_model() -> str:
     return (CHAT_MODEL or VISION_MODEL or MODEL_NAME).strip()
 
 
+def _name_looks_vision(tag: str) -> bool:
+    n = (tag or "").lower()
+    # Explicit VL / multimodal tags — not plain text GGUFs.
+    return any(x in n for x in ("vl:", "vl-", "-vl", "vision", "llava", "minicpm-v", "qwen2.5vl"))
+
+
+def _name_looks_text_only(tag: str) -> bool:
+    n = (tag or "").lower()
+    if _name_looks_vision(n):
+        return False
+    # Custom text GGUFs / coder / IQ quants without a VL projector.
+    return any(x in n for x in ("iq3", "iq2", "iq4", "iq1", "coder", "-text", "embed"))
+
+
+def resolve_vision_model() -> str:
+    """Model used for screenshots / camera. Never send images to a text-only resident."""
+    configured = (
+        os.getenv("FRIDAY_MODEL_VISION") or VISION_MODEL or MODEL_NAME or ""
+    ).strip()
+    chat = resolve_chat_model()
+    if configured and _name_looks_vision(configured) and not _name_looks_text_only(configured):
+        return configured
+    # Same tag as chat or text-looking → pick an already-installed VL (no download).
+    if not configured or configured == chat or _name_looks_text_only(configured):
+        for cand in (
+            "qwen3-vl:8b-instruct",
+            "qwen2.5vl:7b-q4_K_M",
+            "qwen3.5:9b",
+        ):
+            if _ollama_tag_installed(cand):
+                if configured and configured != cand:
+                    print(
+                        f"[Vision] '{configured}' cannot read images — "
+                        f"using installed '{cand}' for screen look (swap in/out on 16GB).",
+                        flush=True,
+                    )
+                return cand
+    return configured or chat
+
+
+_ollama_tags_cache: set[str] | None = None
+
+
+def _ollama_tag_installed(tag: str) -> bool:
+    """Best-effort local Ollama catalog check (cached per process)."""
+    global _ollama_tags_cache
+    if _ollama_tags_cache is not None:
+        return tag in _ollama_tags_cache or any(
+            t == tag or t.startswith(tag + ":") or tag.startswith(t.split(":")[0])
+            for t in _ollama_tags_cache
+        )
+    try:
+        import httpx
+
+        r = httpx.get(f"{OLLAMA_HOST}/api/tags", timeout=2.0)
+        names: set[str] = set()
+        if r.status_code == 200:
+            for m in (r.json() or {}).get("models") or []:
+                name = str(m.get("name") or "").strip()
+                if name:
+                    names.add(name)
+                    # Also accept untagged base (qwen3-vl:8b-instruct vs qwen3-vl)
+                    names.add(name.split(":")[0])
+        _ollama_tags_cache = names
+    except Exception:  # noqa: BLE001
+        _ollama_tags_cache = set()
+    return tag in _ollama_tags_cache or any(
+        t == tag or t.startswith(f"{tag.split(':')[0]}:") for t in _ollama_tags_cache
+    )
+
+
 def ensure_data_dirs() -> None:
     for path in (DATA_DIR, WORKSPACE_DIR, CHROMA_DIR, CONVERSATIONS_DIR):
         os.makedirs(path, exist_ok=True)

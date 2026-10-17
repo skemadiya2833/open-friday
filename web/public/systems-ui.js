@@ -70,6 +70,12 @@ function prefItemHtml(it) {
       `<button type="button" data-pref="${escapeHtml(it.key)}" data-val="${escapeHtml(c)}" class="${c === it.value ? "on" : ""}">${escapeHtml(String(c))}</button>`
     ).join("");
     control = `<div class="seg pref-seg" style="margin-top:8px;flex-wrap:wrap">${opts}</div>`;
+    if (it.key === "tts_voice") {
+      control += `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="ghost" id="ttsVoicePreviewBtn" title="Hear the selected TTS voice">Preview voice</button>
+        <span class="muted" id="ttsVoicePreviewHint" style="font-size:12px"></span>
+      </div>`;
+    }
   } else {
     control = `<input type="text" data-pref="${escapeHtml(it.key)}" value="${escapeHtml(String(it.value ?? ""))}" style="margin-top:8px;width:min(280px,100%);padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)" />`;
   }
@@ -78,6 +84,80 @@ function prefItemHtml(it) {
       <span class="muted pref-src"> · ${escapeHtml(src)}${restart}</span></div>
     ${control}
   </div>`;
+}
+
+/** Sample line for Systems → TTS voice preview. */
+const TTS_PREVIEW_LINE =
+  "Systems online, boss. This is how I sound with the selected voice.";
+
+let _ttsPreviewAudio = null;
+
+function selectedPrefValue(key) {
+  const on = document.querySelector(`#settingsGrid .pref-seg button[data-pref="${key}"].on`);
+  return on ? on.getAttribute("data-val") : "";
+}
+
+async function previewSelectedTtsVoice() {
+  const hint = $("#ttsVoicePreviewHint");
+  const btn = $("#ttsVoicePreviewBtn");
+  const voice = selectedPrefValue("tts_voice");
+  const engine = selectedPrefValue("tts_engine") || "auto";
+  if (!voice) {
+    if (hint) hint.textContent = "Select a voice first";
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (hint) hint.textContent = `Synthesizing · ${voice}…`;
+  try {
+    if (_ttsPreviewAudio) {
+      try { _ttsPreviewAudio.pause(); } catch (_) {}
+      _ttsPreviewAudio = null;
+    }
+    const rate = window.FridayVoice && FridayVoice.edgeRate ? FridayVoice.edgeRate() : "+0%";
+    const res = await apiFetch("/api/voice/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: TTS_PREVIEW_LINE,
+        rate,
+        voice,
+        engine: engine === "auto" ? undefined : engine,
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(detail || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    if (!(blob.type || "").startsWith("audio") && blob.size < 1000) {
+      throw new Error("No audio returned");
+    }
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    _ttsPreviewAudio = audio;
+    if (hint) hint.textContent = `Playing · ${voice}`;
+    await new Promise((resolve) => {
+      const done = () => {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        if (_ttsPreviewAudio === audio) _ttsPreviewAudio = null;
+        resolve();
+      };
+      audio.onended = done;
+      audio.onerror = done;
+      audio.play().catch(done);
+    });
+    if (hint) hint.textContent = "Done";
+    setTimeout(() => { if (hint && hint.textContent === "Done") hint.textContent = ""; }, 1600);
+  } catch (err) {
+    console.warn("[Friday] TTS preview failed:", err);
+    if (hint) hint.textContent = "Preview failed — try another voice or engine";
+    // Soft fallback: browser speech so the control still does something.
+    if (typeof speakBrowser === "function") {
+      try { await speakBrowser(TTS_PREVIEW_LINE); } catch (_) {}
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function bindPrefsControls(snap) {
@@ -150,6 +230,9 @@ function bindPrefsControls(snap) {
     } catch (_) {
       setHint("Failed");
     }
+  });
+  $("#ttsVoicePreviewBtn")?.addEventListener("click", () => {
+    previewSelectedTtsVoice();
   });
   $("#prefsClearBtn")?.addEventListener("click", async () => {
     try {

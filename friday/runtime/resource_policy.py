@@ -59,7 +59,10 @@ def keep_alive_for_role(role: str) -> int | str:
         raw = os.getenv("FRIDAY_CODER_KEEP_ALIVE", "0")
     elif role == "embed":
         raw = os.getenv("FRIDAY_EMBED_KEEP_ALIVE", "10m")
-    elif role in ("main", "vision", "chat", "fast"):
+    elif role == "vision":
+        # Short residency so look turns don't pin VL forever over the 27B chat brain.
+        raw = os.getenv("FRIDAY_VISION_KEEP_ALIVE", "3m")
+    elif role in ("main", "chat", "fast"):
         raw = os.getenv("FRIDAY_MAIN_KEEP_ALIVE", MODEL_KEEP_ALIVE)
     else:
         raw = MODEL_KEEP_ALIVE

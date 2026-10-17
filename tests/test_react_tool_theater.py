@@ -51,3 +51,37 @@ def test_run_react_forces_search_when_model_narrates():
     assert "web_search" in {t.get("tool") for t in meta.get("tools") or []}
     assert "Searching the web" not in reply
     assert "tips" in reply.lower() or "Prefer action" in reply or "results" in reply.lower()
+
+
+def test_hollow_done_forces_memory_search():
+    calls = {"n": 0}
+
+    def fake_model(prompt, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"message": "FINAL: Done boss."}
+        return {"message": "FINAL: You like dark dashboards and 3D printing."}
+
+    class _TR:
+        def text(self):
+            return "- (0.91) [abcd1234] Prefers dark dashboards and 3D printing plans"
+
+    with patch("friday.models.manager.get_model_manager") as gm:
+        gm.return_value.ensure_loaded = lambda *_a, **_k: None
+        with patch("friday.models.local.query_model_text", side_effect=fake_model):
+            with patch("friday.tools.react.call_tool_result", return_value=_TR()):
+                reply, meta = R.run_react(
+                    "what do you remember about me",
+                    allowed_tools=["memory_search", "memory_add", "memory_delete"],
+                    system_overlay="memory",
+                    max_steps=3,
+                )
+    assert "memory_search" in {t.get("tool") for t in meta.get("tools") or []}
+    assert not R._is_hollow_done(reply)
+    assert "done" not in reply.lower() or "3d" in reply.lower() or "dashboard" in reply.lower()
+
+
+def test_hollow_done_detector():
+    assert R._is_hollow_done("Done boss.")
+    assert R._is_hollow_done("done.")
+    assert not R._is_hollow_done("Done — remembered your filament preference.")

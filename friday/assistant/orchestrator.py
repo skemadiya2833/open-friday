@@ -243,8 +243,18 @@ def handle_message(
         emit("status", {"status": "idle"})
         return {"reply": reply, "session_id": session.id, "skill_id": None, "events": events}
 
-    # Skills receive the rewritten objective when Act; otherwise the user text.
-    skill_message = intent.objective if intent.mode == "act" else message
+    # Skills receive the rewritten objective when Act/Research follow-ups rewrote the goal
+    # (e.g. "yeah do that" → "3D printing market"). Bare user text stays for normal turns.
+    skill_message = message
+    if intent.mode == "act" and (intent.objective or "").strip():
+        skill_message = intent.objective
+    elif (
+        intent.skill_id == "research"
+        and (intent.objective or "").strip()
+        and intent.objective.strip() != message.strip()
+        and not intent.objective.lower().startswith("what should i search")
+    ):
+        skill_message = intent.objective
     skill_labels = {
         "chat": "Chatting…",
         "observe": "Looking at your screen…",
@@ -273,11 +283,12 @@ def handle_message(
         emit=emit,
     )
     result = skill.run(ctx)
-    # Chat sometimes roleplays work, invents cloud limits, or asks the owner to run shell — force a real skill.
+    # Chat sometimes roleplays work, invents cloud limits / fake PC specs, or asks the owner to run shell.
     force_action = result.skill_id == "chat" and (
         _fake_action_promise(result.reply or "", message)
         or _false_capability_denial(result.reply or "")
         or _asks_owner_to_run_shell(result.reply or "")
+        or _fake_hardware_report(result.reply or "")
     )
     if force_action:
         objective, skill_name = _recover_action_objective(message, history, result.reply or "")
@@ -312,8 +323,8 @@ def handle_message(
     if not reply:
         # Never hand the UI an empty string — voice treats that as "(no reply)" and re-arms the mic.
         reply = (
-            "I finished that step but had nothing useful to say out loud. "
-            "Try once more, or check the desktop."
+            "I finished the step but have nothing solid to report yet. "
+            "Say what you want next and I'll take it."
         )
     if voice_mode and reply:
         reply = _clip_voice_reply(reply)
@@ -369,7 +380,18 @@ _FAKE_PROMISE = re.compile(
     r"stand by|holding on|one (sec|moment|second)|give me a moment|"
     r"pulling that up|looking that up|on (it|your screen)|"
     r"consider it handled|queued in powershell|browser is open|search query is queued|"
-    r"i'll take care|working on that now"
+    r"i'll take care|working on that now|"
+    r"running system hardware|executing|\*\u2026executing\*\u2026|"
+    r"hardware summary|no spoofing|just your hardware"
+    r")\b"
+)
+
+# Chat invents boutique PC builds (4090 / i7-12700K / DDR4-3200) instead of measuring.
+_FAKE_HARDWARE = re.compile(
+    r"(?i)\b("
+    r"i7-?\s*12700k|rtx\s*4090|ddr4\s*@\s*3200|core i[3579]-|"
+    r"ran\s+`?systeminfo`?|ran\s+`?wmic`?|ran\s+`?dxdiag`?|"
+    r"no spoofing,\s*no guesswork"
     r")\b"
 )
 
@@ -417,6 +439,11 @@ def _asks_owner_to_run_shell(reply: str) -> bool:
     return bool(reply and _ASK_USER_SHELL.search(reply))
 
 
+def _fake_hardware_report(reply: str) -> bool:
+    """True when chat invents a hardware dump instead of measuring this PC."""
+    return bool(reply and _FAKE_HARDWARE.search(reply))
+
+
 def _recover_action_objective(
     message: str, history: list[dict[str, str]], reply: str
 ) -> tuple[str, str]:
@@ -425,6 +452,12 @@ def _recover_action_objective(
 
     prior = _last_substantive_user(history) or message
     blob = f"{message} {prior} {reply}".lower()
+    if _fake_hardware_report(reply) or re.search(
+        r"\b(system ?specs?|hardware|gpu|vram|ram|cpu|disk|nvme)\b",
+        blob,
+    ):
+        # Always re-measure — never trust chat's invented bill of materials.
+        return "check system hardware", "computer_use"
     if re.search(
         r"\b(monitor|display|camera|webcam|peripheral|device|usb|wmic|hardware|screen)\b",
         blob,
@@ -514,11 +547,22 @@ def stream_message(
         yield item
 
     if "error" in holder:
+        # Always close the stream with a spoken reply — empty done → voice "blanked" loop.
+        yield {
+            "type": "done",
+            "reply": f"That failed on my side: {holder['error']}",
+            "session_id": session_id,
+            "skill_id": None,
+            "metadata": {"error": holder["error"]},
+        }
         return
     result = holder.get("result") or {}
+    reply = (result.get("reply") or "").strip() or (
+        "I finished the step but have nothing solid to report yet. Say what you want next."
+    )
     yield {
         "type": "done",
-        "reply": result.get("reply", ""),
+        "reply": reply,
         "session_id": result.get("session_id"),
         "skill_id": result.get("skill_id"),
         "metadata": result.get("metadata") or {},

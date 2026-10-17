@@ -142,16 +142,20 @@ _STATUS = re.compile(
     r"cpu(?: and)?(?:/?| )ram|resource(?:s)?(?: usage)?)\s*\??\s*$",
     re.I,
 )
-# "Resources on the system", "system specs", "my specification" — never vision-type into the HUD.
+# "Resources on the system", "system specs", "hardware status" — never invent; measure via PowerShell.
 _SPECS_TOPIC = (
-    r"(?:system\s+specs?|system\s+info(?:rmation)?|hardware\s+(?:info|specs?|resources?)|"
+    r"(?:system\s+specs?|system\s+info(?:rmation)?|"
+    r"hardware\s+(?:info|specs?|resources?|status|check|report|summary)|"
+    r"system\s+hardware|current\s+hardware|(?:my\s+)?hardware\s+status|"
     r"pc\s+specs?|computer\s+specs?|device\s+specs?|"
-    r"my\s+specs?|my\s+specifications?|(?:the\s+)?specifications?|"
+    r"my\s+(?:system\s+)?specs?|my\s+specifications?|(?:the\s+)?specifications?|"
     r"(?:my\s+)?system\s+resources?|resources?.{0,40}on\s+(?:the\s+)?system|"
-    r"machine\s+(?:specs?|info|specifications?))"
+    r"machine\s+(?:specs?|info|specifications?|hardware)|"
+    r"(?:pc|computer|machine)\s+(?:hardware|status))"
 )
 _SHOW_SPECS_ON_SCREEN = re.compile(
-    rf"\b(?:show|display|put|bring up|pull up|open|list)\b.{{0,120}}{_SPECS_TOPIC}\b|"
+    rf"\b(?:show|display|put|bring up|pull up|open|list|check|get|run)\b.{{0,120}}{_SPECS_TOPIC}\b|"
+    rf"\b(?:where(?:'s| is)|what(?:'s| is))\b.{{0,60}}{_SPECS_TOPIC}\b|"
     rf"\b{_SPECS_TOPIC}\b.{{0,80}}\b(?:on (?:my |the )?(?:screen|desktop|monitor|display)|"
     r"in (?:a |my )?notepad|in (?:a |the )?browser|as html|html)\b|"
     # Voice: "list of my specification and put it on my screen"
@@ -534,6 +538,29 @@ def _specs_to_rows(text: str) -> list[tuple[str, str]]:
         if k and v:
             rows.append((k, v))
     return rows
+
+
+def _specs_spoken_brief(text: str) -> str:
+    """One short line from measured PowerShell output — never invents hardware."""
+    rows = {k.lower(): v for k, v in _specs_to_rows(text)}
+    cpu = rows.get("cpu") or "?"
+    # Trim noisy trailing spaces from CIM names
+    cpu = re.sub(r"\s+", " ", cpu).strip()
+    if len(cpu) > 48:
+        cpu = cpu[:45].rstrip() + "…"
+    cores = rows.get("cores / threads") or rows.get("cores/threads") or ""
+    ram = rows.get("ram") or "?"
+    gpu = rows.get("gpu") or rows.get("friday gpu panel") or "?"
+    if ";" in gpu:
+        gpu = gpu.split(";")[0].strip()
+    if len(gpu) > 40:
+        gpu = gpu[:37].rstrip() + "…"
+    bits = [cpu]
+    if cores:
+        bits.append(f"{cores} threads" if "/" not in cores else cores.replace(" / ", "/"))
+    bits.append(f"{ram} RAM")
+    bits.append(gpu)
+    return "Measured: " + " · ".join(bits) + "."
 
 
 def _html_escape(s: str) -> str:
@@ -1173,11 +1200,11 @@ def try_direct(objective: str, *, workspace: str | None = None,
                 _open_powershell_specs_window(specs)
             except Exception:  # noqa: BLE001
                 pass
+            brief = _specs_spoken_brief(specs)
             return DirectResult(
                 True,
                 True,
-                f"Collected real system specs via PowerShell and opened them as HTML "
-                f"({html_path.name}) plus a PowerShell window. No desktop clicking.",
+                f"{brief} Full measured report is on screen ({html_path.name}).",
                 "show_specs_on_screen",
             )
         except Exception as exc:  # noqa: BLE001

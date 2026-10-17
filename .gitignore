@@ -1,6 +1,10 @@
 # Process artifacts (progress, decisions, reports, benches) — never push
 .internal/
 
+# Large local GGUF weights (download separately)
+models/gguf/
+*.gguf
+
 # Local runtime / secrets / user data
 data/
 data/calendar_ical.url
