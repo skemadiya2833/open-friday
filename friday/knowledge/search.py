@@ -33,6 +33,41 @@ def _strip(text: str) -> str:
     return _WS.sub(" ", htmlmod.unescape(_TAG.sub(" ", text or ""))).strip()
 
 
+def clean_web_query(raw: str) -> str:
+    """Strip assistant scaffolding so we search 'latest songs', not 'Can you search about…'."""
+    from datetime import datetime
+
+    t = _WS.sub(" ", (raw or "").strip())
+    if not t:
+        return ""
+    t = re.sub(
+        r"(?i)\b("
+        r"please|hey|hi|ok|okay|friday|boss|"
+        r"can you|could you|would you|will you|"
+        r"do (?:a |me a )?(?:little |quick |small |fast )?(?:web |google |online )?(?:search|lookup|research)|"
+        r"search(?:es|ing)?(?: the web| google| online| for me)?|"
+        r"look(?:ing)?\s*ups?|research(?:ing|es)?|google|find out|"
+        r"for me|real quick|quickly|something|stuff|things?|a bit|a little|"
+        r"the web|online|internet|about|regarding|concerning"
+        r")\b",
+        " ",
+        t,
+    )
+    t = re.sub(r"(?i)^\s*(for|on|of|to)\s+", "", t)
+    t = _WS.sub(" ", t).strip(" .?!,;:\"'")
+    if len(t) < 2:
+        return (raw or "").strip()[:200]
+    # Time-sensitive music / news asks need a year or they return “how to discover” fluff.
+    year = str(datetime.now().year)
+    if re.search(r"(?i)\b(latest|new|new(?:est)?|current|trending|top)\b.{0,40}\b(songs?|tracks?|singles?|hits?|music)\b", t):
+        if year not in t:
+            t = f"{t} {year} new releases"
+    elif re.search(r"(?i)\b(latest|breaking|today'?s?)\b.{0,30}\b(news|headlines)\b", t):
+        if year not in t and "today" not in t.lower():
+            t = f"{t} {year}"
+    return t[:200]
+
+
 class _DDGParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -182,7 +217,10 @@ def format_results(query: str, rows: list[dict[str, str]]) -> str:
 
 def perform_knowledge_search(query: str, *, open_browser: bool = False) -> KnowledgeNote:
     """Return titles/snippets. Opens a tab only if fetch failed and open_browser=True."""
-    query = query.strip()
+    raw = (query or "").strip()
+    query = clean_web_query(raw) or raw
+    if query != raw:
+        print(f"[Knowledge] Query cleaned: {raw!r} → {query!r}", flush=True)
     key = _norm(query)
     now = time.time()
     hit = _cache.get(key)

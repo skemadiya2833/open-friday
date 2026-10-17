@@ -1,18 +1,20 @@
 # Local models
 
-Friday talks to models through **Ollama**. On a **16 GB** GPU use one multimodal tag for chat and screen look — do not pair a text-only 27B GGUF with a separate VL (VRAM thrash + double disk).
+Friday talks to models through **Ollama**. On a **16 GB** GPU use one multimodal tag for chat and screen look — do not pair a text-only GGUF with a separate VL (VRAM thrash + double disk).
 
 ## Recommended (16 GB)
 
 | Role | Model | Notes |
 |------|--------|--------|
-| Chat / tools / screen / camera | `qwen3-vl:8b-instruct` | Ollama Q4_K_M · vision + tools · native 256K (use `CHAT_NUM_CTX=32768` so KV fits) |
+| Chat / tools / screen / camera | `gemma4:12b` | Ollama Q4_K_M · vision + tools · ~8 GB weights · native 256K (use `CHAT_NUM_CTX=32768` so KV fits) |
 
 ```powershell
-ollama pull qwen3-vl:8b-instruct
+ollama pull gemma4:12b
 ```
 
-At 32K context, weights + KV sit around ~10 GB — headroom left on an RTX 16 GB card. 64K is near the ceiling; full 256K does not fit.
+Fallback if you prefer the prior VL: `qwen3-vl:8b-instruct`.
+
+At 32K context, weights + KV should fit an RTX 16 GB card with some headroom. Full 256K does not.
 
 ## Do not use for Friday “look”
 

@@ -284,16 +284,32 @@ def handle_message(
     )
     result = skill.run(ctx)
     # Chat sometimes roleplays work, invents cloud limits / fake PC specs, or asks the owner to run shell.
-    force_action = result.skill_id == "chat" and (
-        _fake_action_promise(result.reply or "", message)
-        or _false_capability_denial(result.reply or "")
-        or _asks_owner_to_run_shell(result.reply or "")
-        or _fake_hardware_report(result.reply or "")
+    # Never force-reroute a bare greeting into web research ("Hey Friday" ≠ Wikipedia).
+    from friday.assistant.reflexes import _is_greeting_only
+
+    force_action = (
+        result.skill_id == "chat"
+        and not _is_greeting_only(message)
+        and (
+            _fake_action_promise(result.reply or "", message)
+            or _false_capability_denial(result.reply or "")
+            or _asks_owner_to_run_shell(result.reply or "")
+            or _fake_hardware_report(result.reply or "")
+        )
     )
     if force_action:
         objective, skill_name = _recover_action_objective(message, history, result.reply or "")
-        target = get_registry().get(skill_name) or get_registry().get("research")
+        # Greeting / empty callsign recovered as research → keep the chat reply instead.
+        if skill_name == "research" and _is_greeting_only(objective):
+            skill_name = ""
+        target = get_registry().get(skill_name) if skill_name else None
         if target is not None:
+            want_report = skill_name == "research" and bool(
+                re.search(
+                    r"(?i)\b(research|report|references?|inspiration|compare|dossier|deep dive)\b",
+                    f"{message} {objective}",
+                )
+            )
             emit(
                 "activity",
                 {
@@ -315,7 +331,7 @@ def handle_message(
                     skill_override=skill_name,
                     voice_mode=voice_mode,
                     emit=emit,
-                    metadata={"report_mode": skill_name == "research", "forced_from_chat": True},
+                    metadata={"report_mode": want_report, "forced_from_chat": True},
                 )
             )
     # Voice mode: keep spoken replies punchy even if a skill was wordy.
@@ -471,10 +487,16 @@ def _recover_action_objective(
             return prior, "computer_use"
         return prior, "research"
     if re.search(
-        r"\b(article|learn|research|search|google|website|reference|document|checklist|skill)\b",
+        r"\b(article|learn|research|search|google|website|reference|document|checklist)\b",
         blob,
     ):
         return prior, "research"
+    # Default: desktop act only when the reply clearly promised UI work; else research
+    # — but never for callsign-only / greeting leftovers.
+    from friday.assistant.reflexes import _is_greeting_only
+
+    if _is_greeting_only(message) or _is_greeting_only(prior):
+        return message, "chat"
     return prior, "research"
 
 

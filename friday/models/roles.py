@@ -27,13 +27,22 @@ class ModelRoles:
 
 
 def get_model_roles() -> ModelRoles:
-    main = os.getenv("FRIDAY_MODEL_MAIN", os.getenv("CHAT_MODEL", "qwen3.5:9b")).strip() or "qwen3.5:9b"
-    # Fast defaults to main (9b) — no second resident model unless explicitly set.
+    from friday.config import resolve_chat_model, resolve_vision_model
+
+    main = (
+        os.getenv("FRIDAY_MODEL_MAIN", "").strip()
+        or resolve_chat_model()
+    )
+    # Fast defaults to main — no second resident model unless explicitly set.
     fast = os.getenv("FRIDAY_MODEL_FAST", main).strip() or main
+    vision = (
+        os.getenv("FRIDAY_MODEL_VISION", "").strip()
+        or resolve_vision_model()
+    )
     return ModelRoles(
         fast=fast,
         main=main,
-        vision=os.getenv("FRIDAY_MODEL_VISION", os.getenv("VISION_MODEL", "qwen3.5:9b")).strip() or "qwen3.5:9b",
+        vision=vision,
         coder=os.getenv("FRIDAY_MODEL_CODER", "qwen3-coder:30b").strip(),
         embed=os.getenv("EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text",
         enabled=_roles_enabled(),

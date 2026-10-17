@@ -59,14 +59,16 @@ class ModelManager:
             return name
 
     def unload(self, role: Role | None = None) -> None:
+        """Unload the GPU resident. Prefer the actual loaded tag (survives prefs switches)."""
         with self._lock:
-            target_role = role or self._loaded
-            if not target_role or target_role == "embed":
+            name = self._loaded_name
+            if role is not None and self._loaded != role:
                 return
-            self._unload(self.model_for(target_role))
-            if self._loaded == target_role:
-                self._loaded = None
-                self._loaded_name = None
+            if not name:
+                return
+            self._unload(name)
+            self._loaded = None
+            self._loaded_name = None
 
     def mark_used(self, role: Role) -> None:
         """Note that Ollama already has this model resident (no warmup)."""

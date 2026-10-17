@@ -349,8 +349,10 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
-# Short greets / pure chat without tools.
-    if re.match(
+# Short greets / pure chat without tools (includes "Hey Friday").
+    from friday.assistant.reflexes import _is_greeting_only
+
+    if _is_greeting_only(msg) or re.match(
         r"^(hi|hello|hey|thanks|thank you|good (morning|afternoon|evening)|"
         r"how are you|what('?s| is) your name)\b[!?.]*$",
         msg,
@@ -679,14 +681,15 @@ def _research_topic_residue(msg: str) -> str:
         r"search(?:es|ing)?(?: the web| google| online| for me)?|"
         r"look(?:ing)?\s*ups?|research(?:ing|es)?|google|find out|"
         r"for me|real quick|quickly|something|stuff|things?|a bit|a little|"
-        r"the web|online|internet"
+        r"the web|online|internet|about|regarding|concerning"
         r")\b",
         " ",
         msg or "",
     )
+    t = re.sub(r"(?i)^\s*(for|on|of|to)\s+", "", t)
     t = re.sub(r"\s+", " ", t).strip(" .?!,;:\"'")
     # Need a real noun/phrase — not just "it" / "that".
-    if len(t) < 3 or t.lower() in {"it", "that", "this", "them", "those", "one"}:
+    if len(t) < 3 or t.lower() in {"it", "that", "this", "them", "those", "one", "about"}:
         return ""
     return t
 

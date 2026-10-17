@@ -17,7 +17,7 @@ from friday.config import (
     API_TOKEN, DATA_DIR, EXTRA_ALLOWED_HOSTS, EXTRA_ALLOWED_ORIGINS, SERVER_HOST, SERVER_PORT,
     SERVER_TLS_PORT, VOICE_ENABLED, ensure_data_dirs, resolve_chat_model,
 )
-from friday.config import VISION_MODEL, EMBED_MODEL, MODEL_NAME
+from friday.config import EMBED_MODEL
 from friday.server.routes_runs import router as runs_router
 from friday.server.routes_reminders import router as reminders_router
 from friday.server.routes_experience import router as experience_router
@@ -198,9 +198,11 @@ class PlanAddRequest(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    from friday.config import resolve_vision_model
+
     return {
         "ok": True,
-        "vision_model": VISION_MODEL or MODEL_NAME,
+        "vision_model": resolve_vision_model(),
         "chat_model": resolve_chat_model(),
         "embed_model": EMBED_MODEL,
         "voice": VOICE_ENABLED,

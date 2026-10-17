@@ -103,8 +103,18 @@ class SkillHandler(Skill):
             return SkillResult(reply=reply, skill_id="chat", metadata={"error": why})
         reply = (result.get("message") or result.get("raw") or "").strip()
         upgrades: list[str] = []
+        from friday.assistant.reply_guard import looks_like_prompt_dump
+
         if not reply:
             reply = f"Say that again, {owner_name()}?"
+        elif looks_like_prompt_dump(reply):
+            # Models sometimes recite the system prompt / agenda as the answer.
+            try:
+                from friday.assistant.reflexes import _situation_brief
+
+                reply = _situation_brief()
+            except Exception:  # noqa: BLE001
+                reply = f"Board's clear, {owner_name()}. What are we doing?"
         else:
             reply, upgrades = _capture_upgrades(reply)
             reply = maybe_append_quip(

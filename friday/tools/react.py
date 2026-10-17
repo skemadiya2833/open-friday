@@ -71,7 +71,9 @@ def _force_first_tool(
 ) -> str | None:
     """Last-resort: run web_search (or memory_search) from the user ask."""
     if "web_search" in allowed_tools:
-        q = re.sub(r"\s+", " ", (message or "").strip())[:200]
+        from friday.knowledge.search import clean_web_query
+
+        q = clean_web_query(message) or re.sub(r"\s+", " ", (message or "").strip())[:200]
         if not q:
             return None
         emit("tool_call", {"tool": "web_search", "args": {"query": q}})
@@ -313,6 +315,18 @@ Step {step + 1}/{steps}. Decide.
                 final_reply = _spoken_tool_result(name, out)
             else:
                 final_reply = _honest_react_fallback(message, allowed_tools=allowed_tools)
+
+    from friday.assistant.reply_guard import looks_like_prompt_dump
+
+    if looks_like_prompt_dump(final_reply or ""):
+        if tool_trace:
+            last = tool_trace[-1]
+            final_reply = _spoken_tool_result(
+                str(last.get("tool") or ""),
+                str(last.get("result") or ""),
+            )
+        else:
+            final_reply = _honest_react_fallback(message, allowed_tools=allowed_tools)
 
     return final_reply, {"tools": tool_trace, "steps": len(transcript)}
 

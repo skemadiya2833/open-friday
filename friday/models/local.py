@@ -358,6 +358,38 @@ def query_aim_verification(
     return result
 
 
+def _looks_like_optics_dump(reply: str) -> bool:
+    """True when the VLM recited persona / restated the ask instead of describing pixels."""
+    import re
+
+    from friday.assistant.reply_guard import looks_like_prompt_dump
+
+    t = (reply or "").strip()
+    if not t:
+        return False
+    if looks_like_prompt_dump(t):
+        return True
+    if re.search(
+        r"(?i)\b("
+        r"identity\s*:|tone\s*:|doctrine\s*:|"
+        r"the user is asking|"
+        r"while providing an image|"
+        r"personal ai|"
+        r"calm,\s*precise,\s*loyal|"
+        r"system prompt|persona"
+        r")\b",
+        t,
+    ):
+        return True
+    # Restate-only answers with no concrete UI nouns
+    if re.search(r"(?i)can you see my screen", t) and not re.search(
+        r"(?i)\b(window|app|browser|chrome|cursor|terminal|desktop|taskbar|notepad|file|folder)\b",
+        t,
+    ):
+        return True
+    return False
+
+
 def describe_screen(
     question: str,
     *,
@@ -372,23 +404,44 @@ def describe_screen(
 
     # Unload text chat (e.g. 27B) and load a VL tag — never send images to a text GGUF.
     vision_tag = get_model_manager().ensure_loaded("vision")
-    if voice_mode:
-        prompt = f"{system_prompt('observe_voice')}\n\nUser question: {question.strip()}"
-        predict = 96
-    else:
-        prompt = f"{system_prompt('observe')}\n\nUser question: {question.strip()}"
-        predict = min(384, CHAT_NUM_PREDICT + 128)
-    messages = [{"role": "user", "content": prompt, "images": [frame_b64]}]
-    try:
+    kind = "observe_voice" if voice_mode else "observe"
+    q = (question or "").strip() or "What is on my screen right now?"
+    predict = 96 if voice_mode else min(384, CHAT_NUM_PREDICT + 128)
+
+    def _ask(prompt: str, *, tokens: int) -> str:
+        messages = [{"role": "user", "content": prompt, "images": [frame_b64]}]
         accumulated, _ = _stream_chat(
             messages,
             reasoning_mode=False,
             think=False,
             model=vision_tag,
-            num_predict=predict,
+            num_predict=tokens,
             num_ctx=min(4096, CHAT_NUM_CTX),
             on_token=on_token,
         )
+        return (accumulated or "").strip()
+
+    try:
+        prompt = (
+            f"{system_prompt(kind)}\n\n"
+            f"Question: {q}\n"
+            "Reply with what you see — apps and window titles first."
+        )
+        reply = _ask(prompt, tokens=predict)
+        if _looks_like_optics_dump(reply):
+            # One hard retry with zero persona ballast.
+            hard = (
+                "Look at the screenshot. Name the main open window/app and what is visible. "
+                f"Question: {q}\n"
+                "Answer in plain words. Do not mention Friday, identity, or tone."
+            )
+            reply = _ask(hard, tokens=min(160, predict + 32))
+        if not reply or _looks_like_optics_dump(reply):
+            return (
+                f"I have the screenshot, {owner_name()}, but the vision model gave me noise. "
+                "Try 'what's on my screen' once more."
+            )
+        return reply
     except RuntimeError as exc:
         err = str(exc)
         if "500" in err or "Internal Server Error" in err:
@@ -397,7 +450,6 @@ def describe_screen(
                 "The vision model may still be loading — try once more in a few seconds."
             )
         return f"Couldn't read the screen, {owner_name()}. {err.split('For more information')[0].strip()}"
-    return accumulated.strip()
 
 
 def query_model_vision(

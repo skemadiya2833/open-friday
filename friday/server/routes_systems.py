@@ -17,6 +17,45 @@ def systems_prefs_get() -> dict[str, Any]:
     return snapshot()
 
 
+@router.get("/api/systems/models")
+def systems_models_list() -> dict[str, Any]:
+    """Installed Ollama tags + currently resolved chat/vision (for Systems picker)."""
+    from friday.config import OLLAMA_HOST, resolve_chat_model, resolve_vision_model
+
+    tags: list[dict[str, Any]] = []
+    try:
+        import httpx
+
+        r = httpx.get(f"{OLLAMA_HOST}/api/tags", timeout=5.0)
+        r.raise_for_status()
+        for m in (r.json() or {}).get("models") or []:
+            name = str(m.get("name") or "").strip()
+            if not name:
+                continue
+            size = m.get("size")
+            tags.append(
+                {
+                    "name": name,
+                    "size_gb": round(float(size) / (1024**3), 2) if size else None,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "error": str(exc),
+            "models": [],
+            "chat_model": resolve_chat_model(),
+            "vision_model": resolve_vision_model(),
+        }
+    tags.sort(key=lambda x: x["name"].lower())
+    return {
+        "ok": True,
+        "models": tags,
+        "chat_model": resolve_chat_model(),
+        "vision_model": resolve_vision_model(),
+    }
+
+
 class PrefsPatch(BaseModel):
     """Partial update. Omit keys to leave unchanged; set null to clear UI override."""
 
@@ -115,5 +154,19 @@ def _apply_side_effects(patch: dict[str, Any]) -> None:
             from friday.humor import set_humor_override
 
             set_humor_override(None)
+        except Exception:  # noqa: BLE001
+            pass
+    if "chat_model" in patch or "vision_model" in patch:
+        try:
+            from friday import config as C
+
+            C._ollama_tags_cache = None
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from friday.models.manager import get_model_manager
+
+            mm = get_model_manager()
+            mm.unload()
         except Exception:  # noqa: BLE001
             pass

@@ -36,10 +36,68 @@ def _cached(key: str, factory: Callable[[], str]) -> tuple[str, bool]:
     return val, False
 
 
+def _strip_address(msg: str) -> str:
+    """Drop leading 'hey Friday,' so greetings still match."""
+    t = (msg or "").strip()
+    t = re.sub(r"(?i)^\s*(hey|hi|hello|ok|okay)\s*,?\s*(friday\s*[,:]?\s*)?", "", t).strip()
+    t = re.sub(r"(?i)^\s*friday\s*[,:]?\s*", "", t).strip()
+    return t or (msg or "").strip()
+
+
+def _is_greeting_only(message: str) -> bool:
+    """Bare hello / callsign — never a web search topic."""
+    t = (message or "").strip()
+    if not t or len(t) > 40:
+        return False
+    return bool(
+        re.match(
+            r"(?i)^\s*("
+            r"(hey|hi|hello|yo|sup)(\s+friday)?|"
+            r"friday|"
+            r"good (morning|afternoon|evening)(\s+friday)?|"
+            r"thanks|thank you|cheers"
+            r")\s*[!?.]*\s*$",
+            t,
+        )
+    )
+
+
+def _situation_brief() -> str:
+    """Live senses only — time + open agenda. Never invent prior focus / STT junk."""
+    from friday.persona import owner_name
+
+    now = datetime.now()
+    clock = (
+        f"{now.strftime('%I:%M %p').lstrip('0')} on {now.strftime('%A')}"
+    )
+    tops: list[str] = []
+    try:
+        from friday.tasks.plan import get_plan
+
+        for it in get_plan().get("items") or []:
+            if it.get("done"):
+                continue
+            text = re.sub(r"\s+", " ", str(it.get("text") or "")).strip()
+            if text:
+                tops.append(text[:70])
+            if len(tops) >= 3:
+                break
+    except Exception:  # noqa: BLE001
+        pass
+    boss = owner_name()
+    if tops:
+        return (
+            f"Board's live, {boss}. {clock}. "
+            f"On the agenda: {'; '.join(tops)}. What are we doing?"
+        )
+    return f"Board's clear, {boss}. {clock}. Ready when you are."
+
+
 def try_reflex(message: str) -> ReflexHit | None:
-    msg = (message or "").strip()
-    if not msg or len(msg) > 120:
+    raw = (message or "").strip()
+    if not raw or len(raw) > 120:
         return None
+    msg = _strip_address(raw)
 
     # Blackout status
     if re.match(r"^(is )?blackout (on|off|enabled|disabled)\??$", msg, re.I) or re.match(
@@ -52,6 +110,20 @@ def try_reflex(message: str) -> ReflexHit | None:
             "blackout_status",
             f"Blackout is {'on — local only, no web research' if on else 'off — full uplink available'}.",
         )
+
+    # "What's going on / what's up" — never let the model recite knowledge-graph junk.
+    if re.match(
+        r"(?i)^\s*("
+        r"what('?s| is) (going on|up)( (today|tonight|this (evening|afternoon|morning)))?|"
+        r"what('?s| is) the (status|sitrep|situation)|"
+        r"status report|sitrep|"
+        r"anything (going )?on|"
+        r"how('?s| is) (it|everything) (looking|going)"
+        r")\s*[?.!]?\s*$",
+        msg,
+    ):
+        text, cached = _cached(f"situation-{datetime.now().strftime('%Y%m%d%H%M')}", _situation_brief)
+        return ReflexHit("situation", text, cached=cached)
 
     if re.match(
         r"^(what('?s| is) the )?(time|date|day)\??$"
@@ -73,11 +145,7 @@ def try_reflex(message: str) -> ReflexHit | None:
         text, cached = _cached("clock", _clock)
         return ReflexHit("clock", text, cached=cached)
 
-    if re.match(
-        r"^(hi|hello|hey|good (morning|afternoon|evening))[,!. ]*$",
-        msg,
-        re.I,
-    ):
+    if _is_greeting_only(raw) or _is_greeting_only(msg):
         def _greet() -> str:
             from friday.persona import owner_name
 

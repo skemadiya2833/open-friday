@@ -35,7 +35,7 @@ OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
 MODEL_NAME = os.getenv(
     "MODEL",
-    os.getenv("LOCAL_MODEL", "qwen3.5:9b"),
+    os.getenv("LOCAL_MODEL", "gemma4:12b"),
 )
 MODEL_KEEP_ALIVE = os.getenv("MODEL_KEEP_ALIVE", "-1")
 # Decision responses are short (~300 tokens); a low cap stops runaway rambling.
@@ -232,14 +232,44 @@ OLLAMA_API_URL = OLLAMA_GENERATE_URL
 NPU_PREPROCESSING = False  # Pillow resize only; see friday.vision.preprocessor
 
 
+def _pref_model(key: str, *fallbacks: str) -> str:
+    """Systems UI override → env → code default."""
+    try:
+        from friday.runtime.prefs import get as pref
+
+        v = str(pref(key) or "").strip()
+        if v:
+            return v
+    except Exception:  # noqa: BLE001
+        pass
+    for fb in fallbacks:
+        if (fb or "").strip():
+            return fb.strip()
+    return (MODEL_NAME or "gemma4:12b").strip()
+
+
 def resolve_chat_model() -> str:
-    return (CHAT_MODEL or VISION_MODEL or MODEL_NAME).strip()
+    return _pref_model("chat_model", CHAT_MODEL, VISION_MODEL, MODEL_NAME)
 
 
 def _name_looks_vision(tag: str) -> bool:
     n = (tag or "").lower()
     # Explicit VL / multimodal tags — not plain text GGUFs.
-    return any(x in n for x in ("vl:", "vl-", "-vl", "vision", "llava", "minicpm-v", "qwen2.5vl"))
+    # gemma4:* ships with a CLIP projector in Ollama (vision-capable without "vl" in the name).
+    return any(
+        x in n
+        for x in (
+            "vl:",
+            "vl-",
+            "-vl",
+            "vision",
+            "llava",
+            "minicpm-v",
+            "qwen2.5vl",
+            "gemma4",
+            "gemma3",
+        )
+    )
 
 
 def _name_looks_text_only(tag: str) -> bool:
@@ -252,15 +282,22 @@ def _name_looks_text_only(tag: str) -> bool:
 
 def resolve_vision_model() -> str:
     """Model used for screenshots / camera. Never send images to a text-only resident."""
-    configured = (
-        os.getenv("FRIDAY_MODEL_VISION") or VISION_MODEL or MODEL_NAME or ""
-    ).strip()
+    configured = _pref_model(
+        "vision_model",
+        os.getenv("FRIDAY_MODEL_VISION") or "",
+        VISION_MODEL,
+        MODEL_NAME,
+    )
     chat = resolve_chat_model()
     if configured and _name_looks_vision(configured) and not _name_looks_text_only(configured):
         return configured
     # Same tag as chat or text-looking → pick an already-installed VL (no download).
     if not configured or configured == chat or _name_looks_text_only(configured):
+        # Prefer chat if it is already multimodal (single-GPU installs).
+        if _name_looks_vision(chat) and not _name_looks_text_only(chat):
+            return chat
         for cand in (
+            "gemma4:12b",
             "qwen3-vl:8b-instruct",
             "qwen2.5vl:7b-q4_K_M",
             "qwen3.5:9b",

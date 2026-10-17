@@ -4,7 +4,7 @@ Neutral reference for Friday configuration. Values shown are **typical defaults*
 
 ## Prefer Systems → Preferences
 
-Everyday knobs (persona, agent backend, tools-first, memory, approvals, shell tools, TTS voice, model roles, low-end) are owned by **Systems → Preferences** (`data/runtime_prefs.json`). Resolution: **UI → env → optima**. Host/bind/auth/API keys/paths stay env-only (need restart). Use **Reset to optima** in Systems for recommended defaults.
+Everyday knobs (persona, **chat/vision Ollama tags**, agent backend, tools-first, memory, approvals, shell tools, TTS voice, model roles, low-end) are owned by **Systems → Preferences** (`data/runtime_prefs.json`). Resolution: **UI → env → optima**. Host/bind/auth/API keys/paths stay env-only (need restart). Use **Reset to optima** in Systems for recommended defaults. Switch models from the web UI — no `.env` edit required.
 
 ## Server and auth
 
@@ -28,9 +28,9 @@ Everyday knobs (persona, agent backend, tools-first, memory, approvals, shell to
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | OLLAMA_HOST | `http://localhost:11434` | Ollama base URL |
-| MODEL / LOCAL_MODEL | `qwen3.5:9b` | Primary vision/decision model |
-| VISION_MODEL | MODEL | Vision model override |
-| CHAT_MODEL | (empty) | Chat model; empty → vision |
+| MODEL / LOCAL_MODEL | `gemma4:12b` | Primary model tag (Systems chat/vision prefs override) |
+| CHAT_MODEL | gemma4:12b | Chat model (Systems → Preferences overrides) |
+| VISION_MODEL | gemma4:12b | Vision / screen look (Systems overrides; must be multimodal) |
 | EMBED_MODEL | `nomic-embed-text` | Embeddings for memory |
 | MODEL_KEEP_ALIVE | `-1` | Ollama keep-alive |
 | MODEL_NUM_PREDICT | `1024` / low-end `768` | Max tokens per decision |
@@ -43,8 +43,8 @@ Everyday knobs (persona, agent backend, tools-first, memory, approvals, shell to
 | CHAT_NUM_CTX | `4096` | Chat context |
 | FRIDAY_MODEL_ROLES | `false` | Enable fast/main/vision/coder map |
 | FRIDAY_MODEL_FAST | same as MAIN | Role: fast (defaults to 9b; set 4b only if splitting) |
-| FRIDAY_MODEL_MAIN | `qwen3-vl:8b-instruct` | Role: main (same VL as vision on 16GB; see `models/README.md`) |
-| FRIDAY_MODEL_VISION | `qwen3-vl:8b-instruct` | Screen/camera — must be a VL tag |
+| FRIDAY_MODEL_MAIN | `gemma4:12b` | Role: main (same multimodal as vision on 16GB; see `models/README.md`) |
+| FRIDAY_MODEL_VISION | `gemma4:12b` | Screen/camera — must be a vision-capable tag |
 | FRIDAY_VISION_KEEP_ALIVE | `-1` / `3m` | Keep VL loaded; use `3m` only if swapping with a separate MAIN |
 | FRIDAY_MODEL_CODER | `qwen3-coder:30b` | Role: coder (heavy) |
 | FRIDAY_COMPLEXITY_ROUTING | `false` | Heuristic 4b/9b routing |

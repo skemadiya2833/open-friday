@@ -52,6 +52,22 @@ def save(data: dict[str, Any]) -> None:
         write_text_atomic(path, json.dumps(data, indent=2) + "\n")
 
 
+def _label_ok(label: str) -> bool:
+    """Reject STT fragments / pronoun salad that used to poison 'Previous focus'."""
+    t = re.sub(r"\s+", " ", (label or "").strip())
+    if len(t) < 2 or len(t) > 48:
+        return False
+    words = t.split()
+    if len(words) > 6:
+        return False
+    low = t.lower()
+    if re.search(r"\b(you|me|my|i|we|them|that|this|really|some|put|bring)\b", low):
+        return False
+    if not re.search(r"[A-Za-z]", t):
+        return False
+    return True
+
+
 def observe(message: str) -> list[str]:
     """Extract and store entities from a user turn. Returns new/updated labels."""
     msg = (message or "").strip()
@@ -61,7 +77,7 @@ def observe(message: str) -> list[str]:
     for pat, kind in ((_PROJECT, "project"), (_PERSON, "person"), (_TOOL, "tool")):
         for m in pat.finditer(msg):
             label = m.group(1).strip(" .,!;:'\"")
-            if len(label) >= 2:
+            if _label_ok(label):
                 found.append((label, kind))
     if not found:
         return []
@@ -107,9 +123,15 @@ def continuity_lines(limit: int = 5) -> list[str]:
 
 def prompt_block(limit: int = 5) -> str:
     lines = continuity_lines(limit)
-    if not lines:
+    # Drop labels that fail the quality gate (legacy STT junk still on disk).
+    clean = []
+    for line in lines:
+        label = line.split(":", 1)[-1].strip() if ":" in line else line
+        if _label_ok(label):
+            clean.append(line)
+    if not clean:
         return ""
     return (
-        "Recent focus (knowledge graph — use naturally, do not recite as a list):\n- "
-        + "\n- ".join(lines)
+        "Quiet background topics (never recite, never invent; only mention if the owner asks):\n- "
+        + "\n- ".join(clean[:limit])
     )

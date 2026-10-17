@@ -25,6 +25,62 @@ async function patchPrefs(values) {
   return res.json();
 }
 
+/** Fill chat/vision <select>s from installed Ollama tags. */
+async function bindModelPrefSelects(setHint, afterSave) {
+  const selects = [...document.querySelectorAll("#settingsGrid select[data-model-pref]")];
+  if (!selects.length) return;
+  let catalog = { ok: false, models: [] };
+  try {
+    const res = await apiFetch("/api/systems/models");
+    if (res.ok) catalog = await res.json();
+  } catch (_) {}
+  const names = (catalog.models || []).map((m) => m.name).filter(Boolean);
+  for (const sel of selects) {
+    const key = sel.getAttribute("data-model-pref");
+    const current = sel.value || "";
+    const opts = new Set(names);
+    if (current) opts.add(current);
+    const list = [...opts].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = list.length
+      ? list.map((n) => {
+          const meta = (catalog.models || []).find((m) => m.name === n);
+          const label = meta && meta.size_gb != null ? `${n} · ${meta.size_gb} GB` : n;
+          return `<option value="${escapeHtml(n)}" ${n === current ? "selected" : ""}>${escapeHtml(label)}</option>`;
+        }).join("")
+      : `<option value="${escapeHtml(current)}">${escapeHtml(current || "No Ollama models found")}</option>`;
+    sel.addEventListener("change", async () => {
+      try {
+        const snap2 = await patchPrefs({ [key]: sel.value });
+        afterSave(snap2);
+        const row = sel.closest(".pref-item");
+        const src = row?.querySelector(".pref-src");
+        if (src) src.textContent = " · Systems";
+        const mh = $("#modelPrefHint");
+        if (mh) mh.textContent = "Applied — next reply uses this tag";
+        setTimeout(() => { if (mh && mh.textContent.startsWith("Applied")) mh.textContent = ""; }, 2200);
+      } catch (_) {
+        setHint("Save failed");
+      }
+    });
+  }
+  $("#matchVisionToChatBtn")?.addEventListener("click", async () => {
+    const chatSel = document.querySelector('#settingsGrid select[data-model-pref="chat_model"]');
+    const visSel = document.querySelector('#settingsGrid select[data-model-pref="vision_model"]');
+    const tag = chatSel?.value;
+    if (!tag || !visSel) return;
+    try {
+      const snap2 = await patchPrefs({ vision_model: tag });
+      afterSave(snap2);
+      visSel.value = tag;
+      const mh = $("#modelPrefHint");
+      if (mh) mh.textContent = `Vision = ${tag}`;
+      setTimeout(() => { if (mh) mh.textContent = ""; }, 2200);
+    } catch (_) {
+      setHint("Save failed");
+    }
+  });
+}
+
 function prefsPanelHtml(snap) {
   if (!snap || !snap.items) {
     return `<div class="setting"><label>Preferences</label><p class="muted">Could not load prefs.</p></div>`;
@@ -74,6 +130,17 @@ function prefItemHtml(it) {
       control += `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button type="button" class="ghost" id="ttsVoicePreviewBtn" title="Hear the selected TTS voice">Preview voice</button>
         <span class="muted" id="ttsVoicePreviewHint" style="font-size:12px"></span>
+      </div>`;
+    }
+  } else if (it.key === "chat_model" || it.key === "vision_model") {
+    const cur = escapeHtml(String(it.value ?? ""));
+    control = `<select data-pref="${escapeHtml(it.key)}" data-model-pref="${escapeHtml(it.key)}" style="margin-top:8px;width:min(360px,100%);padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)">
+      <option value="${cur}">${cur || "Loading…"}</option>
+    </select>`;
+    if (it.key === "vision_model") {
+      control += `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="ghost" id="matchVisionToChatBtn" title="Use the same Ollama tag for chat and screen look">Match vision to chat</button>
+        <span class="muted" id="modelPrefHint" style="font-size:12px"></span>
       </div>`;
     }
   } else {
@@ -222,6 +289,7 @@ function bindPrefsControls(snap) {
       timer = setTimeout(save, 500);
     });
   });
+  bindModelPrefSelects(setHint, afterSave);
   $("#prefsOptimaBtn")?.addEventListener("click", async () => {
     try {
       await apiFetch("/api/systems/prefs/optima", { method: "POST" });

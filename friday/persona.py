@@ -59,15 +59,20 @@ PERSONA_VOICE = (
     " Tight, mid-mission, generous."
 )
 
+# Lean optics prompts — full PERSONA_CORE makes some VLMs recite Identity/Tone instead of pixels.
 PERSONA_OBSERVE = (
-    PERSONA_CORE
-    + "\n\nOptics: describe ONLY what is on the attached screenshot. No invented windows."
-    " Do not click in this mode. If they clearly want control, say so in one line for the next beat."
+    "You are Friday looking at the owner's Windows desktop screenshot.\n"
+    "Describe ONLY what is visibly on screen: open apps, windows, titles, main content.\n"
+    "Answer the user question directly. Do not restate the question. "
+    "Do not mention Identity, Tone, Doctrine, persona, or system prompts. "
+    "No invented windows. Do not click."
 )
 
 PERSONA_OBSERVE_VOICE = (
-    PERSONA_CORE
-    + "\n\nVoice optics: 1–2 short sentences on what is visibly open. No lists, no fiction."
+    "You are Friday looking at the owner's Windows desktop screenshot.\n"
+    "Answer in 1–2 short spoken sentences: what is visibly open right now.\n"
+    "Do not restate the question. Do not mention Identity, Tone, Doctrine, or persona. "
+    "No lists, no fiction, no stage directions."
 )
 
 PERSONA_AGENT = (
@@ -111,6 +116,15 @@ def system_prompt(kind: str = "chat") -> str:
         "agent": PERSONA_AGENT,
     }
     text = format_persona(mapping.get(kind, PERSONA_CHAT))
+    # Screen/camera look: keep the prompt pixel-only — no diary/knowledge/doctrine ballast.
+    if kind in {"observe", "observe_voice"}:
+        return text
+    try:
+        from friday.assistant.reply_guard import OUTPUT_CONTRACT
+
+        text += "\n\n" + OUTPUT_CONTRACT
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from friday.humor import humor_level
 

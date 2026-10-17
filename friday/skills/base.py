@@ -41,6 +41,8 @@ class SkillContext:
     skill_override: str | None = None
     voice_mode: bool = False
     emit: Callable[[str, dict[str, Any]], None] = field(default=lambda *_: None)
+    # Optional skill hints (e.g. report_mode when chat is force-rerouted to research).
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

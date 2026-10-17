@@ -105,10 +105,13 @@ class SkillHandler(Skill):
         description="Web research and structured reports",
         tools=["web_search", "memory_search"],
         system_overlay=(
-            "You look things up for the owner. Call web_search ONCE with a precise query FIRST. "
+            "You look things up for the owner. Call web_search ONCE with a precise query FIRST "
+            "(topic only — e.g. 'latest songs 2026', never 'can you search about…'). "
             "Never say 'Searching the web…' or 'Looking that up…' as your answer — that is not a tool call. "
             "The observation is the actual results — titles and snippets. Then output FINAL: "
-            "as a short briefing of what you found (what happened, who, when). "
+            "as a short briefing of what you found (names, titles, dates). "
+            "If they asked for latest songs/news, list concrete titles from the results — "
+            "do not lecture about how streaming discovery works. "
             "Never search the same query twice. Never mention tabs or Google. "
             "If results are empty, say so in FINAL:; do not keep searching."
         ),
@@ -116,6 +119,22 @@ class SkillHandler(Skill):
 
     def run(self, ctx: SkillContext) -> SkillResult:
         msg = ctx.message or ""
+        try:
+            from friday.assistant.reflexes import _is_greeting_only, try_reflex
+            from friday.persona import owner_name
+
+            # "Hey Friday" is a hello — never google paintings named Holy Friday.
+            if _is_greeting_only(msg):
+                hit = try_reflex(msg)
+                if hit:
+                    return SkillResult(reply=hit.reply, skill_id="chat", metadata={"greeting_guard": True})
+                return SkillResult(
+                    reply=f"Here, {owner_name()}. What do you need?",
+                    skill_id="chat",
+                    metadata={"greeting_guard": True},
+                )
+        except Exception:  # noqa: BLE001
+            pass
         try:
             from friday.runtime.blackout import blocks_research
             from friday.persona import owner_name
