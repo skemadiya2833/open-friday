@@ -31,6 +31,13 @@ def test_detects_identity_tone_dump():
     assert looks_like_prompt_dump(dump)
 
 
+def test_detects_role_solo_dump():
+    assert looks_like_prompt_dump("• Role: Friday (an AI assistant).")
+    assert looks_like_prompt_dump("Role: Friday (an AI assistant).")
+    assert looks_like_prompt_dump("I am an AI assistant.") is False  # plain claim — not label dump
+    assert looks_like_prompt_dump("Role: Friday\nTone: calm")
+
+
 def test_detects_previous_focus_dump():
     dump = (
         'Previous focus\n'
