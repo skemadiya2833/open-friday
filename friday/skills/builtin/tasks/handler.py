@@ -283,18 +283,13 @@ class SkillHandler(Skill):
         if re.search(r"(?i)\b(today|plan|agenda|tasks?|to-?dos?)\b", msg):
             return self._reply_today_plan(ctx, msg, maybe_append_quip)
 
+        from friday.prompts import OVERLAY_TASKS
         from friday.tools.react import run_react
 
         reply, meta = run_react(
             ctx.message,
             allowed_tools=self.manifest.tools,
-            system_overlay=(
-                "You manage Friday's local agenda. "
-                "For 'today / agenda / we'll be doing X' use plan_add / plan_list / plan_done. "
-                "For timed reminders use schedule_task. "
-                "NEVER invent tasks the owner did not name. "
-                "If they asked to note tasks but gave none, ask what to add — do not call plan_add with guesses."
-            ),
+            system_overlay=OVERLAY_TASKS,
             history=ctx.history,
             emit=ctx.emit,
         )

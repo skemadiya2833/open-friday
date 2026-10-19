@@ -299,11 +299,9 @@ def _shorten_title(title: str, *, max_chars: int = 72) -> str:
 def _llm_extract(text: str, now: datetime) -> When | None:
     from friday.models.local import query_model_text
 
-    prompt = (
-        f"Now is {now.strftime('%A %Y-%m-%d %H:%M')}. Extract the reminder from the request.\n"
-        'Reply with ONLY JSON: {"when_iso":"YYYY-MM-DDTHH:MM:SS" or null,"cron":"m h dom mon dow" or null,"title":"short"}\n'
-        f"Request: {text}"
-    )
+    from friday.prompts import reminder_extract_prompt
+
+    prompt = reminder_extract_prompt(text, now.strftime("%A %Y-%m-%d %H:%M"))
     res = query_model_text(prompt, format_json=False, reasoning_mode=False, num_predict=120, num_ctx=1024)
     raw = (res.get("message") or res.get("raw") or "")
     s, e = raw.find("{"), raw.rfind("}")

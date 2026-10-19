@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from friday.prompts import OVERLAY_RESEARCH
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
 _REPORT = re.compile(
@@ -44,13 +45,10 @@ def _learn_from_web(topic: str, emit) -> SkillResult:
             skill_id="research",
             metadata={"learned": False},
         )
+    from friday.prompts import research_doctrine_prompt
+
     brief = format_results(search_q, rows)
-    prompt = (
-        "Distill lasting operating principles for a local PC AI assistant from these search hits.\n"
-        f"Topic: {search_q}\n\n{brief}\n\n"
-        "Return JSON only: {\"topic\": string, \"lessons\": [5 to 8 short imperative bullets], "
-        "\"tldr\": one sentence}. No fluff. Lessons must be actionable on a desktop assistant."
-    )
+    prompt = research_doctrine_prompt(search_q, brief)
     out = query_model_text(prompt, format_json=True, num_predict=700, num_ctx=4096)
     raw = out.get("message") or out.get("raw") or {}
     if isinstance(raw, str):
@@ -104,17 +102,7 @@ class SkillHandler(Skill):
         name="Research",
         description="Web research and structured reports",
         tools=["web_search", "memory_search"],
-        system_overlay=(
-            "You look things up for the owner. Call web_search ONCE with a precise query FIRST "
-            "(topic only — e.g. 'latest songs 2026', never 'can you search about…'). "
-            "Never say 'Searching the web…' or 'Looking that up…' as your answer — that is not a tool call. "
-            "The observation is the actual results — titles and snippets. Then output FINAL: "
-            "as a short briefing of what you found (names, titles, dates). "
-            "If they asked for latest songs/news, list concrete titles from the results — "
-            "do not lecture about how streaming discovery works. "
-            "Never search the same query twice. Never mention tabs or Google. "
-            "If results are empty, say so in FINAL:; do not keep searching."
-        ),
+        system_overlay=OVERLAY_RESEARCH,
     )
 
     def run(self, ctx: SkillContext) -> SkillResult:

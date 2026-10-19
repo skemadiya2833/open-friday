@@ -634,12 +634,9 @@ def _llm_html_page(brief: str) -> str | None:
     try:
         from friday.models.local import query_model_text
 
-        prompt = (
-            "Write one complete self-contained HTML5 document for this request.\n"
-            "Rules: start with <!DOCTYPE html>; inline CSS only; no markdown; no explanation; "
-            "polished dark UI; usable as a real page.\n"
-            f"Request: {brief}"
-        )
+        from friday.prompts import html_page_prompt
+
+        prompt = html_page_prompt(brief)
         out = query_model_text(prompt, think=False, num_predict=1800, num_ctx=4096)
         raw = ""
         msg = out.get("message")
@@ -1293,16 +1290,9 @@ def _propose_powershell(user_text: str) -> str | None:
     try:
         from friday.models.local import query_model_text
 
-        prompt = (
-            "You are Friday on Windows. Propose ONE PowerShell command for the owner request.\n"
-            "Rules:\n"
-            "- Output ONLY the command line — no markdown, no commentary.\n"
-            "- Prefer built-in cmdlets (Get-ChildItem, Get-Process, Get-PSDrive, winget, git).\n"
-            "- Never Format-Volume, diskpart wipe, or recursive wipe of system roots.\n"
-            "- If this needs a GUI (clicking buttons, drawing, filling a visual form), output exactly: GUI\n"
-            f"Owner: {user_text[:400]}\n"
-            "Command:"
-        )
+        from friday.prompts import powershell_propose_prompt
+
+        prompt = powershell_propose_prompt(user_text)
         out = query_model_text(
             prompt,
             format_json=False,

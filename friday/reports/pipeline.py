@@ -181,10 +181,9 @@ def _plan_questions(query: str, mode: str) -> list[str]:
         return [query]
     from friday.models.local import query_model_text
 
-    prompt = (
-        f"Break this research topic into 2-4 focused web search sub-questions.\n"
-        f"Topic: {query}\nReturn JSON only."
-    )
+    from friday.prompts import research_plan_questions_prompt
+
+    prompt = research_plan_questions_prompt(query)
     out = query_model_text(
         prompt,
         format_schema=PLAN_SCHEMA,
@@ -338,16 +337,10 @@ def _synthesize(query: str, mode: str, sources: list[dict], *, think: bool) -> d
         src_block.append(
             f"[{s['id']}] {s['title']} ({s['domain']})\nTEXT:\n{s['text'][:3000]}\n"
         )
-    prompt = (
-        "You are Friday producing a boss-level research briefing as JSON.\n"
-        "Rules:\n"
-        "- Write a sharp TL;DR (2–4 sentences) a busy principal can act on.\n"
-        "- Include 4–8 findings with clear titles and bodies grounded in SOURCES.\n"
-        "- Prefer useful findings over sparse perfect claims. If you include claims, "
-        "evidence should be an exact contiguous substring of that source TEXT.\n"
-        "- source_id must be one of the listed ids. Do not invent URLs or numbers.\n"
-        "- Call out uncertainties and open questions when the sources disagree or are thin.\n"
-        f"Mode: {mode}. Topic: {query}\n\nSOURCES:\n" + "\n".join(src_block)
+    from friday.prompts import research_synthesize_prompt
+
+    prompt = research_synthesize_prompt(
+        query=query, mode=mode, src_block="\n".join(src_block)
     )
     t0 = time.monotonic()
     out = query_model_text(

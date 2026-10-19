@@ -547,18 +547,20 @@ function clearActivity() {
 
 /** Pipeline chatter that makes voice mode feel broken — keep off the live HUD. */
 function isVoiceNoise(message) {
-  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening|Scheduling|Researching|Working with files|Checking memory|Running |Controlling the desktop)\b/i.test(
+  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening|Scheduling|Researching|Working with files|Checking memory|Running |Controlling the desktop|Looking at your screen|Looking through (the )?camera)\b/i.test(
     String(message || "").trim(),
   );
 }
 
-/** Live HUD may show look/act/errors only — never skill-run labels like Scheduling… */
+/** Live HUD may show act/errors only — never skill-run labels like "Looking at your screen…". */
 function isLiveHudWorthy(message) {
   const m = String(message || "").trim();
   if (!m || isVoiceNoise(m)) return false;
   // Skip long "Acting · create a dashboard…" noise; desktop agent still surfaces Agent/Shell.
   if (/^Acting\b/i.test(m)) return false;
-  return /^(Looking|Webcam|Camera|Agent |Shell |⚠|Error|Opened |Desktop agent)/i.test(m);
+  // Skill-run "Looking…" banners are noise — orb state already shows THINKING.
+  if (/^Looking\b/i.test(m)) return false;
+  return /^(Webcam|Camera|Agent |Shell |⚠|Error|Opened |Desktop agent)/i.test(m);
 }
 
 function pushActivity(message, { live = true, detail = "" } = {}) {

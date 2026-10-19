@@ -129,41 +129,13 @@ def _llm_classify(message: str, history: list[dict[str, str]] | None = None) -> 
     for turn in (history or [])[-4:]:
         hist += f"{turn.get('role', 'user')}: {(turn.get('content') or '')[:200]}\n"
 
-    prompt = f"""You are Friday's intent router for a real local Windows assistant.
-Do NOT perform the task. ONLY classify so the right skill can act.
+    from friday.prompts import intent_router_prompt
 
-MODES:
-- talk: opinions, explanations, brainstorming, greetings (no PC control this turn)
-- look: user wants to KNOW what is on screen / describe desktop (NO clicking)
-- act: user wants the PC to DO something (open apps, files, shell/git/install, click, type, save, fix, send, create on desktop). Terminal/shell work is still act — the skill prefers PowerShell before mouse.
-- remember: store or recall durable personal notes
-- research: look something up on the web
-- files: read/write files in the workspace
-- schedule: reminders, timed tasks, OR today's agenda / "we'll be doing X today"
-- clarify: missing detail blocks the next move (which target, when, confirm risk) — ask one short question
-
-AVAILABLE SKILLS:
-{_skill_catalog()}
-
-RULES:
-- Prefer capability: if they want something DONE on the machine, choose act (or research/files/schedule as appropriate) — not talk.
-- Imperatives (open, launch, click, type, write, save, send, fix, install, create on desktop, git, run in terminal/powershell) → act
-- Shell-shaped asks (list files, git status, winget, processes, disk space) → act (computer_use will try PowerShell first)
-- Questions about seeing/describing the screen only → look (never act)
-- "Can you see…" / "what's on my desktop" with no ask to change anything → look
-- If unsure between look and act → look
-- If unsure between talk and act but there is a clear imperative → act
-- Use clarify when guessing would likely do the wrong thing; put the question in objective (one sentence)
-
-Recent conversation:
-{hist or "(none)"}
-
-User message:
-{message}
-
-Reply with ONLY JSON (no markdown):
-{{"mode":"look","skill_id":"observe","confidence":0.0,"objective":"short rewritten goal","reason":"one clause","needs_confirmation":false}}
-"""
+    prompt = intent_router_prompt(
+        message=message,
+        hist=hist,
+        skill_catalog=_skill_catalog(),
+    )
     result = query_model_text(
         prompt,
         format_json=False,

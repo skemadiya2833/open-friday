@@ -5,13 +5,6 @@ from __future__ import annotations
 from friday.agent.session import AgentSession
 from friday.config import CONTEXT_RECENT_ACTIONS, CONTEXT_SUMMARIZE_EVERY
 
-_SUMMARIZE_PROMPT = """You are a context compressor for a vision-driven automation agent.
-Summarize the action history below into 3–6 concise bullet points.
-Preserve: apps/sites opened, dialogs dismissed, errors, current progress toward the goal.
-Omit: redundant retries, coordinate details, filler.
-Return ONLY the bullet list, no preamble."""
-
-
 def maybe_summarize_context(session: AgentSession) -> None:
     if CONTEXT_SUMMARIZE_EVERY <= 0:
         return
@@ -21,16 +14,16 @@ def maybe_summarize_context(session: AgentSession) -> None:
         return
 
     from friday.models.local import query_model_text
+    from friday.prompts import context_summarize_prompt
 
     older = session.history[:-CONTEXT_RECENT_ACTIONS]
     if not older:
         return
 
-    prompt = (
-        f"{_SUMMARIZE_PROMPT}\n\n"
-        f"TASK: {session.objective}\n\n"
-        f"PRIOR SUMMARY:\n{session.context_summary or '(none)'}\n\n"
-        f"ACTIONS TO COMPRESS:\n" + "\n".join(older)
+    prompt = context_summarize_prompt(
+        objective=session.objective,
+        prior=session.context_summary or "",
+        actions="\n".join(older),
     )
 
     print("[Friday] Summarizing context to save memory...")

@@ -236,12 +236,9 @@ def _generate_quip(*, user_text: str, reply: str, context: str) -> str | None:
 
     roles = get_model_roles()
     model = roles.fast if roles.enabled else None
-    prompt = (
-        "Write ONE short dry quip (max 15 words) for Friday the AI aide. "
-        "Original only — no film quotes. No invented facts. "
-        f"Context: {context[:80]}\nUser: {user_text[:120]}\nReply summary: {reply[:160]}\n"
-        "Quip:"
-    )
+    from friday.prompts import humor_quip_prompt
+
+    prompt = humor_quip_prompt(user_text=user_text, reply=reply, context=context)
     out = query_model_text(
         prompt,
         format_json=False,

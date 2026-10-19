@@ -38,6 +38,29 @@ def test_detects_role_solo_dump():
     assert looks_like_prompt_dump("Role: Friday\nTone: calm")
 
 
+def test_detects_meta_analysis_dump():
+    dump = (
+        '* User\'s input: "Uh my monitors are placed…" * Context: The user is describing '
+        "their physical workspace setup * Persona: Friday (calm, precise, loyal, generous, "
+        "dry wit allowed). * Constraints: 1-2 short sentences. No…"
+    )
+    assert looks_like_prompt_dump(dump)
+
+
+def test_detects_image_caption_dump():
+    dump = (
+        "Image: A screenshot of a Windows desktop (likely running a Linux environment "
+        "or using WSL/Docker given the terminal content)."
+    )
+    assert looks_like_prompt_dump(dump)
+    from friday.models.local import _looks_like_optics_dump
+
+    assert _looks_like_optics_dump(dump)
+    assert not _looks_like_optics_dump(
+        "Cursor is open on cli.py, and a PowerShell window is behind it."
+    )
+
+
 def test_detects_previous_focus_dump():
     dump = (
         'Previous focus\n'

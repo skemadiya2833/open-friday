@@ -17,13 +17,9 @@ class SkillHandler(Skill):
         from friday.persona import owner_name
         from friday.tools.react import run_react
 
-        overlay = (self.manifest.system_overlay or "").strip() + (
-            "\nThe owner is asking what you actually remember. "
-            "Call memory_search with a precise query first. "
-            "Then FINAL: with what you found in plain speech — or clearly say nothing was stored. "
-            "Never invent quarterly reports, files, or auditor threads. "
-            f"Never output a tool instruction as the spoken answer, {owner_name()}."
-        )
+        from friday.prompts import overlay_memory
+
+        overlay = (self.manifest.system_overlay or "").strip() + overlay_memory(owner_name())
         reply, meta = run_react(
             ctx.message,
             allowed_tools=self.manifest.tools,

@@ -51,16 +51,9 @@ def looks_multi_step(message: str) -> bool:
 
 def plan_preamble(objective: str) -> str:
     """Short plan block prepended to multi-step agent prompts."""
-    return (
-        "OPERATOR PROTOCOL (real assistant — execute, do not roleplay):\n"
-        "1. Short PLAN (2–5 bullets) before acting.\n"
-        "2. Execute ONE step, then VERIFY from evidence (tool result or screen).\n"
-        "3. On failure: change strategy — never repeat the same failing action.\n"
-        "4. If a missing detail would change the next step, ask ONE short question — then act. Do not guess wrong.\n"
-        "5. Prefer tools / keyboard routes before pixel clicks.\n"
-        "6. Finish with what was done and how you verified it.\n"
-        f"Objective: {objective.strip()[:500]}\n"
-    )
+    from friday.prompts import plan_preamble as _plan_preamble
+
+    return _plan_preamble(objective)
 
 
 def with_plan_if_needed(system_overlay: str, message: str) -> str:

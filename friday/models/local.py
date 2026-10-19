@@ -359,7 +359,7 @@ def query_aim_verification(
 
 
 def _looks_like_optics_dump(reply: str) -> bool:
-    """True when the VLM recited persona / restated the ask instead of describing pixels."""
+    """True when the VLM recited persona / captioned the frame instead of describing pixels."""
     import re
 
     from friday.assistant.reply_guard import looks_like_prompt_dump
@@ -378,6 +378,15 @@ def _looks_like_optics_dump(reply: str) -> bool:
         r"calm,\s*precise,\s*loyal|"
         r"system prompt|persona"
         r")\b",
+        t,
+    ):
+        return True
+    # Caption theater: "Image: A screenshot of a Windows desktop…"
+    if re.match(r"(?i)^\s*image\s*:", t):
+        return True
+    if re.search(r"(?i)\ba screenshot of (a |the )?(windows )?desktop\b", t) and not re.search(
+        r"(?i)\b(chrome|cursor|vscode|code|notepad|powershell|cmd|edge|firefox|"
+        r"explorer|settings|word|excel|slack|discord|spotify|terminal|powershell)\b",
         t,
     ):
         return True
@@ -400,7 +409,8 @@ def describe_screen(
     """Answer a question about the current screenshot in plain text (no actions)."""
     from friday.config import CHAT_NUM_CTX, CHAT_NUM_PREDICT
     from friday.models.manager import get_model_manager
-    from friday.persona import owner_name, system_prompt
+    from friday.persona import owner_name
+    from friday.prompts import observe_hard_retry, observe_user_prompt
 
     # Unload text chat (e.g. 27B) and load a VL tag — never send images to a text GGUF.
     vision_tag = get_model_manager().ensure_loaded("vision")
@@ -422,20 +432,22 @@ def describe_screen(
         return (accumulated or "").strip()
 
     try:
-        prompt = (
-            f"{system_prompt(kind)}\n\n"
-            f"Question: {q}\n"
-            "Reply with what you see — apps and window titles first."
-        )
+        prompt = observe_user_prompt(q, kind=kind)
         reply = _ask(prompt, tokens=predict)
         if _looks_like_optics_dump(reply):
-            # One hard retry with zero persona ballast.
-            hard = (
-                "Look at the screenshot. Name the main open window/app and what is visible. "
-                f"Question: {q}\n"
-                "Answer in plain words. Do not mention Friday, identity, or tone."
+            # One hard retry with zero persona ballast; don't stream the second pass.
+            hard = observe_hard_retry(q)
+            messages = [{"role": "user", "content": hard, "images": [frame_b64]}]
+            accumulated, _ = _stream_chat(
+                messages,
+                reasoning_mode=False,
+                think=False,
+                model=vision_tag,
+                num_predict=min(160, predict + 32),
+                num_ctx=min(4096, CHAT_NUM_CTX),
+                on_token=None,
             )
-            reply = _ask(hard, tokens=min(160, predict + 32))
+            reply = (accumulated or "").strip()
         if not reply or _looks_like_optics_dump(reply):
             return (
                 f"I have the screenshot, {owner_name()}, but the vision model gave me noise. "

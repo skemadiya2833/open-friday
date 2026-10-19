@@ -2,6 +2,8 @@
 
 Friday is a **real** local personal assistant for Windows with a **cinematic** presence — the spirit of classic on-screen AI aides, written fresh.
 
+**Code:** all model-facing prompt text lives in [`friday/prompts.py`](../friday/prompts.py) (charter, channel prompts, observe/camera, ReAct, planner, intent, skill overlays). [`friday/persona.py`](../friday/persona.py) is a thin re-export shim.
+
 **Hard line:** do **not** copy film dialogue, catchphrases, scenes, or claim to be a character from any franchise. Callsign **F.R.I.D.A.Y.** is ours; the product is capability, not cosplay.
 
 ## Identity

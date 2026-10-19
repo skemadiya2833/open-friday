@@ -417,19 +417,15 @@ def _model_task_proposals(*, user_text: str, ctx: dict[str, Any]) -> list[str]:
         diary_txt = "; ".join((ctx.get("diary") or [])[:4]) or "(none)"
         know_txt = "; ".join((ctx.get("knowledge") or [])[:4]) or "(none)"
         profile = (ctx.get("profile") or "")[:400] or "(none)"
-        prompt = (
-            "You are Friday on the owner's Windows PC. They asked to note today's tasks.\n"
-            "Propose 2–5 short agenda lines grounded ONLY in the evidence below.\n"
-            "Rules: never invent meetings, reports, or chores absent from evidence. "
-            "If evidence is too thin, output exactly: NONE\n"
-            "Output ONLY the lines, one per line, no numbering, no preamble.\n"
-            f"Owner said: {(user_text or '')[:200]}\n"
-            f"Calendar today: {cal_txt}\n"
-            f"Open agenda: {open_txt}\n"
-            f"Recent diary: {diary_txt}\n"
-            f"Known threads: {know_txt}\n"
-            f"Owner profile notes: {profile}\n"
-            "Lines:"
+        from friday.prompts import day_plan_propose_prompt
+
+        prompt = day_plan_propose_prompt(
+            user_text=user_text or "",
+            cal_txt=cal_txt,
+            open_txt=open_txt,
+            diary_txt=diary_txt,
+            know_txt=know_txt,
+            profile=profile,
         )
         out = query_model_text(
             prompt,
@@ -489,18 +485,15 @@ def _model_outline(
         diary_txt = "; ".join((diary or [])[:4]) or "(none)"
         know_txt = "; ".join((knowledge or [])[:4]) or "(none)"
         profile_txt = (profile or "")[:400] or "(none)"
-        prompt = (
-            "You are Friday. Output ONLY a compact day outline as 4–6 bullet lines. "
-            "No preamble. Each line starts with Morning/Midday/Afternoon/EOD or a time. "
-            "Ground every line in calendar, open agenda, diary, or profile. "
-            "Do not invent meetings or chores with no evidence.\n"
-            f"Owner said: {user_text[:200]}\n"
-            f"Calendar: {cal_txt}\n"
-            f"Open agenda: {open_txt}\n"
-            f"Recent diary: {diary_txt}\n"
-            f"Known threads: {know_txt}\n"
-            f"Owner profile: {profile_txt}\n"
-            "Outline:"
+        from friday.prompts import day_outline_prompt
+
+        prompt = day_outline_prompt(
+            user_text=user_text,
+            cal_txt=cal_txt,
+            open_txt=open_txt,
+            diary_txt=diary_txt,
+            know_txt=know_txt,
+            profile_txt=profile_txt,
         )
         out = query_model_text(
             prompt,

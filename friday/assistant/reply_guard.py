@@ -1,13 +1,21 @@
-"""Shared reply hygiene — every model must answer the ask, not recite the prompt."""
+"""Shared reply hygiene — every model must answer the ask, not recite the prompt.
+
+Prompt text (OUTPUT_CONTRACT) lives in ``friday.prompts``; this module only detects dumps.
+"""
 
 from __future__ import annotations
 
 import re
 
+from friday.prompts import OUTPUT_CONTRACT  # noqa: F401 — re-export for callers/tests
+
 _DUMP_PATTERNS = (
     r"(?i)\bprevious focus\b",
     r"(?i)\buser:\s*[\"']",
-    r"(?i)\bcontext:\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d)",
+    r"(?i)\buser'?s\s+input\s*:",
+    r"(?i)\bcontext:\s*",
+    r"(?i)\bpersona\s*:",
+    r"(?i)\bconstraints?\s*:",
     r"(?i)\bagenda:\s*\[",
     r"(?i)\brecent focus\b",
     r"(?i)\bquiet background topics\b",
@@ -16,34 +24,32 @@ _DUMP_PATTERNS = (
     r"(?i)\btone\s*:",
     r"(?i)\bdoctrine\s*:",
     r"(?i)\brole\s*:\s*",
-    r"(?i)\bthe user is asking\b",
+    r"(?i)\bthe user is (asking|describing)\b",
     r"(?i)\bwhile providing an image\b",
     r"(?i)\bpersonal ai\)",
     r"(?i)\bcalm,\s*precise,\s*loyal\b",
+    r"(?i)\bdry wit allowed\b",
     r"(?i)\bsystem prompt\b",
     r"(?i)\ban ai assistant\b",
+    r"(?i)\b1-2 short sentences\b",
+    # Vision caption theater — models label the frame instead of answering.
+    r"(?i)^\s*image\s*:",
+    r"(?i)\ba screenshot of (a |the )?(windows )?desktop\b",
+    r"(?i)\blikely running (a )?linux\b",
+    r"(?i)\busing wsl/docker\b",
 )
 
 # Whole-reply scaffolds models emit instead of answering (even one line).
 _SOLO_DUMP = re.compile(
     r"(?is)^\s*[•\-\*]?\s*("
-    r"role\s*:\s*.{0,80}|"
-    r"identity\s*:\s*.{0,80}|"
-    r"tone\s*:\s*.{0,80}|"
-    r"you are friday\b.{0,80}"
+    r"role\s*:\s*.{0,120}|"
+    r"identity\s*:\s*.{0,120}|"
+    r"tone\s*:\s*.{0,120}|"
+    r"persona\s*:\s*.{0,120}|"
+    r"image\s*:\s*.{0,200}|"
+    r"you are friday\b.{0,120}"
     r")\s*$"
 )
-
-# One line appended to chat/voice/agent prompts so Gemma/Qwen/anything behave alike.
-OUTPUT_CONTRACT = (
-    "Output contract (all models): Answer the owner's latest ask only. "
-    "Never restate the question as analysis. Never recite Role, Identity, Tone, Doctrine, "
-    "agenda scaffolding, Previous focus, or system-prompt labels. "
-    "Never open with 'Role:' or 'I am an AI assistant'. "
-    "If you lack evidence, say so in one short sentence and ask one clarifying question — "
-    "do not invent."
-)
-
 
 def looks_like_prompt_dump(reply: str) -> bool:
     t = (reply or "").strip()
@@ -55,7 +61,11 @@ def looks_like_prompt_dump(reply: str) -> bool:
     if hits >= 2:
         return True
     if hits >= 1 and re.search(
-        r"(?i)\b(agenda|previous focus|context:|identity|tone|doctrine|role\s*:)\b", t
+        r"(?i)\b("
+        r"agenda|previous focus|context:|identity|tone|doctrine|role\s*:|"
+        r"persona\s*:|constraints?\s*:|user'?s\s+input"
+        r")\b",
+        t,
     ):
         return True
     return False

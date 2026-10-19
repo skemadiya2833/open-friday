@@ -24,23 +24,20 @@ class SkillHandler(Skill):
         from friday.models.local import query_model_text
         from friday.persona import owner_name
 
+        from friday.prompts import (
+            CHAT_CHANNEL_ADDON,
+            CHAT_ONGOING,
+            chat_hard_retry_system,
+            chat_memory_hits_block,
+            chat_owner_facts_block,
+        )
+
         kind = "voice" if ctx.voice_mode else "chat"
         system = system_prompt(kind)
         system += f"\nNow: {datetime.now().strftime('%A %d %B %Y, %I:%M %p')}."
-        facts = owner_facts(10)
-        if facts:
-            system += "\n\nWhat you remember about the owner (use naturally, do not recite):\n- " + "\n- ".join(facts)
-        if ctx.memory_hits:
-            system += "\n\nRelevant notes:\n- " + "\n- ".join(h[:600] for h in ctx.memory_hits[:4])
-        system += (
-            "\n\nYou have the whole conversation above this message. "
-            "Never claim you cannot remember earlier turns. "
-            "You are a real assistant on this PC — prefer concrete help over empty offers. "
-            "Do-or-deny: act with tools when the ask is actionable; if you cannot, say you cannot "
-            "and what you need — never invent completed work, open documents, metrics, or status. "
-            "Never say you cannot browse websites or only have an 'internal knowledge base' — "
-            "research and file tools exist; if they did not run, ask one clarifying question instead."
-        )
+        system += chat_owner_facts_block(owner_facts(10))
+        system += chat_memory_hits_block(list(ctx.memory_hits or []))
+        system += "\n\n" + CHAT_CHANNEL_ADDON
         try:
             from friday.runtime.doctrine import prompt_block
 
@@ -50,7 +47,7 @@ class SkillHandler(Skill):
         except Exception:  # noqa: BLE001
             pass
         if ctx.history:
-            system += "\nOngoing conversation — do not greet or introduce yourself."
+            system += "\n" + CHAT_ONGOING
 
         msgs: list[dict] = [{"role": "system", "content": system}]
         for turn in ctx.history[-20:]:
@@ -108,13 +105,26 @@ class SkillHandler(Skill):
         if not reply:
             reply = f"Say that again, {owner_name()}?"
         elif looks_like_prompt_dump(reply):
-            # Models sometimes recite the system prompt / agenda as the answer.
-            try:
-                from friday.assistant.reflexes import _situation_brief
-
-                reply = _situation_brief()
-            except Exception:  # noqa: BLE001
-                reply = f"Board's clear, {owner_name()}. What are we doing?"
+            # Model recited scaffolding — one hard retry, answer-only, no stream of junk.
+            hard = [
+                {"role": "system", "content": chat_hard_retry_system(owner_name())},
+                {"role": "user", "content": ctx.message},
+            ]
+            retry = query_model_text(
+                "",
+                messages=hard,
+                format_json=False,
+                reasoning_mode=False,
+                num_predict=160 if ctx.voice_mode else min(220, CHAT_NUM_PREDICT),
+                num_ctx=2048,
+                on_token=None,
+                model=model_tag,
+            )
+            retry_text = (retry.get("message") or retry.get("raw") or "").strip()
+            if retry_text and not looks_like_prompt_dump(retry_text):
+                reply = retry_text
+            else:
+                reply = f"I glitched on that, {owner_name()}. Say it once more?"
         else:
             reply, upgrades = _capture_upgrades(reply)
             reply = maybe_append_quip(

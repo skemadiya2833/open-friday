@@ -131,6 +131,7 @@ def run_react(
 
     from friday.agent.behavior import with_plan_if_needed
     from friday.persona import system_prompt
+    from friday.prompts import react_brief_prompt, react_step_prompt
 
     overlay = with_plan_if_needed(system_overlay or system_prompt("agent"), message)
 
@@ -143,27 +144,15 @@ def run_react(
     seen_calls: set[tuple[str, str]] = set()
 
     for step in range(steps):
-        prompt = f"""{overlay}
-
-You are Friday operating tools on the owner's machine. Call ONE tool per step, or finish with FINAL:.
-Prefer doing the work over explaining how you would do it.
-
-Available tools:
-{tools_prompt_block(allowed_tools)}
-
-To call a tool, output ONLY a JSON object in a fenced block:
-```json
-{{"tool": "name", "args": {{...}}}}
-```
-
-To finish, output plain text starting with FINAL: then your answer for the user.
-
-Conversation:
-{hist}
-USER: {message}
-{observations}
-Step {step + 1}/{steps}. Decide.
-"""
+        prompt = react_step_prompt(
+            overlay=overlay,
+            tools_block=tools_prompt_block(allowed_tools),
+            hist=hist,
+            message=message,
+            observations=observations,
+            step=step,
+            steps=steps,
+        )
         from friday.models.roles import TOOL_CALL_SCHEMA
 
         # Structured outputs: prefer a tool JSON object; plain FINAL: replies still work if the
@@ -269,10 +258,11 @@ Step {step + 1}/{steps}. Decide.
             )
             if forced:
                 label = need
-                brief_prompt = (
-                    f"{overlay}\n\nUSER: {message}\n\nObservation from {label}:\n{forced}\n\n"
-                    "Output FINAL: as a short briefing of what you found. No more tools. "
-                    "Never answer with only 'Done'."
+                brief_prompt = react_brief_prompt(
+                    overlay=overlay,
+                    message=message,
+                    label=label,
+                    observation=forced,
                 )
                 brief = query_model_text(brief_prompt, format_json=False, reasoning_mode=False)
                 final_reply = (brief.get("message") or brief.get("raw") or "").strip()
