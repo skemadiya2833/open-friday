@@ -27,7 +27,22 @@ def add_feedback(body: FeedbackIn) -> dict[str, Any]:
         text=body.text,
         reply_id=body.reply_id,
     )
-    return {"ok": True, "entry": entry}
+    # Mirror into the fine-tune corpus when the bubble carries a server turn_id.
+    training: dict[str, Any] | None = None
+    rid = (body.reply_id or "").strip()
+    if rid and not rid.startswith("r-"):
+        try:
+            from friday.runtime.training_log import rate_turn
+
+            training = rate_turn(
+                rid,
+                body.vote,  # type: ignore[arg-type]
+                note="",
+                reply_excerpt=body.text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            training = {"ok": False, "error": str(exc)}
+    return {"ok": True, "entry": entry, "training": training}
 
 
 @router.get("")

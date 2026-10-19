@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from friday.assistant.reflexes import try_reflex
-from friday.skills.builtin.chat.handler import _looks_like_context_dump
+from friday.assistant.reply_guard import looks_like_prompt_dump
 
 
 def test_whats_going_on_is_reflex(monkeypatch):
@@ -24,5 +24,5 @@ def test_context_dump_detected():
         '* User: "Hey Friday what\'s going on" * Context: Saturday, Oct 17, 2026, 10:53 PM. '
         "* Agenda: [ ] 3D printing. * Previous focus: tools for screen display, e-commerce SI."
     )
-    assert _looks_like_context_dump(dump)
-    assert not _looks_like_context_dump("Board's clear, boss. 10:53 PM. Ready when you are.")
+    assert looks_like_prompt_dump(dump)
+    assert not looks_like_prompt_dump("Board's clear, boss. 10:53 PM. Ready when you are.")

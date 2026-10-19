@@ -31,8 +31,14 @@ class ModelManager:
             return EMBED_MODEL
         return resolve_chat_model()
 
+    def same_chat_and_vision(self) -> bool:
+        return resolve_chat_model() == resolve_vision_model()
+
     def ensure_loaded(self, role: Role) -> str:
-        """Load the model for *role*, unloading a conflicting GPU resident first."""
+        """Load the model for *role*, unloading a conflicting GPU resident first.
+
+        When chat and vision resolve to the same tag, never unload — just re-label.
+        """
         name = self.model_for(role)
         with self._lock:
             # Embeddings stay light / often CPU — don't displace vision/chat.
@@ -48,6 +54,7 @@ class ModelManager:
                 return name
 
             # Different GPU model → unload whoever is hot (chat↔vision swap on 16GB).
+            # Never unload when the desired tag is already what we want next.
             if self._loaded_name and self._loaded_name != name:
                 self._unload(self._loaded_name)
                 self._loaded_name = None
@@ -57,6 +64,48 @@ class ModelManager:
             self._loaded = role
             self._loaded_name = name
             return name
+
+    def after_vision(self) -> None:
+        """Finished a screen/camera look — drop VL-only residency; keep shared chat+vision hot.
+
+        Screenshots are one-shot request payloads; chat history keeps text only.
+        When chat≠vision, unload the VL tag so VRAM returns to chat.
+        When chat==vision, do **not** unload — just mark the resident as chat.
+        """
+        chat = resolve_chat_model()
+        vision = resolve_vision_model()
+        with self._lock:
+            if chat == vision:
+                if self._loaded_name == chat or self._loaded_name == vision:
+                    self._loaded = "chat"
+                    self._loaded_name = chat
+                return
+            if self._loaded_name and self._loaded_name == vision:
+                self._unload(self._loaded_name)
+                self._loaded = None
+                self._loaded_name = None
+        # Prefer chat warm for the next turn (outside lock — ensure_loaded re-enters).
+        try:
+            self.ensure_loaded("chat")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_prefs_model_change(self) -> None:
+        """Systems UI changed chat/vision tags — unload only if the hot tag is obsolete."""
+        chat = resolve_chat_model()
+        vision = resolve_vision_model()
+        allowed = {chat, vision}
+        with self._lock:
+            if not self._loaded_name:
+                return
+            if self._loaded_name in allowed:
+                # Still a valid resident (often the same gemma4 for both) — keep it.
+                if chat == vision:
+                    self._loaded = "chat"
+                return
+            self._unload(self._loaded_name)
+            self._loaded = None
+            self._loaded_name = None
 
     def unload(self, role: Role | None = None) -> None:
         """Unload the GPU resident. Prefer the actual loaded tag (survives prefs switches)."""

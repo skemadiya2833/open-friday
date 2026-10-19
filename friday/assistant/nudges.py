@@ -82,7 +82,8 @@ def configure(
     if quiet_start is not None:
         data["quiet_start"] = max(0, min(23, int(quiet_start)))
     if quiet_end is not None:
-        data["quiet_end"] = max(0, min(23, int(quiet_end)))
+        # 24 = exclusive end-of-day so 0→24 covers every hour (tests + "always quiet").
+        data["quiet_end"] = max(0, min(24, int(quiet_end)))
     if daily_cap is not None:
         data["daily_cap"] = max(0, min(20, int(daily_cap)))
     _save(data)

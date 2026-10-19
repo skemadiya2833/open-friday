@@ -38,16 +38,24 @@ class SkillHandler(Skill):
             "message": f"Describing screen ({vision.native_size[0]}×{vision.native_size[1]})…",
         })
 
+        frame = vision.frame_b64 or ""
+        native = vision.native_size
+        # Drop payload frames ASAP — chat keeps the text description only.
+        try:
+            vision.frame_b64_list.clear()
+        except Exception:  # noqa: BLE001
+            pass
         reply = describe_screen(
             ctx.message,
-            frame_b64=vision.frame_b64,
+            frame_b64=frame,
             on_token=lambda t: ctx.emit("skill_token", {"text": t}),
             voice_mode=ctx.voice_mode,
         )
+        frame = ""
         if not reply.strip():
             reply = "I captured the screen but couldn't describe it. Please try again."
         return SkillResult(
             reply=reply.strip(),
             skill_id="observe",
-            metadata={"native_size": vision.native_size},
+            metadata={"native_size": native},
         )

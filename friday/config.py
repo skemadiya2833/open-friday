@@ -185,6 +185,8 @@ AUDIT_LOG_PATH = os.getenv("FRIDAY_AUDIT_LOG", os.path.join(DATA_DIR, "audit", "
 # Seconds a confirm-tier call waits for the owner before it is denied (fail closed).
 APPROVAL_TIMEOUT_SECONDS = float(os.getenv("FRIDAY_APPROVAL_TIMEOUT", "120"))
 CONVERSATIONS_DIR = os.path.join(DATA_DIR, "conversations")
+# Fine-tune / preference corpus (repo-root ``training/``, gitignored — not under data/).
+TRAINING_DIR = os.getenv("FRIDAY_TRAINING_DIR", os.path.join(_REPO_ROOT, "training"))
 TASKS_DB = os.path.join(DATA_DIR, "tasks.sqlite")
 # Loopback by default. LAN bind only after FRIDAY_AUTH=remote + FRIDAY_PUBLIC_HOST (docs/PHONE_SETUP.md).
 SERVER_HOST = os.getenv("FRIDAY_HOST", "127.0.0.1")
@@ -345,8 +347,10 @@ def _ollama_tag_installed(tag: str) -> bool:
 
 
 def ensure_data_dirs() -> None:
-    for path in (DATA_DIR, WORKSPACE_DIR, CHROMA_DIR, CONVERSATIONS_DIR):
+    for path in (DATA_DIR, WORKSPACE_DIR, CHROMA_DIR, CONVERSATIONS_DIR, TRAINING_DIR):
         os.makedirs(path, exist_ok=True)
+    for sub in ("turns", "ratings", "daily"):
+        os.makedirs(os.path.join(TRAINING_DIR, sub), exist_ok=True)
 
 
 def should_store_frame_pil() -> bool:

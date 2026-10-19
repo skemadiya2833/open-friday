@@ -963,6 +963,12 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         if (openId && window.FridayReports) {
           FridayReports.open(openId);
         }
+        const turnId =
+          ev.turn_id ||
+          (ev.metadata && ev.metadata.turn_id) ||
+          (ev.result && ev.result.metadata && ev.result.metadata.turn_id) ||
+          "";
+        if (turnId) live.dataset.replyId = turnId;
       }
       if (ev.type === "error") {
         setCameraLooking(false);
@@ -1024,11 +1030,11 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       FridayLive.clearHint && FridayLive.clearHint();
     }
     if (!live.querySelector(".feedback")) {
-      live.dataset.replyId = `r-${Date.now()}`;
+      if (!live.dataset.replyId) live.dataset.replyId = `r-${Date.now()}`;
       const fb = document.createElement("div");
       fb.className = "feedback";
-      fb.innerHTML = `<button type="button" class="fb-up" title="Thumbs up" aria-label="Thumbs up">▲</button>
-        <button type="button" class="fb-down" title="Thumbs down" aria-label="Thumbs down">▼</button>`;
+      fb.innerHTML = `<button type="button" class="fb-up" title="Good for training" aria-label="Thumbs up">▲</button>
+        <button type="button" class="fb-down" title="Bad for training" aria-label="Thumbs down">▼</button>`;
       live.appendChild(fb);
       fb.querySelector(".fb-up")?.addEventListener("click", () => sendFeedback(live, "up"));
       fb.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(live, "down"));

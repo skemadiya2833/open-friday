@@ -13,13 +13,15 @@ from friday.persona import system_prompt
 def test_output_contract_on_chat_prompt():
     text = system_prompt("chat")
     assert "Output contract" in text
-    assert "Identity" in OUTPUT_CONTRACT
+    assert "plain spoken" in OUTPUT_CONTRACT.lower()
+    assert "I" in OUTPUT_CONTRACT and "you" in OUTPUT_CONTRACT
 
 
 def test_observe_stays_lean():
     text = system_prompt("observe")
     assert "Output contract" not in text
-    assert "Identity" not in text or "Do not mention Identity" in text
+    assert "Truth rules" not in text
+    assert "screenshot" in text.lower() or "desktop" in text.lower()
 
 
 def test_detects_identity_tone_dump():
@@ -59,6 +61,18 @@ def test_detects_image_caption_dump():
     assert not _looks_like_optics_dump(
         "Cursor is open on cli.py, and a PowerShell window is behind it."
     )
+
+
+def test_detects_analysis_outline_dump():
+    dump = (
+        "The user wants me to identify the main open application or window and describe "
+        "its content from the provided image. 1. Identify the main application: "
+        "The image shows a code editor, specifically VS Code."
+    )
+    assert looks_like_prompt_dump(dump)
+    from friday.models.local import _looks_like_optics_dump
+
+    assert _looks_like_optics_dump(dump)
 
 
 def test_detects_previous_focus_dump():

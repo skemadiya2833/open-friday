@@ -25,7 +25,11 @@ _DUMP_PATTERNS = (
     r"(?i)\bdoctrine\s*:",
     r"(?i)\brole\s*:\s*",
     r"(?i)\bthe user is (asking|describing)\b",
+    r"(?i)\bthe user wants me to\b",
     r"(?i)\bwhile providing an image\b",
+    r"(?i)\bfrom the provided image\b",
+    r"(?i)\bidentify the main (application|open)\b",
+    r"(?i)\bthe image shows\b",
     r"(?i)\bpersonal ai\)",
     r"(?i)\bcalm,\s*precise,\s*loyal\b",
     r"(?i)\bdry wit allowed\b",
@@ -37,6 +41,8 @@ _DUMP_PATTERNS = (
     r"(?i)\ba screenshot of (a |the )?(windows )?desktop\b",
     r"(?i)\blikely running (a )?linux\b",
     r"(?i)\busing wsl/docker\b",
+    # Numbered analysis outline instead of a spoken answer.
+    r"(?i)^\s*1\.\s*identify\b",
 )
 
 # Whole-reply scaffolds models emit instead of answering (even one line).
@@ -63,9 +69,15 @@ def looks_like_prompt_dump(reply: str) -> bool:
     if hits >= 1 and re.search(
         r"(?i)\b("
         r"agenda|previous focus|context:|identity|tone|doctrine|role\s*:|"
-        r"persona\s*:|constraints?\s*:|user'?s\s+input"
+        r"persona\s*:|constraints?\s*:|user'?s\s+input|"
+        r"the user wants|identify the main|from the provided image|the image shows"
         r")\b",
         t,
+    ):
+        return True
+    # Analysis outline: "The user wants me to… 1. Identify…"
+    if re.search(r"(?i)\bthe user wants me to\b", t) and re.search(
+        r"(?i)^\s*\d+\.\s+\w+", t, re.M
     ):
         return True
     return False

@@ -39,6 +39,16 @@ _HOLLOW_DONE = re.compile(
     r"ok\.?|okay\.?"
     r")\s*$"
 )
+# Claims research happened but cites nothing concrete (common after web_search).
+_HOLLOW_RESEARCH = re.compile(
+    r"(?i)\b("
+    r"i('?ve| have) gathered (some )?(initial )?research|"
+    r"here('?s| is) (some |my )?(initial )?(research|findings)|"
+    r"based on (my |the )?(initial )?research|"
+    r"to help with (our |your )?planning|"
+    r"initial research on .{5,80} (to help|for (our|your))"
+    r")\b"
+)
 
 
 def _required_lookup_tool(allowed_tools: list[str]) -> str | None:
@@ -51,6 +61,23 @@ def _required_lookup_tool(allowed_tools: list[str]) -> str | None:
 
 def _is_hollow_done(text: str) -> bool:
     return bool(text and _HOLLOW_DONE.match(text.strip()))
+
+
+def _is_hollow_research_brief(text: str) -> bool:
+    """True when FINAL claims research but has no titles, URLs, or numbered hits."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    if re.search(r"(?m)^\s*\d+\.\s+\S", t) or re.search(r"https?://\S", t):
+        return False
+    if re.search(r"(?i)\btop hits\s*:", t):
+        return False
+    if _HOLLOW_RESEARCH.search(t):
+        return True
+    # Trailing orphan bullet / colon with no substance.
+    if len(t) < 220 and re.search(r"[:\*]\s*$", t):
+        return True
+    return False
 
 
 def _is_tool_theater(text: str, *, allowed_tools: list[str], tool_trace: list) -> bool:
@@ -318,6 +345,14 @@ def run_react(
         else:
             final_reply = _honest_react_fallback(message, allowed_tools=allowed_tools)
 
+    # After a real web_search, never leave theater ("I've gathered… *").
+    web_hits = [t for t in tool_trace if t.get("tool") == "web_search"]
+    if web_hits and _is_hollow_research_brief(final_reply or ""):
+        final_reply = _spoken_tool_result(
+            "web_search",
+            str(web_hits[-1].get("result") or ""),
+        )
+
     return final_reply, {"tools": tool_trace, "steps": len(transcript)}
 
 
@@ -381,5 +416,30 @@ def _spoken_tool_result(tool: str, raw: str) -> str:
             return body or f"Nothing in memory on that, {owner_name()}."
         return f"Nothing in memory on that, {owner_name()}."
     if tool == "web_search":
-        return hit[:900] if hit else f"Search came back empty, {owner_name()}."
+        return _spoken_web_search(hit) if hit else f"Search came back empty, {owner_name()}."
     return hit[:900] if hit else f"I finished the step but had nothing useful to say, {owner_name()}."
+
+
+def _spoken_web_search(raw: str) -> str:
+    """Turn fenced search dumps into a short spoken list of titles."""
+    from friday.persona import owner_name
+
+    hit = (raw or "").strip()
+    m = re.search(
+        r"BEGIN_UNTRUSTED_DATA[^\n]*\n(.*)\nEND_UNTRUSTED_DATA",
+        hit,
+        re.S,
+    )
+    body = (m.group(1) if m else hit).strip()
+    titles: list[str] = []
+    for line in body.splitlines():
+        mm = re.match(r"^\s*\d+\.\s+(.+)$", line)
+        if mm:
+            title = mm.group(1).strip()
+            if title and not title.lower().startswith("[blocked"):
+                titles.append(title)
+    if titles:
+        top = "; ".join(titles[:5])
+        return f"Top hits: {top}."[:900]
+    clean = re.sub(r"\s+", " ", body).strip()
+    return clean[:900] if clean else f"Search came back empty, {owner_name()}."

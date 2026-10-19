@@ -5,6 +5,9 @@
 models/gguf/
 *.gguf
 
+# Fine-tune / preference corpus (owner labels + turn dumps — local only)
+training/
+
 # Local runtime / secrets / user data
 data/
 data/calendar_ical.url

@@ -10,7 +10,8 @@ def test_put_system_specs_on_screen_is_act():
     assert got is not None
     assert got.mode == "act"
     assert got.skill_id == "computer_use"
-    assert "show on screen" in got.reason
+    # Specs may match measure-hardware or show-on-screen; both stay computer_use.
+    assert got.reason.startswith("deterministic:")
 
 
 def test_bring_up_system_resources_is_act():

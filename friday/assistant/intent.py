@@ -560,6 +560,11 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # "Put them / the ones you searched on screen" after research → open findings.
+    show_findings = _resolve_show_research_findings(msg, history)
+    if show_findings is not None:
+        return show_findings
+
     # Put/show other content on screen → computer_use (tools-first, not vision).
     if _SHOW_ON_SCREEN.search(msg):
         return Intent(
@@ -743,6 +748,75 @@ _CONFIRM_RESEARCH = re.compile(
     r"(?:little\s+|quick\s+)?research\b"
     r"(?:\s+for\s+me)?(?:\s+please)?(?:\s*[.\!\,]*)?\s*$"
 )
+
+
+_SHOW_RESEARCH_REF = re.compile(
+    r"(?i)\b("
+    r"(?:put|show|display|bring up|pull up|open)\b.{0,80}\b"
+    r"(?:them|those|that|it|the (?:results?|findings?|research|links?|sources?|hits?))\b"
+    r".{0,50}\b(?:on (?:my |the )?(?:screen|desktop|monitor)|in (?:a |my )?notepad|"
+    r"in (?:the )?browser)|"
+    r"(?:the )?(?:ones?|results?|findings?|links?|sources?|hits?)\s+"
+    r"(?:you\s+)?(?:searched|found|looked\s*up|researched|got|pulled)|"
+    r"put\s+(?:the\s+)?(?:research|results?|findings?)\s+on\s+(?:my\s+|the\s+)?screen"
+    r")\b"
+)
+
+
+def _last_assistant_looks_like_research(history: list[dict[str, str]] | None) -> bool:
+    if not history:
+        return False
+    for turn in reversed(history):
+        if turn.get("role") != "assistant":
+            continue
+        text = turn.get("content") or ""
+        return bool(
+            re.search(
+                r"(?i)\b("
+                r"search results|top hits|gathered|looked up|from the (web|results)|"
+                r"here(?:'s| is) what I found|i(?:'ve| have) found|"
+                r"sources?|research on|initial research"
+                r")\b",
+                text,
+            )
+        )
+    return False
+
+
+def _last_user_was_research_ask(history: list[dict[str, str]] | None) -> bool:
+    prior = _last_substantive_user(history)
+    if not prior:
+        return False
+    return bool(_RESEARCH.search(prior) or _SEARCH_VERB.search(prior))
+
+
+def _resolve_show_research_findings(
+    msg: str, history: list[dict[str, str]] | None
+) -> Intent | None:
+    """Map 'put them on screen' / 'the ones you searched' onto opening last findings."""
+    names_results = bool(_SHOW_RESEARCH_REF.search(msg))
+    pronoun_on_screen = bool(
+        _SHOW_ON_SCREEN.search(msg)
+        and re.search(
+            r"(?i)\b(them|those|that|it|results?|findings?|research|ones?|hits?)\b",
+            msg,
+        )
+    )
+    if not names_results and not pronoun_on_screen:
+        return None
+    # Wording that names search results is enough; pronoun needs recent research context.
+    if names_results or _last_user_was_research_ask(history) or _last_assistant_looks_like_research(
+        history
+    ):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.95,
+            objective="open research findings on screen",
+            reason="deterministic: show research findings",
+            source="policy",
+        )
+    return None
 
 
 def _last_substantive_user(history: list[dict[str, str]] | None) -> str:

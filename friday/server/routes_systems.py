@@ -166,7 +166,7 @@ def _apply_side_effects(patch: dict[str, Any]) -> None:
         try:
             from friday.models.manager import get_model_manager
 
-            mm = get_model_manager()
-            mm.unload()
+            # Same tag for chat+vision → keep resident; only unload if the hot tag is obsolete.
+            get_model_manager().on_prefs_model_change()
         except Exception:  # noqa: BLE001
             pass

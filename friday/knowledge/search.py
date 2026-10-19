@@ -12,7 +12,9 @@ from html.parser import HTMLParser
 from friday.types import KnowledgeNote
 
 _CACHE_TTL = 10 * 60
-_cache: dict[str, tuple[float, KnowledgeNote]] = {}
+# (timestamp, note, raw rows) — rows kept so we can open findings on screen later.
+_cache: dict[str, tuple[float, KnowledgeNote, list[dict[str, str]]]] = {}
+_last_key: str | None = None
 _NEWS = re.compile(
     r"\b(news|headline|headlines|breaking|current events|today'?s news)\b",
     re.I,
@@ -22,7 +24,20 @@ _WS = re.compile(r"\s+")
 
 
 def reset_cache() -> None:
+    global _last_key
     _cache.clear()
+    _last_key = None
+
+
+def last_search_payload() -> tuple[str, list[dict[str, str]], str] | None:
+    """Most recent web search: (query, rows, summary). None if nothing cached."""
+    if not _last_key:
+        return None
+    hit = _cache.get(_last_key)
+    if not hit:
+        return None
+    _ts, note, rows = hit
+    return note.query, list(rows), note.summary
 
 
 def _norm(query: str) -> str:
@@ -217,6 +232,8 @@ def format_results(query: str, rows: list[dict[str, str]]) -> str:
 
 def perform_knowledge_search(query: str, *, open_browser: bool = False) -> KnowledgeNote:
     """Return titles/snippets. Opens a tab only if fetch failed and open_browser=True."""
+    global _last_key
+
     raw = (query or "").strip()
     query = clean_web_query(raw) or raw
     if query != raw:
@@ -226,6 +243,7 @@ def perform_knowledge_search(query: str, *, open_browser: bool = False) -> Knowl
     hit = _cache.get(key)
     if hit and now - hit[0] < _CACHE_TTL:
         print(f"[Knowledge] Reusing results for: {query}", flush=True)
+        _last_key = key
         return hit[1]
 
     print(f"[Knowledge] Searching: {query}", flush=True)
@@ -244,6 +262,7 @@ def perform_knowledge_search(query: str, *, open_browser: bool = False) -> Knowl
             "Read the visible results once, then answer; do not open another tab."
         )
     note = KnowledgeNote(query=query, summary=summary, source="web_search")
-    _cache[key] = (now, note)
+    _cache[key] = (now, note, rows)
+    _last_key = key
     print(f"[Knowledge] {len(rows)} result(s)", flush=True)
     return note

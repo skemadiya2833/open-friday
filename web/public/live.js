@@ -215,7 +215,7 @@
       // Size the bitmap to the CSS box so the ring stays circular (no stretch).
       const sizeCanvas = () => {
         if (!canvas) return;
-        const css = Math.max(160, Math.round(canvas.getBoundingClientRect().width || 320));
+        const css = Math.max(56, Math.round(canvas.getBoundingClientRect().width || 64));
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         canvas.width = Math.round(css * dpr);
         canvas.height = Math.round(css * dpr);

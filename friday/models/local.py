@@ -19,7 +19,6 @@ from friday.config import (
     MODEL_TOP_P,
     OLLAMA_CHAT_URL,
     OVERLAY_ENABLED,
-    VISION_MODEL,
     resolve_chat_model,
 )
 from friday.models.parser import ACTION_DELIMITER, parse_reasoning_response, synthesize_plan_from_partial
@@ -373,7 +372,10 @@ def _looks_like_optics_dump(reply: str) -> bool:
         r"(?i)\b("
         r"identity\s*:|tone\s*:|doctrine\s*:|"
         r"the user is asking|"
+        r"the user wants me to|"
         r"while providing an image|"
+        r"from the provided image|"
+        r"identify the main (application|open)|"
         r"personal ai|"
         r"calm,\s*precise,\s*loyal|"
         r"system prompt|persona"
@@ -383,6 +385,12 @@ def _looks_like_optics_dump(reply: str) -> bool:
         return True
     # Caption theater: "Image: A screenshot of a Windows desktop…"
     if re.match(r"(?i)^\s*image\s*:", t):
+        return True
+    # Numbered analysis: "1. Identify the main application: The image shows…"
+    if re.search(r"(?i)^\s*1\.\s*identify\b", t) or (
+        re.search(r"(?i)\bthe image shows\b", t)
+        and re.search(r"(?i)^\s*\d+\.\s+", t, re.M)
+    ):
         return True
     if re.search(r"(?i)\ba screenshot of (a |the )?(windows )?desktop\b", t) and not re.search(
         r"(?i)\b(chrome|cursor|vscode|code|notepad|powershell|cmd|edge|firefox|"
@@ -406,20 +414,28 @@ def describe_screen(
     on_token: Callable[[str], None] | None = None,
     voice_mode: bool = False,
 ) -> str:
-    """Answer a question about the current screenshot in plain text (no actions)."""
+    """Answer a question about the current screenshot in plain text (no actions).
+
+    The JPEG is used for this call only — never stored in chat history. Afterward
+    ``after_vision()`` keeps a shared chat+vision model hot (no unload) or swaps
+    back to chat when tags differ.
+    """
     from friday.config import CHAT_NUM_CTX, CHAT_NUM_PREDICT
     from friday.models.manager import get_model_manager
     from friday.persona import owner_name
     from friday.prompts import observe_hard_retry, observe_user_prompt
 
-    # Unload text chat (e.g. 27B) and load a VL tag — never send images to a text GGUF.
-    vision_tag = get_model_manager().ensure_loaded("vision")
+    mm = get_model_manager()
+    # Load VL (no-op unload when chat and vision are the same tag).
+    vision_tag = mm.ensure_loaded("vision")
     kind = "observe_voice" if voice_mode else "observe"
     q = (question or "").strip() or "What is on my screen right now?"
     predict = 96 if voice_mode else min(384, CHAT_NUM_PREDICT + 128)
+    # Local alias so we can drop the caller's blob from this scope after use.
+    image = frame_b64
 
-    def _ask(prompt: str, *, tokens: int) -> str:
-        messages = [{"role": "user", "content": prompt, "images": [frame_b64]}]
+    def _ask(prompt: str, *, tokens: int, img: str, stream: bool) -> str:
+        messages = [{"role": "user", "content": prompt, "images": [img]}]
         accumulated, _ = _stream_chat(
             messages,
             reasoning_mode=False,
@@ -427,27 +443,19 @@ def describe_screen(
             model=vision_tag,
             num_predict=tokens,
             num_ctx=min(4096, CHAT_NUM_CTX),
-            on_token=on_token,
+            on_token=on_token if stream else None,
         )
+        # Drop image refs from the request payload ASAP (text reply is all we keep).
+        messages[0].pop("images", None)
         return (accumulated or "").strip()
 
     try:
         prompt = observe_user_prompt(q, kind=kind)
-        reply = _ask(prompt, tokens=predict)
+        reply = _ask(prompt, tokens=predict, img=image, stream=True)
         if _looks_like_optics_dump(reply):
             # One hard retry with zero persona ballast; don't stream the second pass.
             hard = observe_hard_retry(q)
-            messages = [{"role": "user", "content": hard, "images": [frame_b64]}]
-            accumulated, _ = _stream_chat(
-                messages,
-                reasoning_mode=False,
-                think=False,
-                model=vision_tag,
-                num_predict=min(160, predict + 32),
-                num_ctx=min(4096, CHAT_NUM_CTX),
-                on_token=None,
-            )
-            reply = (accumulated or "").strip()
+            reply = _ask(hard, tokens=min(160, predict + 32), img=image, stream=False)
         if not reply or _looks_like_optics_dump(reply):
             return (
                 f"I have the screenshot, {owner_name()}, but the vision model gave me noise. "
@@ -462,6 +470,13 @@ def describe_screen(
                 "The vision model may still be loading — try once more in a few seconds."
             )
         return f"Couldn't read the screen, {owner_name()}. {err.split('For more information')[0].strip()}"
+    finally:
+        # Screenshot bytes leave Python; chat session only stores the text reply.
+        image = ""
+        try:
+            mm.after_vision()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def query_model_vision(

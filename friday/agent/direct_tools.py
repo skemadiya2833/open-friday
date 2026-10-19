@@ -912,11 +912,21 @@ def _screenshot_describe(*, describe: bool = True) -> str:
     feed = LiveScreenFeed(mask_overlay=False)
     vision = feed.capture_oneshot()
     b64 = vision.frame_b64 if vision else None
+    if vision is not None:
+        try:
+            vision.frame_b64_list.clear()
+        except Exception:  # noqa: BLE001
+            pass
     if not b64:
         raise RuntimeError("no screenshot")
     if not describe:
-        return f"Screenshot captured ({len(b64)} b64 chars)."
-    return describe_screen("What is visibly open on the desktop? Be brief.", frame_b64=b64)
+        n = len(b64)
+        b64 = ""
+        return f"Screenshot captured ({n} b64 chars)."
+    try:
+        return describe_screen("What is visibly open on the desktop? Be brief.", frame_b64=b64)
+    finally:
+        b64 = ""
 
 
 def is_make_html_request(objective: str) -> bool:

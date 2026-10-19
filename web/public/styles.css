@@ -797,49 +797,41 @@ select:focus, input:focus, textarea:focus {
   .bubble { max-width: 94%; font-size: 1rem; }
   .grid-form, .plan-form { grid-template-columns: 1fr; }
   .card { flex-direction: column; }
-  /* Phone: wider bottom sheet */
+  /* Phone: full-width compact bar above home indicator */
   .live {
-    left: 0;
-    right: 0;
-    transform: none;
-    width: 100%;
-    height: min(72dvh, 620px);
-    max-height: calc(100dvh - env(safe-area-inset-top) - 8px);
-    border-radius: 16px 16px 0 0;
-    border-left: 0;
-    border-right: 0;
+    left: 8px;
+    right: 8px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    max-height: min(38vh, 320px);
+    border-radius: 12px;
   }
   .live-chrome {
-    grid-template-columns: 1fr;
-    justify-items: stretch;
-    padding: 10px 12px 6px;
+    padding: 8px 10px;
   }
-  .live-chrome-status { order: -1; padding-top: 0; }
-  .live-chrome-actions { justify-content: space-between; }
+  .live-chrome-actions { margin-left: 0; width: 100%; justify-content: space-between; }
   .live-body {
-    padding: 4px 12px calc(12px + env(safe-area-inset-bottom));
+    padding: 8px 10px 10px;
   }
   body.live-open { overflow: auto; }
   body.live-open .shell { filter: none; pointer-events: auto; }
   .live-pace { max-width: 100%; }
   .live-speed { margin-left: 0; }
   #liveOrb {
-    top: 38%;
-    width: min(220px, 42vmin);
-    max-width: 46vw;
-    max-height: 28vh;
+    width: 56px;
+    height: 56px;
+    max-width: 56px;
+    max-height: 56px;
+    flex-basis: 56px;
   }
-  .live-caps {
-    top: calc(38% + min(120px, 18vmin));
-    max-height: 14vh;
-  }
-  .cap { font-size: 1.05rem; }
-  .cap-friday { font-size: 1.15rem; }
-  .live-compose { display: flex; } /* always show type box on phone */
-  .live.has-result { height: min(82dvh, 700px); }
-  .live-dock { max-height: min(40vh, 320px); width: 100%; }
-  .live-results { max-height: min(34vh, 280px); }
-  .live-reply { max-height: min(28vh, 240px); font-size: 1rem; }
+  .live-caps { max-height: 3.8rem; }
+  .cap { font-size: 0.9rem; }
+  .cap-friday { font-size: 0.95rem; }
+  .live-compose { display: flex; }
+  .live.has-result,
+  .live.show-type { max-height: min(48vh, 400px); }
+  .live-dock { max-height: min(28vh, 200px); width: 100%; }
+  .live-results { max-height: min(22vh, 160px); }
+  .live-reply { max-height: min(16vh, 120px); font-size: 0.9rem; }
   .rem-panel { left: 8px; right: 8px; width: auto; top: 42px; }
   .rem-popup { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); max-width: none; }
 }
@@ -965,65 +957,66 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 #view-reports > * { flex-shrink: 0; }
 
 /* ---------------------------------------------------------------- live voice mode
- * Desktop + phone: bottom sheet — never a full-screen blackout (you need to see the desktop
- * while Friday looks / acts). */
+ * Compact docked bar — chat stays readable; never a stage-eating modal. */
 .live {
   position: fixed;
-  left: 50%;
-  right: auto;
-  bottom: 0;
+  left: max(18px, calc(250px + 28px));
+  right: 18px;
+  bottom: 58px;
   top: auto;
-  transform: translateX(-50%);
   z-index: 900;
-  width: min(720px, calc(100vw - 24px));
-  height: min(52vh, 520px);
-  max-height: calc(100dvh - 48px);
+  width: auto;
+  height: auto;
+  max-height: min(42vh, 360px);
   display: flex;
   flex-direction: column;
-  background: rgba(6, 12, 22, 0.92);
+  background: rgba(6, 12, 22, 0.94);
   border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 14px 14px 0 0;
-  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(12px);
+  border-radius: 10px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(14px);
   overflow: hidden;
 }
 .live.hidden { display: none; }
-.live.has-result {
-  height: min(68vh, 640px);
+.live.has-result,
+.live.show-type {
+  max-height: min(48vh, 420px);
 }
 .live-chrome {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  padding: 14px 16px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
   z-index: 3;
+  border-bottom: 1px solid rgba(120, 170, 220, 0.1);
 }
 .live-chrome-status {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
+  flex: 1 1 auto;
+  justify-content: center;
   text-align: center;
-  padding-top: 4px;
+  padding-top: 0;
 }
 .live-chrome-actions {
-  display: flex; gap: 8px; flex-shrink: 0;
+  display: flex; gap: 6px; flex-shrink: 0;
   justify-content: flex-end;
+  margin-left: auto;
 }
 .live-close, .live-type-toggle, .live-results-clear, .live-send {
   appearance: none;
   background: transparent;
   color: var(--accent-2);
   border: 1px solid var(--line-hot);
-  padding: 8px 14px;
+  padding: 5px 10px;
   font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
   clip-path: none;
@@ -1043,48 +1036,50 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
   border: 0;
 }
 .live-body {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-flow: row wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0;
-  padding: 0 16px 16px;
+  justify-content: flex-start;
+  gap: 10px 12px;
+  padding: 10px 14px 12px;
   overflow: hidden;
 }
 .live-dock {
   position: relative;
   z-index: 2;
-  width: min(720px, 92vw);
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
-  max-height: min(32vh, 280px);
+  max-height: min(28vh, 220px);
+  order: 3;
+  flex: 1 1 100%;
 }
 .live-compose {
   display: none; width: 100%; gap: 8px; align-items: stretch;
   margin-top: 0; flex-shrink: 0;
 }
 .live-compose textarea {
-  flex: 1; min-height: 52px; resize: vertical; font-size: 16px;
+  flex: 1; min-height: 40px; max-height: 72px; resize: vertical; font-size: 15px;
   background: rgba(0, 0, 0, 0.35); color: var(--text); border: 1px solid var(--line);
-  padding: 10px 12px; clip-path: none;
+  padding: 8px 10px; clip-path: none;
 }
 .live.show-type .live-compose { display: flex; }
 .live-results {
   width: 100%;
-  max-height: min(28vh, 240px);
+  max-height: min(22vh, 180px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   text-align: left;
   background: rgba(4, 10, 18, 0.72);
   border: 1px solid rgba(120, 170, 220, 0.16);
   border-radius: 2px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   overflow: hidden;
   flex-shrink: 1;
   backdrop-filter: blur(8px);
@@ -1092,37 +1087,36 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live-results[hidden] { display: none !important; }
 .live-results-head {
   display: flex; justify-content: space-between; align-items: center;
-  font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.16em;
+  font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.14em;
   color: rgba(160, 200, 230, 0.55);
   text-transform: uppercase;
 }
 .live-results-clear {
   appearance: none; background: transparent; border: 0;
   color: rgba(160, 200, 230, 0.55); cursor: pointer;
-  font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.1em;
+  font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.1em;
   padding: 2px 4px;
 }
 .live-results-clear:hover { color: var(--cyan); }
 .live-hint {
-  max-width: min(88vw, 420px);
+  max-width: min(40vw, 280px);
   margin: 0;
-  padding: 2px 8px;
+  padding: 0;
   font-family: var(--mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
   color: rgba(160, 190, 220, 0.55);
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .live-hint.live { color: rgba(125, 220, 255, 0.75); }
 .live-hint.hidden { display: none !important; }
-/* When a status hint is showing, hide the coarse LISTENING/ACTING label so the chrome stays one line. */
 .live-chrome-status:has(#liveHint:not(.hidden)) .live-state { display: none; }
 .live-activity {
   display: flex; flex-wrap: wrap; gap: 6px;
-  font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+  font-family: var(--mono); font-size: 0.7rem; color: var(--muted);
 }
 .live-activity .step {
   border: 1px solid var(--line); padding: 2px 8px;
@@ -1131,28 +1125,29 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live-reply {
   margin: 0;
   flex: 1;
-  min-height: 4.5rem;
-  max-height: min(28vh, 240px);
+  min-height: 2.5rem;
+  max-height: min(18vh, 140px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--font);
-  font-size: 0.95rem;
-  line-height: 1.45;
+  font-size: 0.9rem;
+  line-height: 1.4;
   color: #e8f4ff;
   background: transparent;
 }
 .live-pace {
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-  font-family: var(--mono); font-size: 0.75rem; color: var(--cyan);
-  max-width: min(100%, 720px);
+  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 0.68rem; color: var(--cyan);
+  max-width: none;
+  flex: 0 1 auto;
 }
 .live-pace button, .seg button {
   appearance: none;
   background: var(--cyan-dim); color: var(--cyan); border: 1px solid var(--line);
-  padding: 6px 12px; cursor: pointer; font-family: var(--mono); font-size: 0.75rem;
-  clip-path: none; text-transform: none; letter-spacing: 0.04em; font-weight: 500;
+  padding: 4px 8px; cursor: pointer; font-family: var(--mono); font-size: 0.68rem;
+  clip-path: none; text-transform: none; letter-spacing: 0.03em; font-weight: 500;
 }
 .live-pace button.on, .seg button.on { background: var(--cyan); color: #04141c; }
 .live-duplex { display: inline-flex; gap: 0; margin-left: 0; border: 1px solid var(--line); }
@@ -1162,7 +1157,7 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live-speed input { width: 90px; }
 .seg { display: flex; gap: 6px; margin-top: 6px; }
 .live-state {
-  font-family: var(--display); letter-spacing: 0.28em; font-size: 0.78rem; color: var(--cyan); opacity: 0.9;
+  font-family: var(--display); letter-spacing: 0.2em; font-size: 0.7rem; color: var(--cyan); opacity: 0.9;
   transition: color 0.35s ease, opacity 0.35s ease;
   flex-shrink: 0;
   max-width: 100%;
@@ -1177,40 +1172,50 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 #liveOrb {
   cursor: pointer;
   display: block;
-  position: absolute;
-  left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%);
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
   z-index: 1;
-  width: min(220px, 36vmin);
-  height: auto;
+  width: 64px;
+  height: 64px;
   aspect-ratio: 1 / 1;
-  max-width: min(240px, 42vw);
-  max-height: min(220px, 28vh);
+  max-width: 64px;
+  max-height: 64px;
+  flex: 0 0 64px;
 }
 .live-caps {
-  position: absolute;
-  left: 50%;
-  top: calc(42% + min(120px, 16vmin));
-  transform: translateX(-50%);
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
   z-index: 2;
-  width: min(640px, 92%);
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
-  max-height: 16vh;
+  max-height: 4.5rem;
   overflow: hidden;
-  display: flex; flex-direction: column; gap: 6px; text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
   pointer-events: none;
+  justify-content: center;
 }
-.cap { font-size: 1.25rem; line-height: 1.35; transition: opacity 0.3s; }
+.cap { font-size: 0.95rem; line-height: 1.3; transition: opacity 0.3s; }
 .cap-user { color: #cfeaff; opacity: 0.95; }
 .cap-user.interim { opacity: 0.6; font-style: italic; }
 .cap-user:empty::before { content: ""; }
-.cap-friday { color: #c9ffe0; font-size: 1.4rem; }
+.cap-friday { color: #c9ffe0; font-size: 1rem; }
 .cap-friday.filler { color: var(--accent-2); font-style: italic; }
 .cap-friday.faded { opacity: 0.35; }
-/* Keep the main UI interactive under the live sheet — no page lock / dim trap. */
 body.live-open { overflow: auto; }
 body.live-open .shell { pointer-events: auto; filter: none; }
+/* Leave room so the bar doesn't sit on CLEAR / TRANSMIT */
+body.live-open .composer {
+  padding-bottom: 8px;
+}
 
 /* ---------------------------------------------------------------- reminders, chips */
 .bell { background: transparent; border: 1px solid var(--line); color: var(--cyan); cursor: pointer; padding: 3px 9px; position: relative; font-size: 0.95rem; }

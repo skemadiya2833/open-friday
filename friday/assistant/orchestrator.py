@@ -351,6 +351,19 @@ def handle_message(
     # Desktop completions stay in the session / experience store — do not dump
     # every task string into vector memory.
     _maybe_diary(result.skill_id, message, reply, result.metadata or {})
+    turn_meta = {
+        k: result.metadata.get(k)
+        for k in (
+            "report_id",
+            "open_report",
+            "open_findings",
+            "fallback_plain",
+            "error",
+            "tools",
+            "learned",
+        )
+        if result.metadata and k in result.metadata
+    }
     try:
         from friday.runtime.debug_log import log_turn
 
@@ -362,11 +375,7 @@ def handle_message(
                 "intent": intent.to_dict(),
                 "skill": result.skill_id,
                 "reply": reply,
-                "meta": {
-                    k: result.metadata.get(k)
-                    for k in ("report_id", "open_report", "fallback_plain", "error", "tools")
-                    if result.metadata and k in result.metadata
-                },
+                "meta": turn_meta,
                 "events": [
                     {"type": e.get("type"), "message": (e.get("message") or e.get("status") or "")[:120]}
                     for e in events[-12:]
@@ -377,13 +386,34 @@ def handle_message(
     except Exception:  # noqa: BLE001
         pass
 
+    turn_id = ""
+    try:
+        from friday.runtime.training_log import log_training_turn
+
+        turn_id = log_training_turn(
+            user=message,
+            reply=reply,
+            skill=result.skill_id,
+            intent=intent.to_dict(),
+            session_id=session.id,
+            voice=voice_mode,
+            meta=turn_meta,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
     store.append(session, "assistant", reply, skill_id=result.skill_id)
     return {
         "reply": reply,
         "session_id": session.id,
         "skill_id": result.skill_id,
         "events": events,
-        "metadata": {**(result.metadata or {}), "intent": intent.to_dict(), "voice_mode": voice_mode},
+        "metadata": {
+            **(result.metadata or {}),
+            "intent": intent.to_dict(),
+            "voice_mode": voice_mode,
+            "turn_id": turn_id,
+        },
     }
 
 
@@ -582,10 +612,12 @@ def stream_message(
     reply = (result.get("reply") or "").strip() or (
         "I finished the step but have nothing solid to report yet. Say what you want next."
     )
+    meta = result.get("metadata") or {}
     yield {
         "type": "done",
         "reply": reply,
         "session_id": result.get("session_id"),
         "skill_id": result.get("skill_id"),
-        "metadata": result.get("metadata") or {},
+        "turn_id": meta.get("turn_id") or "",
+        "metadata": meta,
     }
