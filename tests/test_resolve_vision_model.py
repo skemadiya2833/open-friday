@@ -15,6 +15,8 @@ def test_vl_tag_detected():
     assert not C._name_looks_text_only("qwen3-vl:8b-instruct")
     assert C._name_looks_vision("gemma4:12b")
     assert not C._name_looks_text_only("gemma4:12b")
+    assert C._name_looks_vision("qwen3.5:9b")
+    assert not C._name_looks_text_only("qwen3.5:9b")
 
 
 def test_resolve_vision_falls_back_from_iq3(tmp_path, monkeypatch):

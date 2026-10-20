@@ -12,9 +12,14 @@ from friday.persona import system_prompt
 
 def test_output_contract_on_chat_prompt():
     text = system_prompt("chat")
-    assert "Output contract" in text
     assert "plain spoken" in OUTPUT_CONTRACT.lower()
+    assert "never write analysis" in OUTPUT_CONTRACT.lower()
+    assert OUTPUT_CONTRACT in text
     assert "I" in OUTPUT_CONTRACT and "you" in OUTPUT_CONTRACT
+    # Chat must stay lean — labeled knowledge/doctrine blocks train dump formats.
+    assert "Quiet background topics" not in text
+    assert "Learned doctrine" not in text
+    assert "Session continuity" not in text
 
 
 def test_observe_stays_lean():

@@ -121,8 +121,10 @@ def continuity_blurb(limit: int = 4) -> str:
         bits.append("Yesterday: " + "; ".join(y))
     if not bits:
         return ""
+    # Prose only — labeled headers ("Session continuity:") teach small models to dump.
     return (
-        "Session continuity (owner diary titles only — never invent work products, "
-        "metrics, open documents, or sign-off theater from these lines):\n- "
-        + "\n- ".join(bits)
+        "Day notes for silent context only (do not invent work from these; "
+        "mention only if asked): "
+        + " | ".join(bits)
+        + "."
     )

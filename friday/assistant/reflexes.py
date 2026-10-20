@@ -39,7 +39,12 @@ def _cached(key: str, factory: Callable[[], str]) -> tuple[str, bool]:
 def _strip_address(msg: str) -> str:
     """Drop leading 'hey Friday,' so greetings still match."""
     t = (msg or "").strip()
-    t = re.sub(r"(?i)^\s*(hey|hi|hello|ok|okay)\s*,?\s*(friday\s*[,:]?\s*)?", "", t).strip()
+    # Longer tokens first — ``ok`` must not eat the start of ``okay``.
+    t = re.sub(
+        r"(?i)^\s*(hey|hi|hello|okay|ok)\s*,?\s*(friday\s*[,:]?\s*)?",
+        "",
+        t,
+    ).strip()
     t = re.sub(r"(?i)^\s*friday\s*[,:]?\s*", "", t).strip()
     return t or (msg or "").strip()
 

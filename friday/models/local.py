@@ -226,14 +226,17 @@ def query_model_text(
         think = False
     try:
         from friday.models.manager import get_model_manager
-        get_model_manager().mark_used("chat")
+
+        tag = (model or resolve_chat_model()).strip()
+        # Warm the tag we actually generate on (prefs or explicit override).
+        get_model_manager().ensure_tag(tag, role="chat")
         accumulated, _ = _stream_chat(
             messages,
             format_json=format_json,
             format_schema=format_schema,
             reasoning_mode=bool(reasoning_mode) and bool(think),
             think=bool(think),
-            model=model or resolve_chat_model(),
+            model=tag,
             num_predict=num_predict if num_predict is not None else CHAT_NUM_PREDICT,
             num_ctx=num_ctx if num_ctx is not None else CHAT_NUM_CTX,
             on_token=on_token,

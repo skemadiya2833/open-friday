@@ -46,6 +46,22 @@ def test_hollow_research_brief_detector():
     assert not R._is_hollow_research_brief(
         "1. BrandBible — naming tips\n2. USPTO — trademarks\nhttps://example.com/x"
     )
+    # Exam-style dump must fail even when it lists numbered titles.
+    meta = (
+        '* Input context: A "boss" asked me to "Search up the business names." '
+        "* Provided data (from a mock `web_search`): 1. Forbes article: "
+        '"How To Register A Business Name In 5 Steps"'
+    )
+    assert R._is_hollow_research_brief(meta)
+
+
+def test_clean_query_search_up_business_names():
+    from friday.knowledge.search import clean_web_query
+
+    q = clean_web_query("Search up the business names")
+    assert "search" not in q.lower()
+    assert not q.lower().startswith("up ")
+    assert "business names" in q.lower()
 
 
 def test_spoken_web_search_lists_titles():

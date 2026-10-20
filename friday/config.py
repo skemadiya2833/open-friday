@@ -258,6 +258,7 @@ def _name_looks_vision(tag: str) -> bool:
     n = (tag or "").lower()
     # Explicit VL / multimodal tags — not plain text GGUFs.
     # gemma4:* ships with a CLIP projector in Ollama (vision-capable without "vl" in the name).
+    # qwen3.5:* is multimodal in Ollama (same family as hybrid's norm1000 path).
     return any(
         x in n
         for x in (
@@ -268,6 +269,7 @@ def _name_looks_vision(tag: str) -> bool:
             "llava",
             "minicpm-v",
             "qwen2.5vl",
+            "qwen3.5",
             "gemma4",
             "gemma3",
         )

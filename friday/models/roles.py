@@ -29,23 +29,29 @@ class ModelRoles:
 def get_model_roles() -> ModelRoles:
     from friday.config import resolve_chat_model, resolve_vision_model
 
-    main = (
-        os.getenv("FRIDAY_MODEL_MAIN", "").strip()
-        or resolve_chat_model()
-    )
-    # Fast defaults to main — no second resident model unless explicitly set.
-    fast = os.getenv("FRIDAY_MODEL_FAST", main).strip() or main
-    vision = (
-        os.getenv("FRIDAY_MODEL_VISION", "").strip()
-        or resolve_vision_model()
-    )
+    enabled = _roles_enabled()
+    # Systems UI / CHAT_MODEL / VISION_MODEL — always the unified baseline.
+    chat = resolve_chat_model()
+    vision = resolve_vision_model()
+    if enabled:
+        # Explicit role map may override (fast/main/vision/coder split).
+        main = os.getenv("FRIDAY_MODEL_MAIN", "").strip() or chat
+        fast = os.getenv("FRIDAY_MODEL_FAST", main).strip() or main
+        vision_tag = os.getenv("FRIDAY_MODEL_VISION", "").strip() or vision
+    else:
+        # Single-model mode: never let a stale FRIDAY_MODEL_MAIN in .env override
+        # the Systems picker (that caused gemma↔qwen load/unload thrash).
+        main = chat
+        # Opt-in complexity routing may still use FAST without enabling full role map.
+        fast = os.getenv("FRIDAY_MODEL_FAST", "").strip() or chat
+        vision_tag = vision
     return ModelRoles(
         fast=fast,
         main=main,
-        vision=vision,
+        vision=vision_tag,
         coder=os.getenv("FRIDAY_MODEL_CODER", "qwen3-coder:30b").strip(),
         embed=os.getenv("EMBED_MODEL", "nomic-embed-text").strip() or "nomic-embed-text",
-        enabled=_roles_enabled(),
+        enabled=enabled,
     )
 
 

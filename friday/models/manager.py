@@ -39,7 +39,11 @@ class ModelManager:
 
         When chat and vision resolve to the same tag, never unload — just re-label.
         """
-        name = self.model_for(role)
+        return self.ensure_tag(self.model_for(role), role=role)
+
+    def ensure_tag(self, name: str, *, role: Role = "chat") -> str:
+        """Warm a concrete Ollama tag and track it as the GPU resident."""
+        name = (name or "").strip() or self.model_for(role)
         with self._lock:
             # Embeddings stay light / often CPU — don't displace vision/chat.
             if role == "embed":
@@ -54,7 +58,6 @@ class ModelManager:
                 return name
 
             # Different GPU model → unload whoever is hot (chat↔vision swap on 16GB).
-            # Never unload when the desired tag is already what we want next.
             if self._loaded_name and self._loaded_name != name:
                 self._unload(self._loaded_name)
                 self._loaded_name = None

@@ -47,10 +47,11 @@ def format_persona(template: str) -> str:
 # ---------------------------------------------------------------------------
 
 OUTPUT_CONTRACT = (
-    "Output contract: reply as Friday, speaking directly to the person you assist, "
-    "using \"I\" for yourself and \"you\" for them. Start with the answer to their latest "
-    "message. Write plain spoken sentences, not an analysis of their request and not a "
-    "description of the conversation. "
+    "Reply as Friday to them directly: \"I\" is you, \"you\" is them. "
+    "First sentence answers their latest message. Plain spoken prose only. "
+    "Never write analysis outlines, bullet inventories of the ask, or labeled fields "
+    "(no Role, Identity, Tone, Persona, Context, Constraints, Agenda, User, Image, "
+    "Previous focus, or \"the user wants/is asking\"). "
     "For screen looks, name the apps and windows you see. "
     "If you lack evidence, say so in one short sentence and ask one clarifying question."
 )
@@ -103,10 +104,12 @@ How you work:
 CHAT = (
     CORE
     + "\n\nComms: short by default, one to three sentences. Go longer only when briefing "
-    "research results, a day plan, or when {owner} asks for detail."
-    " You are already on the chat channel: do not say \"I'll pull that up\" or \"stand by\" "
-    "unless a tool already ran this turn. If you cannot act here, say so plainly."
-    " Prefer the notes and measurements you actually have."
+    "research results, a day plan, or when {owner} asks for detail. "
+    "Answer in the same voice as a capable aide in the room — never restating the question, "
+    "never summarizing the prompt, never listing constraints. "
+    "You are already on the chat channel: do not say \"I'll pull that up\" or \"stand by\" "
+    "unless a tool already ran this turn. If you cannot act here, say so plainly. "
+    "Prefer the notes and measurements you actually have."
 )
 
 VOICE = (
@@ -188,22 +191,25 @@ def system_prompt(kind: str = "chat") -> str:
             text += "\n\n" + cont
     except Exception:  # noqa: BLE001
         pass
-    try:
-        from friday.runtime.knowledge import prompt_block as knowledge_block
+    # Knowledge graph + doctrine: agent/research only. In chat/voice those labeled
+    # blocks train small models to emit Role/Context/Agenda dumps instead of answers.
+    if kind == "agent":
+        try:
+            from friday.runtime.knowledge import prompt_block as knowledge_block
 
-        kg = knowledge_block()
-        if kg and kind in {"chat", "voice", "agent"}:
-            text += "\n\n" + kg
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from friday.runtime.doctrine import prompt_block as doctrine_block
+            kg = knowledge_block()
+            if kg:
+                text += "\n\n" + kg
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from friday.runtime.doctrine import prompt_block as doctrine_block
 
-        doc = doctrine_block()
-        if doc and kind in {"chat", "voice", "agent"}:
-            text += "\n\n" + doc
-    except Exception:  # noqa: BLE001
-        pass
+            doc = doctrine_block()
+            if doc:
+                text += "\n\n" + doc
+        except Exception:  # noqa: BLE001
+            pass
     try:
         from friday.runtime.blackout import enabled as blackout_on
 
@@ -219,26 +225,22 @@ def system_prompt(kind: str = "chat") -> str:
 # ---------------------------------------------------------------------------
 
 CHAT_CHANNEL_ADDON = (
-    "The earlier messages in this conversation are real: user messages are what you were told "
-    "by the person you assist, and assistant messages are your own earlier replies. "
-    "You can remember earlier turns, so never claim otherwise. "
-    "Reply to the latest message in your own voice as Friday, to them directly. "
-    "Act with tools when the ask is actionable. If you cannot, say what you cannot do and what "
-    "you need. Report completed work, open documents, metrics, or status only when a tool "
-    "result this turn or the notes you were given show it. "
-    "Research and file tools exist; if they did not run this turn, ask one clarifying "
-    "question or run them."
+    "Earlier turns in this thread are real history — answer the latest message only. "
+    "Speak as Friday to them. Do not restate, outline, or label their message. "
+    "If a tool must run and none ran this turn, say what you need in one short sentence."
 )
 
-CHAT_ONGOING = "Ongoing conversation: do not greet or introduce yourself."
+CHAT_ONGOING = "This is an ongoing conversation — do not greet or introduce yourself."
 
 
 def chat_hard_retry_system(owner: str | None = None) -> str:
     who = owner or owner_name()
     return (
-        f"You are Friday, speaking directly to {who}. "
-        "Answer their latest message in one to three short sentences, using \"I\" for yourself "
-        "and \"you\" for them. Start with the answer."
+        f"You are Friday speaking to {who}. "
+        "Give a direct spoken answer in one to three sentences. "
+        "Start with the answer. Use I/you. "
+        "Forbidden: Role, Identity, Tone, Persona, Context, Constraints, Agenda, "
+        "User, Image, analysis outlines, or phrases like \"the user wants\" / \"the user is asking\"."
     )
 
 
@@ -347,8 +349,8 @@ def react_step_prompt(
     who = owner_name()
     return f"""{overlay}
 
-You are Friday, working on {who}'s machine with tools. Call ONE tool per step, or finish with FINAL:.
-Do the work rather than explaining how you would do it.
+You are Friday on {who}'s PC. Call ONE tool per step, or finish with FINAL:.
+Do the work — do not explain how you would do it, and do not analyze the prompt.
 
 Available tools:
 {tools_block}
@@ -358,9 +360,9 @@ To call a tool, output ONLY a JSON object in a fenced block:
 {{"tool": "name", "args": {{...}}}}
 ```
 
-To finish, output plain text starting with FINAL: then your reply, spoken directly to {who} ("I" for you, "you" for them).
+To finish: FINAL: then plain spoken sentences to {who} (I/you). Name real titles and sources from the tool results. Forbidden in FINAL: Input context, Provided data, mock web_search, Role, Context, Constraints, "the user asked", or any outline of the task.
 
-Conversation so far (lines starting USER are {who} talking to you; lines starting FRIDAY are your own earlier replies):
+Conversation so far (USER = {who}; FRIDAY = your earlier replies):
 {hist}
 USER: {message}
 {observations}
@@ -371,10 +373,13 @@ Step {step + 1}/{steps}. Decide your next move.
 def react_brief_prompt(*, overlay: str, message: str, label: str, observation: str) -> str:
     who = owner_name()
     return (
-        f"{overlay}\n\nUSER ({who} said to you): {message}\n\nResult from {label}:\n{observation}\n\n"
-        f"Output FINAL: followed by a short briefing for {who} of what you found, spoken directly "
-        "to them. Use only what the result above contains. No more tools. "
-        "Never answer with only 'Done'."
+        f"{overlay}\n\n"
+        f"{who} asked: {message}\n\n"
+        f"Tool result ({label}) — treat as facts only:\n{observation}\n\n"
+        f"FINAL: tell {who} what you found in two to five short spoken sentences. "
+        "Lead with the useful titles or facts. I/you only. "
+        "Do not mention tools, mocks, input context, provided data, or how the ask was phrased. "
+        "No more tools. Never answer with only Done."
     )
 
 
@@ -384,13 +389,13 @@ def react_brief_prompt(*, overlay: str, message: str, label: str, observation: s
 
 OVERLAY_RESEARCH = (
     "You look things up for the person you assist. Call web_search ONCE with a precise query FIRST "
-    "(topic only, for example 'latest songs 2026', never 'can you search about...'). "
-    "A phrase like 'Searching the web...' is not a tool call. "
-    "The tool result is the actual set of titles and snippets. Then output FINAL: "
-    "with a short briefing of concrete findings: names, titles, dates, and which source each came from. "
-    "Report only what the results contain. If the snippets are thin, say what is confirmed "
-    "and what is not. If results are empty, say so in FINAL: and stop searching. "
-    "Never search the same query twice."
+    "(topic only, for example 'business name ideas 3D printing', never 'can you search about...'). "
+    "Narrating 'Searching the web…' is not a tool call. "
+    "After results arrive, FINAL: as Friday speaking to them — name the concrete titles and sources "
+    "in plain speech (for example: 'Forbes has a five-step guide on registering a business name…'). "
+    "Report only what the results contain. If they are thin or off-topic, say so briefly. "
+    "If empty, say so in FINAL: and stop. Never search the same query twice. "
+    "Never write Input context, Provided data, mock web_search, or an analysis of the ask."
 )
 
 OVERLAY_TASKS = (

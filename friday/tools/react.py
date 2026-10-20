@@ -49,6 +49,17 @@ _HOLLOW_RESEARCH = re.compile(
     r"initial research on .{5,80} (to help|for (our|your))"
     r")\b"
 )
+# Meta exam-style FINAL — model describes the task/fixture instead of briefing the owner.
+_RESEARCH_META_DUMP = re.compile(
+    r"(?i)\b("
+    r"input context\s*:|"
+    r"provided data\s*:|"
+    r"from a mock\s*[`']?web_search|"
+    r"a [\"']boss[\"'] asked me|"
+    r"the (?:user|owner|boss) (?:asked|wants) me to\b|"
+    r"search results? (?:were|was) (?:provided|given|returned) (?:to me|as)\b"
+    r")\b"
+)
 
 
 def _required_lookup_tool(allowed_tools: list[str]) -> str | None:
@@ -64,9 +75,12 @@ def _is_hollow_done(text: str) -> bool:
 
 
 def _is_hollow_research_brief(text: str) -> bool:
-    """True when FINAL claims research but has no titles, URLs, or numbered hits."""
+    """True when FINAL is theater/meta instead of a spoken briefing to the owner."""
     t = (text or "").strip()
     if not t:
+        return True
+    # Exam-style dumps always fail — even if they list numbered titles underneath.
+    if _RESEARCH_META_DUMP.search(t):
         return True
     if re.search(r"(?m)^\s*\d+\.\s+\S", t) or re.search(r"https?://\S", t):
         return False
@@ -254,9 +268,13 @@ def run_react(
             tool_trace.append({"tool": name, "args": args, "result": out[:2000]})
             observations += f"\nObservation from {name}:\n{out}\n"
             if name in {"web_search", "memory_search"}:
+                from friday.persona import owner_name as _owner
+
                 observations += (
-                    f"\nYou have the {name} results. Output FINAL: as a short briefing for the user. "
-                    "Do not call that tool again. Never answer with only 'Done'.\n"
+                    f"\nYou have the {name} results. FINAL: speak the findings to {_owner()} "
+                    "in plain sentences (titles and sources). "
+                    "Do not call that tool again. Never answer with only Done. "
+                    "Never write Input context, Provided data, or mock web_search.\n"
                 )
             continue
 

@@ -159,20 +159,20 @@ def select_chat_role(query: str, *, urgency: float = 0.5) -> str:
 
 
 def resolve_routed_chat_model(query: str, *, urgency: float = 0.5) -> tuple[str, dict]:
-    """Resolve model tag when complexity routing is on; else main/default chat model."""
+    """Resolve model tag when complexity routing is on; else Systems chat model."""
+    from friday.config import resolve_chat_model
     from friday.models.roles import get_model_roles, model_for
 
     roles = get_model_roles()
     meta: dict = {"complexity_routing": False}
     if not complexity_routing_enabled():
-        tag = model_for("main") if roles.enabled else roles.main
-        return tag, meta
+        # Prefs / CHAT_MODEL only — never a divergent FRIDAY_MODEL_MAIN.
+        tag = model_for("main") if roles.enabled else resolve_chat_model()
+        return tag, {**meta, "model": tag}
     role = select_chat_role(query, urgency=urgency)
     scored = score_complexity(query)
+    # Complexity routing may pick fast/main even when FRIDAY_MODEL_ROLES is false.
     tag = model_for(role) if roles.enabled else (roles.fast if role == "fast" else roles.main)
-    # Complexity routing may enable 4b even when FRIDAY_MODEL_ROLES is false.
-    if not roles.enabled:
-        tag = roles.fast if role == "fast" else roles.main
     meta = {
         "complexity_routing": True,
         "role": role,

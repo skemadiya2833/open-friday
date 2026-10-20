@@ -15,7 +15,8 @@ def test_search_returns_headlines_not_a_tab_note(monkeypatch):
     note = perform_knowledge_search("today's news")
     assert "City floods overnight" in note.summary
     assert "Opened a search tab" not in note.summary
-    assert "Brief the user" in note.summary
+    assert "Brief the user" not in note.summary
+    assert "BEGIN_UNTRUSTED_DATA" in note.summary
 
 
 def test_same_query_is_not_fetched_twice(monkeypatch):

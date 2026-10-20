@@ -2,9 +2,69 @@
 
 from __future__ import annotations
 
+import re
+
 from friday.config import CHAT_NUM_CTX, CHAT_NUM_PREDICT
 from friday.persona import system_prompt
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
+
+_GLITCH_RE = re.compile(
+    r"(?i)\b(i glitched on that|say it once more|blanked on that)\b"
+)
+
+
+def _is_poison_assistant_turn(text: str) -> bool:
+    """Prior dump/glitch replies must not re-enter the model context."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    if _GLITCH_RE.search(t):
+        return True
+    from friday.assistant.reply_guard import looks_like_prompt_dump
+
+    return looks_like_prompt_dump(t)
+
+
+def _history_messages(history: list[dict], *, limit: int = 16) -> list[dict]:
+    """Clean chat history as proper roles — never a labeled transcript wrapper."""
+    out: list[dict] = []
+    for turn in (history or [])[-limit:]:
+        role = "assistant" if turn.get("role") == "assistant" else "user"
+        content = (turn.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "assistant" and _is_poison_assistant_turn(content):
+            continue
+        out.append({"role": role, "content": content[:900]})
+    return out
+
+
+def _honest_fallback(message: str, owner: str) -> str:
+    """Last resort when the model still dumps — answer the ask, never 'I glitched'."""
+    m = (message or "").strip()
+    low = m.lower()
+    if re.search(r"(?i)\b(too dumb|bad reply|useless|glitch)\b", low):
+        return (
+            f"Fair call, {owner}. That last answer failed. "
+            "Say the task once more and I'll take it cleanly."
+        )
+    if re.search(r"(?i)\b(pull(ed)? up|research|search|look(ed)? up|findings?|ideas?)\b", low):
+        return (
+            f"I don't have that research on this turn, {owner}. "
+            "Ask me to look it up again and I'll run search for real."
+        )
+    if re.search(r"(?i)\b(remember|memory|what do you (know|have))\b", low):
+        return (
+            f"I need a memory search for that, {owner}. "
+            "Ask what I remember about a topic and I'll check notes."
+        )
+    short = re.sub(r"\s+", " ", m)[:80]
+    if short:
+        return (
+            f"I didn't get a clean answer out on that, {owner}. "
+            f"For \"{short}\"{'…' if len(m) > 80 else ''} — one more detail and I'll answer straight."
+        )
+    return f"Say that again with one more detail, {owner}, and I'll answer straight."
 
 
 class SkillHandler(Skill):
@@ -38,35 +98,16 @@ class SkillHandler(Skill):
         system += chat_owner_facts_block(owner_facts(10))
         system += chat_memory_hits_block(list(ctx.memory_hits or []))
         system += "\n\n" + CHAT_CHANNEL_ADDON
-        try:
-            from friday.runtime.doctrine import prompt_block
-
-            doctrine = prompt_block()
-            if doctrine:
-                system += "\n\n" + doctrine
-        except Exception:  # noqa: BLE001
-            pass
-        if ctx.history:
+        # Doctrine is already agent-only in system_prompt — do not re-inject here.
+        hist = _history_messages(list(ctx.history or []))
+        if hist:
             system += "\n" + CHAT_ONGOING
 
+        # Proper multi-turn roles only. Never wrap history as "Recent conversation: Boss:/You:"
+        # — that format taught the model to emit User:/Context:/Persona dumps.
         msgs: list[dict] = [{"role": "system", "content": system}]
-        for turn in ctx.history[-20:]:
-            role = "assistant" if turn.get("role") == "assistant" else "user"
-            content = (turn.get("content") or "")[:900]
-            if content:
-                msgs.append({"role": role, "content": content})
-        user = ctx.message
-        if ctx.history:
-            tail = []
-            boss = owner_name().title()
-            for turn in ctx.history[-6:]:
-                who = boss if turn.get("role") == "user" else "You"
-                bit = (turn.get("content") or "").replace("\n", " ")[:180]
-                if bit:
-                    tail.append(f"{who}: {bit}")
-            if tail:
-                user = "Recent conversation:\n" + "\n".join(tail) + f"\n\n{boss} now: " + ctx.message
-        msgs.append({"role": "user", "content": user})
+        msgs.extend(hist)
+        msgs.append({"role": "user", "content": ctx.message})
 
         def _tok(t: str) -> None:
             ctx.emit("skill_token", {"text": t})
@@ -102,12 +143,13 @@ class SkillHandler(Skill):
         upgrades: list[str] = []
         from friday.assistant.reply_guard import looks_like_prompt_dump
 
+        who = owner_name()
         if not reply:
-            reply = f"Say that again, {owner_name()}?"
+            reply = _honest_fallback(ctx.message, who)
         elif looks_like_prompt_dump(reply):
-            # Model recited scaffolding — one hard retry, answer-only, no stream of junk.
+            # Model recited scaffolding — one hard retry with clean prompt, no history ballast.
             hard = [
-                {"role": "system", "content": chat_hard_retry_system(owner_name())},
+                {"role": "system", "content": chat_hard_retry_system(who)},
                 {"role": "user", "content": ctx.message},
             ]
             retry = query_model_text(
@@ -124,7 +166,7 @@ class SkillHandler(Skill):
             if retry_text and not looks_like_prompt_dump(retry_text):
                 reply = retry_text
             else:
-                reply = f"I glitched on that, {owner_name()}. Say it once more?"
+                reply = _honest_fallback(ctx.message, who)
         else:
             reply, upgrades = _capture_upgrades(reply)
             reply = maybe_append_quip(
@@ -143,8 +185,6 @@ class SkillHandler(Skill):
 
 def _capture_upgrades(reply: str) -> tuple[str, list[str]]:
     """Pull UPGRADE: lines into owner profile; strip them from the spoken/chat reply."""
-    import re
-
     captured: list[str] = []
     lines_out: list[str] = []
     for line in reply.splitlines():

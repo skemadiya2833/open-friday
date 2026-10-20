@@ -57,18 +57,19 @@ def clean_web_query(raw: str) -> str:
         return ""
     t = re.sub(
         r"(?i)\b("
-        r"please|hey|hi|ok|okay|friday|boss|"
+        r"please|hey|hi|okay|ok|friday|boss|"
         r"can you|could you|would you|will you|"
         r"do (?:a |me a )?(?:little |quick |small |fast )?(?:web |google |online )?(?:search|lookup|research)|"
-        r"search(?:es|ing)?(?: the web| google| online| for me)?|"
-        r"look(?:ing)?\s*ups?|research(?:ing|es)?|google|find out|"
+        r"search\s+up|search(?:es|ing)?(?: the web| google| online| for me)?|"
+        r"look(?:ing)?\s*ups?|pull(?:ing)?\s+up|research(?:ing|es)?|google|find out|"
         r"for me|real quick|quickly|something|stuff|things?|a bit|a little|"
         r"the web|online|internet|about|regarding|concerning"
         r")\b",
         " ",
         t,
     )
-    t = re.sub(r"(?i)^\s*(for|on|of|to)\s+", "", t)
+    t = re.sub(r"(?i)^\s*(for|on|of|to|up|the)\s+", "", t)
+    t = re.sub(r"(?i)^\s*up\s+", "", t)
     t = _WS.sub(" ", t).strip(" .?!,;:\"'")
     if len(t) < 2:
         return (raw or "").strip()[:200]
@@ -227,7 +228,9 @@ def format_results(query: str, rows: list[dict[str, str]]) -> str:
         if row.get("url"):
             lines.append(f"   {row['url']}")
     body = "\n".join(lines)
-    return fence_untrusted(body, source=f"web_search:{query}") + "\nBrief the user from these facts. Do not search again."
+    # Fenced data only — never append exam-style "brief the user" lines; those teach
+    # models to emit "Input context / Provided data (from a mock web_search)" theater.
+    return fence_untrusted(body, source=f"web_search:{query}")
 
 
 def perform_knowledge_search(query: str, *, open_browser: bool = False) -> KnowledgeNote:

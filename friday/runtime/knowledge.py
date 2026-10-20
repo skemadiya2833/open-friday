@@ -132,6 +132,7 @@ def prompt_block(limit: int = 5) -> str:
     if not clean:
         return ""
     return (
-        "Quiet background topics (never recite, never invent; only mention if the owner asks):\n- "
-        + "\n- ".join(clean[:limit])
+        "Background topics for silent context (never recite as a list; only mention if asked): "
+        + "; ".join(clean[:limit])
+        + "."
     )

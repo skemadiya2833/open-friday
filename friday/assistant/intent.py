@@ -28,12 +28,27 @@ _MODE_TO_SKILL = {
 }
 
 # Deterministic vetoes — these override a confused model.
+# Optional leading address so "Okay Friday what's on my screen" still looks.
+_ADDR = r"(?:(?:hey|hi|hello|okay|ok)\s+)?(?:friday\s*[,:]?\s*)?"
 _LOOK_ONLY = re.compile(
-    r"^\s*(can you see|do you see|what (do you )?see|what('?s| is) (going )?on|"
+    rf"^\s*{_ADDR}("
+    r"can you see|do you see|what (do you )?see|"
+    r"what('?s| is) going on( here| on (my |the )?(screen|desktop|monitor|display))?|"
     r"what('?s| is) on (my |the )?(screen|desktop|monitor|display)|"
     r"describe (my |the )?(screen|desktop|display)|look at (my )?(screen|desktop)|"
-    r"tell me what you see|is (my )?(screen|desktop))\b",
+    r"tell me what you see|is (my )?(screen|desktop)"
+    r")\b",
     re.I,
+)
+# Sitrep / "what's going on" with no screen words → chat (agenda/time), not desktop act.
+_SITUATION_ASK = re.compile(
+    rf"(?i)^\s*{_ADDR}("
+    r"what('?s| is) (going on|up)( (today|tonight|this (evening|afternoon|morning)))?|"
+    r"what('?s| is) the (status|sitrep|situation)|"
+    r"status report|sitrep|"
+    r"anything (going )?on|"
+    r"how('?s| is) (it|everything) (looking|going)"
+    r")\s*[?.!]?\s*$"
 )
 # Webcam / desk camera (not screen). Checked before observe.
 _CAMERA_LOOK = re.compile(
@@ -201,7 +216,22 @@ def apply_policy(intent: Intent, message: str) -> Intent:
             raw=intent.raw,
         )
 
-    # 2) Pure screen look-questions can never become Act.
+    # 2) Sitrep without screen words can never become Act / observe.
+    if _SITUATION_ASK.match(msg) and not re.search(
+        r"\b(screen|desktop|monitor|display)\b", msg, re.I
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="chat",
+            confidence=max(intent.confidence, 0.9),
+            objective=msg,
+            reason=f"policy: situation ask (was {intent.mode}/{intent.skill_id})",
+            needs_confirmation=False,
+            source="policy",
+            raw=intent.raw,
+        )
+
+    # 3) Pure screen look-questions can never become Act.
     if _LOOK_ONLY.search(msg) and not _IMPERATIVE.search(msg):
         return Intent(
             mode="look",
@@ -214,7 +244,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
             raw=intent.raw,
         )
 
-    # 3) Act requires imperative language OR high confidence + imperative objective.
+    # 4) Act requires imperative language OR high confidence + imperative objective.
     if intent.mode == "act" or intent.skill_id == "computer_use":
         # Measuring this PC is a real tool action even when phrased as a question.
         measure_hw = bool(
@@ -310,6 +340,19 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Sitrep / "what's going on" (no screen) → talk — never computer_use.
+    if _SITUATION_ASK.match(msg) and not re.search(
+        r"\b(screen|desktop|monitor|display)\b", msg, re.I
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="chat",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: situation",
+            source="policy",
+        )
+
     # Look-only questions → observe. No LLM vote.
     if _LOOK_ONLY.search(msg) and not _IMPERATIVE.search(msg):
         return Intent(
@@ -321,7 +364,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
-# Short greets / pure chat without tools (includes "Hey Friday").
+    # Short greets / pure chat without tools (includes "Hey Friday").
     from friday.assistant.reflexes import _is_greeting_only
 
     if _is_greeting_only(msg) or re.match(
@@ -348,6 +391,11 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     topic_follow = _resolve_research_topic_reply(msg, history)
     if topic_follow is not None:
         return topic_follow
+
+    # "Did you pull up / find those … ideas?" → research (open findings or look up), not glitchy chat.
+    prior_research = _resolve_prior_research_ask(msg, history)
+    if prior_research is not None:
+        return prior_research
 
     # Study / read articles / learn → research skill with learn metadata (via objective wording).
     if _LEARN.search(msg):
@@ -623,7 +671,7 @@ _SEARCH_VERB = re.compile(
     re.I,
 )
 _VAGUE_SEARCH_ASK = re.compile(
-    r"(?i)^\s*(?:(?:hey|hi|ok|okay)\s+)?(?:friday[,:]?\s*)?"
+    r"(?i)^\s*(?:(?:hey|hi|okay|ok)\s+)?(?:friday[,:]?\s*)?"
     r"(?:(?:can|could|would|will)\s+you\s+)?"
     r"(?:please\s+)?"
     r"(?:"
@@ -788,6 +836,52 @@ def _last_user_was_research_ask(history: list[dict[str, str]] | None) -> bool:
     if not prior:
         return False
     return bool(_RESEARCH.search(prior) or _SEARCH_VERB.search(prior))
+
+
+_PRIOR_RESEARCH_ASK = re.compile(
+    r"(?i)\b("
+    r"did you (pull up|look up|search|find|research|get)|"
+    r"have you (pulled up|looked up|searched|found|researched)|"
+    r"where (are|is) (the |those |that )?(results?|findings?|ideas?|links?|research)|"
+    r"what (did you|about the) (find|research|search)|"
+    r"(show|open|bring up|pull up)\b.{0,40}\b(ideas?|findings?|results?|research)\b"
+    r")\b"
+)
+
+
+def _resolve_prior_research_ask(
+    msg: str, history: list[dict[str, str]] | None
+) -> Intent | None:
+    """Map 'did you pull up those 3D printing ideas' onto research, not chat theater."""
+    if not _PRIOR_RESEARCH_ASK.search(msg):
+        return None
+    # Prefer opening last findings when history/context says research already ran.
+    if _last_assistant_looks_like_research(history) or _last_user_was_research_ask(history):
+        return Intent(
+            mode="research",
+            skill_id="research",
+            confidence=0.93,
+            objective="open research findings on screen",
+            reason="deterministic: prior research follow-up → show findings",
+            source="policy",
+        )
+    # Otherwise treat the utterance as a fresh research ask (strip the "did you" wrapper).
+    topic = re.sub(
+        r"(?i)^\s*(did you|have you|can you|could you)\s+"
+        r"(pull up|look up|search|find|research|get)\s+",
+        "",
+        msg,
+    ).strip()
+    topic = re.sub(r"(?i)\b(those|the|that|uh+|like|and)\b", " ", topic)
+    topic = re.sub(r"\s+", " ", topic).strip(" .?!,") or msg
+    return Intent(
+        mode="research",
+        skill_id="research",
+        confidence=0.9,
+        objective=topic,
+        reason="deterministic: prior-research ask → look up",
+        source="policy",
+    )
 
 
 def _resolve_show_research_findings(
