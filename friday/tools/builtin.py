@@ -109,6 +109,84 @@ def _list_files(args: dict[str, Any]) -> ToolResult:
     return res
 
 
+def _prefs_get(args: dict[str, Any]) -> ToolResult:
+    from friday.runtime.prefs import SCHEMA, get, snapshot
+
+    key = str(args.get("key") or "").strip()
+    if key:
+        if key not in SCHEMA:
+            return ToolResult.error(f"Unknown pref '{key}'")
+        val = get(key)
+        return ToolResult.text_result(f"{key}={val!r}", structured={"key": key, "value": val})
+    snap = snapshot()
+    lines = [f"- {it['key']}={it['value']!r} ({it['source']})" for it in snap["items"]]
+    return ToolResult.text_result("\n".join(lines), structured=snap)
+
+
+def _prefs_update(args: dict[str, Any]) -> ToolResult:
+    """Friday can change Systems prefs (persona, CAD paths, models, …)."""
+    from friday.runtime.prefs import SCHEMA, get, update
+    from friday.server.routes_systems import _apply_side_effects
+
+    values = args.get("values")
+    if not isinstance(values, dict) or not values:
+        # Convenience: single key/value
+        key = str(args.get("key") or "").strip()
+        if not key:
+            return ToolResult.error("Pass values={{...}} or key + value")
+        if key not in SCHEMA:
+            return ToolResult.error(f"Unknown pref '{key}'")
+        values = {key: args.get("value")}
+    unknown = [k for k in values if k not in SCHEMA]
+    if unknown:
+        return ToolResult.error(f"Unknown prefs: {', '.join(unknown)}")
+    update(values)
+    try:
+        _apply_side_effects(values)
+    except Exception:  # noqa: BLE001
+        pass
+    shown = {k: get(k) for k in values}
+    return ToolResult.text_result(
+        "Updated prefs: " + ", ".join(f"{k}={v!r}" for k, v in shown.items()),
+        structured={"values": shown},
+    )
+
+
+def _cad_status(_args: dict[str, Any]) -> ToolResult:
+    from friday.cad.settings import resolve
+    from friday.cad.status import probe_status
+
+    st = probe_status()
+    cfg = resolve()
+    if st.ready_to_build:
+        text = f"CAD ready. FreeCAD={cfg.freecad_install} port={st.port} model={st.model}"
+    else:
+        text = "CAD not ready: " + " ".join(st.blockers)
+    return ToolResult.text_result(text, structured={"status": st.as_dict(), "settings": cfg.as_dict()})
+
+
+def _cad_setup(_args: dict[str, Any]) -> ToolResult:
+    from friday.cad.bootstrap import bootstrap
+
+    result = bootstrap(enable=True)
+    return ToolResult.text_result(
+        result.message,
+        is_error=not result.ok,
+        structured=result.as_dict(),
+    )
+
+
+def _cad_launch(_args: dict[str, Any]) -> ToolResult:
+    from friday.cad.launch import ensure_gui_server
+
+    result = ensure_gui_server()
+    return ToolResult.text_result(
+        result.message,
+        is_error=not result.ok,
+        structured=result.as_dict(),
+    )
+
+
 def _schedule_task(args: dict[str, Any]) -> ToolResult:
     """SAFE only for notification-style reminders. Any other skill is refused here
     (must use a confirm-tier path / owner approval — never silently run computer_use later)."""
@@ -339,5 +417,46 @@ def builtin_specs() -> list[ToolSpec]:
                 ["command"],
             ),
             _run_shell, R.DANGEROUS,
+        ),
+        ToolSpec(
+            "prefs_get",
+            "Read Systems preferences (persona, CAD paths, models, …). Omit key to list all.",
+            object_schema({"key": {**_S, "description": "Optional pref key"}}),
+            _prefs_get,
+            R.SAFE,
+        ),
+        ToolSpec(
+            "prefs_update",
+            "Change Systems preferences (same as Systems UI). Use for CAD paths, cad_enabled, owner_name, models, etc.",
+            object_schema(
+                {
+                    "values": {"type": "object", "description": "Map of pref key → value"},
+                    "key": {**_S, "description": "Single key (alternative to values)"},
+                    "value": {},
+                }
+            ),
+            _prefs_update,
+            R.CONFIRM,
+        ),
+        ToolSpec(
+            "cad_status",
+            "Check FreeCAD + Taiga-S1 readiness (install path, repo, worker, socket).",
+            object_schema(),
+            _cad_status,
+            R.SAFE,
+        ),
+        ToolSpec(
+            "cad_setup",
+            "Detect FreeCAD, install biome-s1/Taiga worker venv under data/vendor, enable CAD prefs.",
+            object_schema(),
+            _cad_setup,
+            R.CONFIRM,
+        ),
+        ToolSpec(
+            "cad_launch",
+            "Launch FreeCAD with the Taiga GUI socket server if it is not already listening.",
+            object_schema(),
+            _cad_launch,
+            R.CONFIRM,
         ),
     ]

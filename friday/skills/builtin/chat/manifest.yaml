@@ -14,5 +14,6 @@ requires_vision: false
 enabled: true
 system_overlay: |
   You are Friday — a real local assistant. Be useful and concrete.
-  If they need desktop control, research, memory, files, or scheduling,
+  If they need desktop control, research, memory, files, CAD/FreeCAD, or scheduling,
   the router will hand off; do not pretend you can only chat.
+  CAD paths and toggles are Systems prefs — the cad skill can change them when asked.

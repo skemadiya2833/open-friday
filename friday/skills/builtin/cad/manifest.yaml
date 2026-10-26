@@ -1,0 +1,30 @@
+id: cad
+name: FreeCAD (Taiga-S1)
+description: >-
+  Plan and build PartDesign parts in FreeCAD. Friday turns your idea into an
+  ordered feature goal; Taiga-S1 executes FreeCAD commands live. Use when the
+  owner asks to model, design, or build a CAD part, plate, bracket, flange,
+  hole pattern, or fillet in FreeCAD / with Taiga.
+triggers:
+  - freecad
+  - free cad
+  - taiga
+  - taiga-s1
+  - build a part
+  - cad model
+  - 3d model in freecad
+  - model a plate
+  - model a bracket
+  - part design
+tools:
+  - prefs_get
+  - prefs_update
+  - cad_status
+  - cad_setup
+  - cad_launch
+priority: 88
+requires_vision: false
+enabled: true
+system_overlay: |
+  You plan CAD parts for Taiga-S1 / FreeCAD PartDesign. Prefer concrete mm sizes.
+  Do not claim a part was built unless the CAD build tool finished this turn.

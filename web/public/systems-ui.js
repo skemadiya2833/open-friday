@@ -144,7 +144,9 @@ function prefItemHtml(it) {
       </div>`;
     }
   } else {
-    control = `<input type="text" data-pref="${escapeHtml(it.key)}" value="${escapeHtml(String(it.value ?? ""))}" style="margin-top:8px;width:min(280px,100%);padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)" />`;
+    const wide = /path|install|repo|python|model|folder/i.test(it.key) || it.group === "cad";
+    const w = wide ? "min(520px,100%)" : "min(280px,100%)";
+    control = `<input type="text" data-pref="${escapeHtml(it.key)}" value="${escapeHtml(String(it.value ?? ""))}" style="margin-top:8px;width:${w};padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)" />`;
   }
   return `<div class="pref-item" data-pref-key="${escapeHtml(it.key)}">
     <div class="pref-label"><strong>${escapeHtml(it.label)}</strong>
@@ -498,6 +500,16 @@ async function refreshSettings() {
         </label>
         <button type="button" class="ghost" id="morningBriefingRun" style="margin-top:8px">Run morning</button>
       </div>
+      <div class="setting"><label>CAD / FreeCAD</label>
+        <p class="muted" id="cadStatusLine" style="margin:0 0 8px">Checking…</p>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="ghost" id="cadDetectBtn">Detect FreeCAD</button>
+          <button type="button" class="ghost" id="cadSetupBtn">Setup Taiga</button>
+          <button type="button" class="ghost" id="cadLaunchBtn">Launch FreeCAD server</button>
+          <button type="button" class="ghost" id="cadRefreshBtn">Refresh</button>
+        </div>
+        <p class="muted" id="cadHint" style="margin:8px 0 0;font-size:12px"></p>
+      </div>
       <div class="setting"><label>Camera</label>
         <p class="muted" id="cameraStatusLine" style="margin:0 0 8px">Checking…</p>
         <label class="speak-toggle">
@@ -539,6 +551,7 @@ async function refreshSettings() {
     bindPrefsControls(prefs || { items: [] });
     bindMorningBriefing();
     bindCameraControls();
+    bindCadControls();
     $("#speakToggleSettings")?.addEventListener("change", (e) => {
       setSpeakEnabled(e.target.checked);
     });
@@ -547,6 +560,81 @@ async function refreshSettings() {
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · LOST";
   }
+}
+
+async function refreshCadStatus() {
+  const line = $("#cadStatusLine");
+  const hint = $("#cadHint");
+  try {
+    const data = await (await apiFetch("/api/cad/status")).json();
+    const st = data.status || {};
+    const cfg = data.settings || {};
+    if (line) {
+      if (st.ready_to_build) {
+        line.textContent = `Ready · FreeCAD ${cfg.freecad_install || ""} · port ${st.port || 8765}`;
+      } else if (!st.enabled) {
+        line.textContent = "Off — enable CAD builds in Preferences below, or Detect / Setup.";
+      } else {
+        line.textContent = (st.blockers && st.blockers[0]) || "Not ready";
+      }
+    }
+    if (hint) {
+      hint.textContent = st.ready_to_build
+        ? "Ask Friday to build a part, or use Preferences → CAD / FreeCAD to tweak paths."
+        : (st.blockers || []).slice(0, 2).join(" ");
+    }
+    return data;
+  } catch (_) {
+    if (line) line.textContent = "CAD status unavailable";
+    return null;
+  }
+}
+
+function bindCadControls() {
+  refreshCadStatus();
+  $("#cadRefreshBtn")?.addEventListener("click", () => refreshCadStatus());
+  $("#cadDetectBtn")?.addEventListener("click", async () => {
+    const hint = $("#cadHint");
+    if (hint) hint.textContent = "Detecting FreeCAD…";
+    try {
+      const data = await (await apiFetch("/api/cad/detect", { method: "POST" })).json();
+      if (hint) {
+        hint.textContent = data.ok
+          ? `Found: ${(data.found || []).join(", ") || "ok"}`
+          : "No FreeCAD install found under Program Files.";
+      }
+      await refreshCadStatus();
+      // Reload prefs panel values if present
+      try {
+        const prefs = await (await apiFetch("/api/systems/prefs")).json();
+        bindPrefsControls(prefs || { items: [] });
+      } catch (_) { /* ignore */ }
+    } catch (e) {
+      if (hint) hint.textContent = String(e?.message || e);
+    }
+  });
+  $("#cadSetupBtn")?.addEventListener("click", async () => {
+    const hint = $("#cadHint");
+    if (hint) hint.textContent = "Setting up Taiga worker (clone + venv + torch) — can take a few minutes…";
+    try {
+      const data = await (await apiFetch("/api/cad/setup", { method: "POST" })).json();
+      if (hint) hint.textContent = data.setup?.message || (data.ok ? "Setup done." : "Setup failed.");
+      await refreshCadStatus();
+    } catch (e) {
+      if (hint) hint.textContent = String(e?.message || e);
+    }
+  });
+  $("#cadLaunchBtn")?.addEventListener("click", async () => {
+    const hint = $("#cadHint");
+    if (hint) hint.textContent = "Launching FreeCAD…";
+    try {
+      const data = await (await apiFetch("/api/cad/launch", { method: "POST" })).json();
+      if (hint) hint.textContent = data.launch?.message || (data.ok ? "Launched." : "Launch failed.");
+      await refreshCadStatus();
+    } catch (e) {
+      if (hint) hint.textContent = String(e?.message || e);
+    }
+  });
 }
 
 async function refreshCameraStatus() {

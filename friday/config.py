@@ -217,6 +217,21 @@ SKILLS_DIR = os.getenv(
     "FRIDAY_SKILLS_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "builtin"),
 )
+# CAD / FreeCAD + Taiga-S1 — prefer Systems prefs (data/runtime_prefs.json).
+# Env vars remain fallbacks; see friday.cad.settings.resolve().
+def _cad_env_on() -> bool:
+    return os.getenv("FRIDAY_CAD", "off").strip().lower() in ("1", "true", "yes", "on")
+
+
+FRIDAY_CAD = _cad_env_on()  # bootstrap/env only; runtime uses prefs via friday.cad.settings
+FREECAD_INSTALL = os.getenv("FREECAD_INSTALL", r"C:\Program Files\FreeCAD 1.1").strip()
+FREECAD_S1_REPO = os.getenv("FREECAD_S1_REPO", "").strip()
+FREECAD_S1_MODEL = os.getenv("FREECAD_S1_MODEL", "shhivv/taiga-s1").strip() or "shhivv/taiga-s1"
+try:
+    FREECAD_S1_PORT = int(os.getenv("FREECAD_S1_PORT", "8765") or "8765")
+except ValueError:
+    FREECAD_S1_PORT = 8765
+FREECAD_S1_PYTHON = os.getenv("FREECAD_S1_PYTHON", "").strip()
 MAX_TOOL_STEPS = int(os.getenv("MAX_TOOL_STEPS", "8"))
 VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "large-v3-turbo")   # provisional; accuracy on owner's voice UNVERIFIED
 VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "en-US-AvaNeural")

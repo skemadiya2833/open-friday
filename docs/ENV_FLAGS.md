@@ -117,6 +117,12 @@ Everyday knobs (persona, **chat/vision Ollama tags**, agent backend, tools-first
 | FRIDAY_CAMERA | `off` | Opt-in desk webcam (`on`/`true` to enable) |
 | FRIDAY_CAMERA_INDEX | `0` | Default OpenCV device index (Systems UI pick overrides via `data/camera_prefs.json`) |
 | FRIDAY_CAMERA_ARM_TTL | `300` | Arm grant TTL in seconds (30–3600) |
+| FRIDAY_CAD | `off` | Fallback only — prefer Systems → CAD (`cad_enabled`) |
+| FREECAD_INSTALL | `C:\Program Files\FreeCAD 1.1` | Fallback FreeCAD root; Systems pref `freecad_install` wins |
+| FREECAD_S1_REPO | _(empty)_ | Fallback biome-s1 path; default vendor under `data/vendor/biome-s1` |
+| FREECAD_S1_MODEL | `shhivv/taiga-s1` | Hugging Face id or local weights dir |
+| FREECAD_S1_PORT | `8765` | FreeCAD GUI server socket |
+| FREECAD_S1_PYTHON | _(empty)_ | Fallback worker Python with torch + freecad_s1 |
 | SKILL_EMBED_ROUTE | `false` | Embedding-based skill routing |
 | CHAT_RAG_ENABLED | `false` | RAG on every chat turn |
 | INDEX_CHAT_TURNS | `false` | **Deprecated / leave off.** Chat turns are not memory (SQLite holds plan/facts/calendar; Chroma is for short semantic notes only). |

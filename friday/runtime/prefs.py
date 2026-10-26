@@ -199,6 +199,55 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "help": "Lighter frames and verify — for weaker GPUs. Restart recommended.",
         "restart": True,
     },
+    # --- CAD / FreeCAD + Taiga-S1 (Systems UI + Friday can change these) ---
+    "cad_enabled": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_CAD",
+        "group": "cad",
+        "label": "CAD builds",
+        "help": "Allow FreeCAD + Taiga-S1 part builds. Friday can toggle this when you ask.",
+    },
+    "freecad_install": {
+        "kind": "str",
+        "default": r"C:\Program Files\FreeCAD 1.1",
+        "env": "FREECAD_INSTALL",
+        "group": "cad",
+        "label": "FreeCAD install folder",
+        "help": "Root folder that contains bin\\freecad.exe (auto-detected when empty/wrong).",
+    },
+    "freecad_s1_repo": {
+        "kind": "str",
+        "default": "",
+        "env": "FREECAD_S1_REPO",
+        "group": "cad",
+        "label": "biome-s1 / Taiga repo",
+        "help": "Checkout of github.com/shhivv/biome-s1. Empty = data/vendor/biome-s1 after Setup.",
+    },
+    "freecad_s1_python": {
+        "kind": "str",
+        "default": "",
+        "env": "FREECAD_S1_PYTHON",
+        "group": "cad",
+        "label": "Taiga worker Python",
+        "help": "Python 3.11/3.12 with torch + freecad_s1 (usually biome-s1\\.venv\\Scripts\\python.exe).",
+    },
+    "freecad_s1_model": {
+        "kind": "str",
+        "default": "shhivv/taiga-s1",
+        "env": "FREECAD_S1_MODEL",
+        "group": "cad",
+        "label": "Taiga model",
+        "help": "Hugging Face id or local weights folder.",
+    },
+    "freecad_s1_port": {
+        "kind": "int",
+        "default": 8765,
+        "env": "FREECAD_S1_PORT",
+        "group": "cad",
+        "label": "Taiga socket port",
+        "help": "Local FreeCAD GUI server port (default 8765).",
+    },
 }
 
 _GROUPS = [
@@ -208,6 +257,7 @@ _GROUPS = [
     ("voice", "Voice"),
     ("models", "Models"),
     ("perf", "Performance"),
+    ("cad", "CAD / FreeCAD"),
 ]
 
 _lock = threading.RLock()

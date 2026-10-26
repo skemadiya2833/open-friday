@@ -7,6 +7,7 @@ Licenses recorded as read from each project’s `LICENSE` (or published docs) at
 | **OpenJarvis** | https://github.com/open-jarvis/OpenJarvis | Apache-2.0 | **Code adapted** (loop guard, security scanners, complexity routing, briefing/perf ideas, research loop patterns). See `docs/THIRD_PARTY_NOTICES.md`. | `f9e9d5d28d9e58d7fe601c331fc15a02fad32b2c` |
 | **Windows-MCP** | https://github.com/CursorTouch/Windows-MCP | Apache-2.0 (upstream README) | **Runtime tool** via MCP (pinned `windows-mcp==0.8.7`); disabled by default. | 0.8.7 |
 | **Hermes Agent** | https://github.com/NousResearch/hermes-agent | Check upstream LICENSE | **Skill format / design idea** for modular skills; Friday’s skill runtime is original. | ideas (not vendored) |
+| **Biome-S1 / Taiga-S1** | https://github.com/shhivv/biome-s1 · https://huggingface.co/shhivv/taiga-s1 | MIT | **Optional runtime**: FreeCAD System-1 executor; Friday plans goals and drives the socket when `FRIDAY_CAD=on`. Not vendored. | upstream releases |
 | **Agent Skills spec** | https://agentskills.io | Spec (see site) | **Skill format** (`SKILL.md` frontmatter, progressive disclosure). | spec as published |
 | **A2UI** | https://a2ui.org / https://github.com/google/A2UI | Apache-2.0 | **Design pattern**: fixed component catalog, declarative UI JSON. Friday uses its own report schema. | v0.9.x family (docs) |
 | **AG-UI** | https://github.com/ag-ui-protocol/ag-ui | Apache-2.0 (verify at use) | **Design pattern**: agent↔UI event transport ideas. No AG-UI SDK vendored. | ideas only |

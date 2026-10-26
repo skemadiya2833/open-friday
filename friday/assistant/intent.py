@@ -14,12 +14,13 @@ from typing import Any, Literal
 
 from friday.skills.registry import get_registry
 
-Mode = Literal["talk", "look", "act", "remember", "research", "files", "schedule", "clarify"]
+Mode = Literal["talk", "look", "act", "cad", "remember", "research", "files", "schedule", "clarify"]
 
 _MODE_TO_SKILL = {
     "talk": "chat",
     "look": "observe",
     "act": "computer_use",
+    "cad": "cad",
     "remember": "memory",
     "research": "research",
     "files": "files",
@@ -173,6 +174,8 @@ def _normalize_proposed(data: dict[str, Any], message: str) -> Intent:
         skill = expected
     if mode == "act" and skill != "computer_use":
         skill = "computer_use"
+    if mode == "cad" and skill != "cad":
+        skill = "cad"
     if mode == "look" and skill != "observe":
         skill = "observe"
     try:
@@ -446,6 +449,43 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             confidence=0.92,
             objective=msg,
             reason="deterministic: today agenda",
+            source="policy",
+        )
+
+    # Conversational CAD: "make a 3d model…", plates/brackets with sizes, FreeCAD/Taiga.
+    # Before HTML "build a page" / research. Skip filament / slicer shopping.
+    if (
+        re.search(
+            r"\b(freecad|free\s*cad|taiga(?:-s1)?|biome-s1)\b|"
+            r"\b(?:set\s*up|setup|enable|disable|launch|start)\b.{0,40}\b(?:cad|freecad|taiga)\b|"
+            r"\b(?:cad|freecad|taiga)\b.{0,40}\b(?:set\s*up|setup|status|enable|disable|launch)\b|"
+            r"\b(?:3\s*-?\s*d|3d|cad)\s*(?:model|part|solid|object)\b|"
+            r"\b(?:make|build|model|design|sketch|create)\b.{0,40}\b(?:a\s+)?(?:3\s*-?\s*d|3d)\s*(?:model|part)?\b|"
+            r"\b(?:how about|let'?s|can we|could we|we (?:should|could)|i want)\b.{0,80}\b"
+            r"(?:3\s*-?\s*d|3d|cad|model|plate|bracket|flange|part)\b|"
+            r"\b(?:build|make|model|design|sketch)\b.{0,80}\b(?:in\s+)?freecad\b|"
+            r"\b(?:cad|partdesign|part\s*design)\b.{0,60}\b(?:part|plate|bracket|flange|model)\b|"
+            r"\b(?:build|make|model|design)\b.{0,80}\b"
+            r"(?:plate|bracket|flange|boss|pocket|cylinder|hex(?:agon)?)\b|"
+            r"\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b.{0,40}\b"
+            r"(?:plate|box|block|bracket|mm|fillet|hole)\b|"
+            r"\b(?:plate|bracket|flange)\b.{0,60}\b(?:mm|fillet|hole|chamfer|polar)\b|"
+            r"[A-Za-z]:\\[^\n]{0,80}FreeCAD",
+            msg,
+            re.I,
+        )
+        and not re.search(
+            r"\b(filament|3d\s*print|printer|slicer|gcode|html(?:5)?|web\s*page|webpage|landing\s*page)\b",
+            msg,
+            re.I,
+        )
+    ):
+        return Intent(
+            mode="cad",
+            skill_id="cad",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: conversational cad / freecad",
             source="policy",
         )
 
@@ -1055,7 +1095,8 @@ _NEEDS_LLM = re.compile(
     r"\b(screen|desktop|monitor|display|window|windows|app|apps|open|launch|start|click|type|write|save|close|delete|"
     r"file|files|folder|search|google|look ?up|research|browse|website|find|plan|agenda|task|tasks|memory|forget|download|"
     r"install|run|play|send|email|e-?mail|message|whatsapp|rename|move|copy|paste|scroll|press|drag|"
-    r"notepad|chrome|excel|word|discord|spotify|settings|pc|computer)\b",
+    r"notepad|chrome|excel|word|discord|spotify|settings|pc|computer|"
+    r"freecad|taiga|cad|bracket|fillet|chamfer)\b",
     re.I,
 )
 

@@ -25,6 +25,7 @@ Browser / tray  ──HTTP/SSE/WS──►  FastAPI (friday/server)
 | Server & auth | `friday/server`, `friday/auth` | HTTP API, passkey sessions, request guard |
 | Assistant | `friday/assistant`, `friday/briefing` | Chat sessions, rhythm, morning/EOD briefings |
 | Skills & tools | `friday/skills`, `friday/tools` | Skill router, policy-gated tool registry |
+| CAD (optional) | `friday/cad`, skill `cad` | FreeCAD builds via Taiga-S1 planner→executor |
 | Agent | `friday/agent`, `friday/vision`, `friday/actions` | Desktop automation loop |
 | Hybrid backend | `friday/agent/hybrid.py`, MCP | UIA-first with vision fallback |
 | Memory & knowledge | `friday/memory`, `friday/knowledge` | Chroma embeddings, optional private library |
