@@ -48,15 +48,7 @@ def _honest_fallback(message: str, owner: str) -> str:
             f"Fair call, {owner}. That last answer failed. "
             "Say the task once more and I'll take it cleanly."
         )
-    if re.search(
-        r"(?i)\b(freecad|fcstd|3\s*-?\s*d|cad|cube|bracket|plate|desktop|save|create)\b",
-        low,
-    ):
-        return (
-            f"I haven't run FreeCAD or saved anything on this turn, {owner}. "
-            "Say the part clearly (for example: make a 40×30×10 plate in FreeCAD) and I'll use the CAD path for real."
-        )
-    if re.search(r"(?i)\b(pull(ed)? up|research|search|look(ed)? up|findings?|ideas?)\b", low):
+    if re.search(r"(?i)\b(pull(ed)? up|research|search|look(ed)? up|findings?)\b", low):
         return (
             f"I don't have that research on this turn, {owner}. "
             "Ask me to look it up again and I'll run search for real."
@@ -65,6 +57,34 @@ def _honest_fallback(message: str, owner: str) -> str:
         return (
             f"I need a memory search for that, {owner}. "
             "Ask what I remember about a topic and I'll check notes."
+        )
+    if re.search(
+        r"(?i)\b(freecad|\.fcstd|fcstd|\bcad\b|cube|bracket|plate)\b|"
+        r"\b3\s*-?\s*d\s*(model|part|file)\b|"
+        r"\b(on (your|the) desktop)\b",
+        low,
+    ):
+        return (
+            f"I haven't run FreeCAD or saved anything on this turn, {owner}. "
+            "Say the part clearly (for example: make a 40×30×10 plate in FreeCAD) and I'll use the CAD path for real."
+        )
+    # Greetings / presence — never ask for "one more detail" on a hello.
+    if re.search(
+        r"(?i)\bwhat are you doing\b|"
+        r"\bwhat('?s| is) up\b|"
+        r"\bhow are you\b|"
+        r"\byou (there|around|awake)\b|"
+        r"^\s*(hey|hi|hello|yo)(,?\s+friday)?[!?.]*\s*$",
+        low,
+    ):
+        return f"Right here, {owner} — standing by. What do you need?"
+    if re.search(
+        r"(?i)\b(just (a )?simple|simple thing|what i asked|that('?s| is) (all|it)|nothing fancy)\b",
+        low,
+    ):
+        return (
+            f"You're right, {owner} — that should've been easy. "
+            "Ask once more short and I'll answer straight."
         )
     short = re.sub(r"\s+", " ", m)[:80]
     if short:
@@ -124,6 +144,19 @@ class SkillHandler(Skill):
 
         model_tag, route_meta = resolve_routed_chat_model(ctx.message)
         use_deep = deep_mode_enabled(ctx.message) and not ctx.voice_mode
+        ctx.emit("status", {"status": "thinking"})
+        ctx.emit("activity", {
+            "step": "chat_think",
+            "message": "Working on a reply…",
+        })
+
+        def _think(t: str) -> None:
+            # HUD / live captions only — never TTS the raw chain-of-thought.
+            snippet = (t or "").strip()
+            if not snippet:
+                return
+            ctx.emit("thinking_token", {"token": snippet[:240]})
+
         if use_deep:
             result = run_deep_chat(msgs, on_token=_tok)
         else:
@@ -135,6 +168,7 @@ class SkillHandler(Skill):
                 num_predict=160 if ctx.voice_mode else CHAT_NUM_PREDICT,
                 num_ctx=CHAT_NUM_CTX,
                 on_token=_tok,
+                on_thinking=_think,
                 model=model_tag,
             )
         if result.get("routing") == "FALLBACK_TO_CLOUD":

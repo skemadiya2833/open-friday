@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from friday.ui.look_rim import build_rim_image, status
+from friday.ui import look_rim
+from friday.ui.look_rim import build_rim_image, looking, status
 
 
 def test_build_rim_has_orange_on_edges():
@@ -21,3 +22,16 @@ def test_build_rim_has_orange_on_edges():
 def test_status_shape():
     st = status()
     assert "looking" in st and "enabled" in st
+
+
+def test_looking_context_is_noop_under_pytest():
+    """Must not spawn Win32 rim threads during pytest (CI access-violation)."""
+    assert look_rim._headless_or_test() is True
+    assert look_rim._enabled() is False
+    with looking():
+        st = status()
+        assert st["looking"] is True
+        assert st["enabled"] is False
+    assert status()["looking"] is False
+    ctrl = look_rim._controller
+    assert ctrl is None or ctrl._running is False

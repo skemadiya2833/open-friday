@@ -199,11 +199,29 @@
   // ------------------------------------------------------------------ overlay + captions
   const LABELS = { listening: "LISTENING", thinking: "THINKING", acting: "WORKING ON IT", speaking: "SPEAKING", idle: "READY" };
   const Live = {
+    _sizeCanvas() {
+      canvas = canvas || $("#liveOrb");
+      if (!canvas) return;
+      const css = Math.max(48, Math.round(canvas.getBoundingClientRect().width || 58));
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(css * dpr);
+      canvas.height = Math.round(css * dpr);
+    },
+    /** Keep the left-rail Friday circle alive even when voice mode is closed. */
+    ensurePresence() {
+      canvas = canvas || $("#liveOrb");
+      if (!canvas) return;
+      if (!g) g = canvas.getContext("2d");
+      Live._sizeCanvas();
+      if (!raf) {
+        t0 = performance.now();
+        raf = requestAnimationFrame(drawOrb);
+      }
+    },
     open() {
       overlay = overlay || $("#liveOverlay");
       if (!overlay) return;
-      canvas = $("#liveOrb");
-      g = canvas.getContext("2d");
+      Live.ensurePresence();
       overlay.classList.remove("hidden");
       document.body.classList.add("live-open");
       open = true; t0 = performance.now();
@@ -212,17 +230,7 @@
       if (cap) { cap.textContent = ""; cap.classList.add("faded"); }
       Live.clearResult();
       Live.state("listening");
-      // Size the bitmap to the CSS box so the ring stays circular (no stretch).
-      const sizeCanvas = () => {
-        if (!canvas) return;
-        const css = Math.max(56, Math.round(canvas.getBoundingClientRect().width || 64));
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
-        canvas.width = Math.round(css * dpr);
-        canvas.height = Math.round(css * dpr);
-      };
-      sizeCanvas();
-      requestAnimationFrame(sizeCanvas);
-      cancelAnimationFrame(raf); raf = requestAnimationFrame(drawOrb);
+      requestAnimationFrame(() => Live._sizeCanvas());
       openMic();
       Live.syncControls();
       // Prefetch browser voices so Realtime picks a female voice on first utterance.
@@ -234,8 +242,10 @@
       overlay.classList.add("hidden");
       overlay.classList.remove("has-result", "show-type");
       document.body.classList.remove("live-open");
-      cancelAnimationFrame(raf);
       closeMic();
+      // Orb stays on the left rail — keep a quiet idle pulse.
+      Live.state("idle");
+      Live.ensurePresence();
     },
     isOpen() { return open; },
     isSpeaking() { return state === "speaking"; },
@@ -265,7 +275,10 @@
     friday(text, { filler = false } = {}) {
       const el = $("#capFriday");
       if (!el) return;
-      const t = String(text || "").replace(/\s+/g, " ").trim();
+      const clean = typeof window.sanitizeAssistantText === "function"
+        ? window.sanitizeAssistantText(text)
+        : String(text || "");
+      const t = String(clean || "").replace(/\s+/g, " ").trim();
       el.textContent = t.length > 220 ? "…" + t.slice(-220) : t;
       el.classList.toggle("filler", filler);
       el.classList.toggle("faded", !t);
@@ -368,6 +381,13 @@
         "Let me check on that.",
         "On it — thinking.",
       ],
+      // Soft beats while the model is still cold / generating — keep presence, not chatter.
+      progress: [
+        "Still working on it.",
+        "Hang on — almost there.",
+        "Still thinking that through.",
+        "One more beat.",
+      ],
       acting: [
         "On it. I'll take care of that on your screen.",
         "Okay boss, working on that now.",
@@ -386,15 +406,21 @@
       ],
     },
     fillers(speaker, kind) {
-      let timer = 0, spoken = 0, stopped = false, idx = Math.floor(Math.random() * 5);
+      let timer = 0, beat = 0, spoken = 0, stopped = false;
+      let idx = Math.floor(Math.random() * 5);
+      let progIdx = Math.floor(Math.random() * 4);
       let audioChain = Promise.resolve();
+      const speakAudio = !!speaker; // caption-only when TTS/voice is off
       // Speak fillers in every pace mode — abort as soon as the real reply TTS starts.
-      const say = (type) => {
-        if (stopped || spoken >= 2) return;
+      const say = (type, { audio = speakAudio } = {}) => {
+        if (stopped || spoken >= 4) return;
         const list = Live.FILLERS[type] || Live.FILLERS.thinking;
-        const text = list[idx++ % list.length];
+        const pick = type === "progress" ? (progIdx++ % list.length) : (idx++ % list.length);
+        const text = list[pick];
         spoken++;
         Live.friday(text, { filler: true });
+        Live.activity(text, { live: true });
+        if (!audio) return;
         audioChain = audioChain.then(async () => {
           if (stopped) return;
           if (typeof window.speakFiller === "function") {
@@ -405,21 +431,43 @@
           }
         }).catch(() => {});
       };
+      const clearBeat = () => { if (beat) { clearInterval(beat); beat = 0; } };
+      const armBeat = () => {
+        clearBeat();
+        // Long Ollama warmups leave dead air after the first filler — keep a soft pulse.
+        beat = setInterval(() => {
+          if (stopped || spoken >= 4) { clearBeat(); return; }
+          // Later beats: caption always; speak at most every other so it doesn't nag.
+          say("progress", { audio: speakAudio && spoken < 3 && spoken % 2 === 1 });
+        }, Voice.cfg().streamSpeech ? 4500 : 6000);
+      };
       return {
         // Realtime: speak sooner so "hold on boss" lands before a fast reply.
         start() {
           const ms = Voice.cfg().streamSpeech
             ? Math.min(220, Voice.cfg().fillerMs || 280)
             : (Voice.cfg().fillerMs || 900);
-          timer = setTimeout(() => say(kind || "thinking"), ms);
+          timer = setTimeout(() => {
+            say(kind || "thinking");
+            armBeat();
+          }, ms);
         },
-        agent() { clearTimeout(timer); say("acting"); },
-        lookup() { if (!spoken) { clearTimeout(timer); timer = setTimeout(() => say("lookup"), 400); } },
-        looking() { clearTimeout(timer); say("looking"); },
-        stop() { stopped = true; clearTimeout(timer); },
+        agent() { clearTimeout(timer); clearBeat(); say("acting"); armBeat(); },
+        lookup() { if (!spoken) { clearTimeout(timer); timer = setTimeout(() => { say("lookup"); armBeat(); }, 400); } },
+        looking() { clearTimeout(timer); clearBeat(); say("looking"); armBeat(); },
+        // Caption-only thinking scraps from the model (never spoken — too long / raw).
+        thinking(snippet) {
+          if (stopped || !snippet) return;
+          const t = String(snippet).replace(/\s+/g, " ").trim();
+          if (!t) return;
+          Live.friday(t.length > 160 ? t.slice(0, 157) + "…" : t, { filler: true });
+          Live.activity("Thinking…", { live: true });
+        },
+        stop() { stopped = true; clearTimeout(timer); clearBeat(); },
         abort() {
           stopped = true;
           clearTimeout(timer);
+          clearBeat();
           try { window.stopSpeech && window.stopSpeech(); } catch (_) {}
           audioChain = Promise.resolve();
         },
@@ -512,8 +560,14 @@
   window.FridayLive = Live;
 
   document.addEventListener("DOMContentLoaded", () => {
+    Live.ensurePresence();
+    window.addEventListener("resize", () => Live._sizeCanvas());
     $("#liveClose")?.addEventListener("click", () => document.getElementById("btnMic")?.click());
     $("#liveOrb")?.addEventListener("click", () => {
+      if (!open) {
+        document.getElementById("btnMic")?.click();
+        return;
+      }
       Live.interrupt();
       if (typeof window.onFridayLiveInterrupt === "function") window.onFridayLiveInterrupt();
     });

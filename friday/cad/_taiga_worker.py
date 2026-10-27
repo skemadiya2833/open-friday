@@ -14,7 +14,8 @@ import time
 from pathlib import Path
 
 
-PROTOCOL_PREFIX = "S1 "
+# Must match freecad_s1.runtime.fcenv.PROTOCOL_PREFIX
+PROTOCOL_PREFIX = "@@S1 "
 
 
 def main() -> int:
@@ -55,9 +56,13 @@ def main() -> int:
     def call(req: dict) -> dict:
         sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
         line = f.readline()
+        if not line:
+            raise RuntimeError("FreeCAD socket closed")
+        if not line.startswith(PROTOCOL_PREFIX):
+            raise RuntimeError(f"unexpected FreeCAD reply: {line[:80]!r}")
         resp = json.loads(line[len(PROTOCOL_PREFIX) :])
         if not resp.get("ok"):
-            raise RuntimeError(resp.get("error") or "FreeCAD error")
+            raise RuntimeError(str(resp.get("error") or "FreeCAD error"))
         return resp
 
     log: list[str] = []

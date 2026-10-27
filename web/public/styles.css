@@ -228,6 +228,24 @@ body.camera-looking .orb[data-state] {
   padding: 20px 14px 16px;
 }
 .brand { display: flex; gap: 14px; align-items: center; padding: 4px 6px 12px; border-bottom: 1px solid var(--line); }
+.orb-host {
+  position: relative;
+  width: 58px; height: 58px;
+  flex-shrink: 0;
+}
+.orb-host .orb { position: absolute; inset: 0; }
+.live-orb-canvas {
+  position: absolute; inset: 0;
+  width: 58px !important; height: 58px !important;
+  max-width: 58px !important; max-height: 58px !important;
+  display: block;
+  cursor: pointer;
+  z-index: 3;
+  opacity: 0.92;
+  pointer-events: auto;
+}
+body.live-open .orb-host .orb { opacity: 0; }
+body.live-open .live-orb-canvas { opacity: 1; }
 .brand-name {
   font-family: var(--display); font-weight: 700; font-size: 1.35rem;
   letter-spacing: 0.18em; color: var(--text);
@@ -808,32 +826,25 @@ select:focus, input:focus, textarea:focus {
   .bubble { max-width: 94%; font-size: 1rem; }
   .grid-form, .plan-form { grid-template-columns: 1fr; }
   .card { flex-direction: column; }
-  /* Phone: full-width compact bar above home indicator */
+  /* Phone: keep Friday orb in a floating chip; nav stays bottom */
+  .rail .brand { display: flex !important; position: fixed; left: 10px; top: 52px; z-index: 90;
+    background: rgba(6,12,22,0.92); border: 1px solid var(--line); padding: 8px 10px; border-radius: 8px;
+    max-width: min(72vw, 280px); }
+  .rail .brand-copy .brand-tag { display: none; }
   .live {
-    left: 8px;
-    right: 8px;
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    max-height: min(38vh, 320px);
-    border-radius: 12px;
+    position: fixed;
+    left: 10px; right: 10px;
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    max-height: min(36vh, 300px);
+    border-radius: 10px;
+    z-index: 85;
   }
-  .live-chrome {
-    padding: 8px 10px;
-  }
+  .live-chrome { padding: 8px 10px; }
   .live-chrome-actions { margin-left: 0; width: 100%; justify-content: space-between; }
-  .live-body {
-    padding: 8px 10px 10px;
-  }
   body.live-open { overflow: auto; }
   body.live-open .shell { filter: none; pointer-events: auto; }
   .live-pace { max-width: 100%; }
   .live-speed { margin-left: 0; }
-  #liveOrb {
-    width: 56px;
-    height: 56px;
-    max-width: 56px;
-    max-height: 56px;
-    flex-basis: 56px;
-  }
   .live-caps { max-height: 3.8rem; }
   .cap { font-size: 0.9rem; }
   .cap-friday { font-size: 0.95rem; }
@@ -968,40 +979,46 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 #view-reports > * { flex-shrink: 0; }
 
 /* ---------------------------------------------------------------- live voice mode
- * Compact docked bar — chat stays readable; never a stage-eating modal. */
+ * Docked in the left rail under the Friday orb — stage views stay swappable. */
 .live {
-  position: fixed;
-  left: max(18px, calc(250px + 28px));
-  right: 18px;
-  bottom: 58px;
-  top: auto;
-  z-index: 900;
-  width: auto;
+  position: relative;
+  left: auto; right: auto; bottom: auto; top: auto;
+  z-index: 2;
+  width: 100%;
   height: auto;
-  max-height: min(42vh, 360px);
+  max-height: min(42vh, 340px);
   display: flex;
   flex-direction: column;
-  background: rgba(6, 12, 22, 0.94);
+  gap: 6px;
+  background: rgba(4, 10, 18, 0.55);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(14px);
+  border-radius: 4px;
+  box-shadow: none;
+  backdrop-filter: blur(8px);
   overflow: hidden;
+  flex: 0 1 auto;
+  margin: 0 2px;
+  padding: 0;
 }
 .live.hidden { display: none; }
 .live.has-result,
 .live.show-type {
-  max-height: min(48vh, 420px);
+  max-height: min(50vh, 420px);
 }
+body.live-open .rail-label { margin-top: 4px; }
 .live-chrome {
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  padding: 8px 12px;
+  padding: 8px 10px;
   z-index: 3;
   border-bottom: 1px solid rgba(120, 170, 220, 0.1);
+}
+.live > .live-pace {
+  padding: 0 10px 4px;
+  margin: 0;
 }
 .live-chrome-status {
   display: flex;
@@ -1047,16 +1064,7 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
   border: 0;
 }
 .live-body {
-  flex: 0 1 auto;
-  min-height: 0;
-  position: relative;
-  display: flex;
-  flex-flow: row wrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px 12px;
-  padding: 10px 14px 12px;
-  overflow: hidden;
+  display: none; /* orb lives in the rail brand; captions/dock are direct children */
 }
 .live-dock {
   position: relative;
@@ -1069,6 +1077,7 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
   max-height: min(28vh, 220px);
   order: 3;
   flex: 1 1 100%;
+  padding: 0 10px 10px;
 }
 .live-compose {
   display: none; width: 100%; gap: 8px; align-items: stretch;
@@ -1180,39 +1189,21 @@ button.danger { border-color: rgba(255, 80, 80, 0.6); color: #ff8a8a; }
 .live[data-state="acting"] .live-state { color: var(--accent); animation: pulseSoft 1.2s ease-in-out infinite; }
 .live[data-state="speaking"] .live-state { color: #7dffb2; animation: none; }
 .orb[data-state="speaking"] .orb-core { background: radial-gradient(circle at 35% 30%, #c9ffe0, #2a8f5a 70%); }
-#liveOrb {
-  cursor: pointer;
-  display: block;
-  position: static;
-  left: auto;
-  top: auto;
-  transform: none;
-  z-index: 1;
-  width: 64px;
-  height: 64px;
-  aspect-ratio: 1 / 1;
-  max-width: 64px;
-  max-height: 64px;
-  flex: 0 0 64px;
-}
 .live-caps {
   position: static;
-  left: auto;
-  top: auto;
-  transform: none;
   z-index: 2;
   width: auto;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   min-height: 0;
-  max-height: 4.5rem;
+  max-height: 5.5rem;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 2px;
   text-align: left;
   pointer-events: none;
-  justify-content: center;
+  padding: 0 10px 6px;
 }
 .cap { font-size: 0.95rem; line-height: 1.3; transition: opacity 0.3s; }
 .cap-user { color: #cfeaff; opacity: 0.95; }

@@ -40,6 +40,96 @@ _REQUIRED: dict[str, frozenset[str]] = {
 BASE_KINDS = frozenset({"base_box", "base_cyl", "base_hex", "base_ring"})
 
 
+def _mm(v: float | int | str | None) -> str:
+    """Speakable millimetre number: 100.0 → 100, 3.5 → 3.5."""
+    try:
+        f = float(v or 0)
+    except (TypeError, ValueError):
+        return "0"
+    if abs(f - round(f)) < 1e-6:
+        return str(int(round(f)))
+    return f"{f:.1f}".rstrip("0").rstrip(".")
+
+
+def _hole_where(x: float, y: float, *, half_w: float | None = None, half_d: float | None = None) -> str:
+    """Map sketch coords to a short spoken place (center / near edge)."""
+    if abs(x) < 0.75 and abs(y) < 0.75:
+        return "at the center"
+    if half_w is not None and half_d is not None:
+        # Planner sometimes uses plate-corner coords (50,50) on a 100×100 plate.
+        if abs(x - half_w) < 1.5 and abs(y - half_d) < 1.5:
+            return "at the center"
+    return f"at {_mm(x)} by {_mm(y)} mm"
+
+
+def speak_goal(goal: "Goal") -> str:
+    """Natural spoken part description for chat/voice (never dump symbols)."""
+    feats = list(goal.features or [])
+    if not feats:
+        return "the part"
+    base = feats[0]
+    bp = base.params
+    half_w = half_d = None
+    if base.kind == "base_box":
+        w, d, h = float(bp.get("w") or 0), float(bp.get("d") or 0), float(bp.get("h") or 0)
+        half_w, half_d = w / 2.0, d / 2.0
+        if abs(w - d) < 0.05 and abs(w - h) < 0.05:
+            body = f"{_mm(w)} by {_mm(d)} by {_mm(h)} mm cube"
+        elif abs(h - 10) < 0.05 or h <= max(w, d) * 0.35:
+            body = f"{_mm(w)} by {_mm(d)} mm plate, {_mm(h)} mm thick"
+        else:
+            body = f"{_mm(w)} by {_mm(d)} by {_mm(h)} mm block"
+    elif base.kind in ("base_cyl", "base_hex"):
+        shape = "hex stock" if base.kind == "base_hex" else "cylinder"
+        body = f"{_mm(2 * float(bp.get('r') or 0))} mm {shape}, {_mm(bp.get('h'))} mm tall"
+    elif base.kind == "base_ring":
+        body = (
+            f"ring {_mm(bp.get('ri'))} to {_mm(bp.get('ro'))} mm radius, "
+            f"{_mm(bp.get('h'))} mm tall"
+        )
+    else:
+        body = base.kind.replace("_", " ")
+
+    extras: list[str] = []
+    for f in feats[1:]:
+        p = f.params
+        if f.kind in ("hole", "hole_std"):
+            dia = 2 * float(p.get("r") or 0)
+            where = _hole_where(float(p.get("x") or 0), float(p.get("y") or 0), half_w=half_w, half_d=half_d)
+            extras.append(f"a {_mm(dia)} mm hole {where}")
+        elif f.kind == "pocket_rect":
+            extras.append(
+                f"a {_mm(p.get('w'))} by {_mm(p.get('d'))} mm pocket, "
+                f"{_mm(p.get('depth'))} mm deep"
+            )
+        elif f.kind == "boss_cyl":
+            extras.append(
+                f"a {_mm(2 * float(p.get('r') or 0))} mm boss, {_mm(p.get('h'))} mm tall"
+            )
+        elif f.kind == "boss_box":
+            extras.append(
+                f"a {_mm(p.get('w'))} by {_mm(p.get('d'))} by {_mm(p.get('h'))} mm boss"
+            )
+        elif f.kind == "polar_pattern":
+            extras.append(f"a {_mm(p.get('n'))}-around polar pattern")
+        elif f.kind == "linear_pattern":
+            extras.append(f"a linear pattern of {_mm(p.get('n'))}")
+        elif f.kind == "mirror":
+            extras.append("mirrored")
+        elif f.kind in ("fillet_top", "fillet_vertical"):
+            extras.append(f"{_mm(p.get('r'))} mm fillets")
+        elif f.kind == "chamfer_top":
+            extras.append(f"{_mm(p.get('size'))} mm chamfers")
+        elif f.kind == "shell":
+            extras.append(f"shelled to {_mm(p.get('t'))} mm")
+
+    if not extras:
+        return body
+    if len(extras) == 1:
+        return f"{body} with {extras[0]}"
+    return f"{body} with {', '.join(extras[:-1])}, and {extras[-1]}"
+
+
 @dataclass
 class GoalFeature:
     kind: str
@@ -109,6 +199,7 @@ class Goal:
         )
 
     def summarize(self) -> str:
+        """Compact log/HUD line (symbols OK — not for TTS)."""
         parts: list[str] = []
         for f in self.features:
             p = f.params
@@ -142,6 +233,10 @@ class Goal:
             else:
                 parts.append(f.kind)
         return " → ".join(parts) if parts else "(empty goal)"
+
+    def speak_summary(self) -> str:
+        """TTS-safe description — plain words, no × Ø arrows or trailing .0."""
+        return speak_goal(self)
 
 
 def validate_goal(goal: Goal) -> list[str]:

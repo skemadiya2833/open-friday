@@ -15,7 +15,8 @@ from typing import Any, Callable
 from friday.cad.schema import Goal
 from friday.cad.status import probe_status, s1_model, s1_port, s1_python, s1_repo
 
-PROTOCOL_PREFIX = "S1 "
+# Must match freecad_s1.runtime.fcenv.PROTOCOL_PREFIX (worker stdout marker).
+PROTOCOL_PREFIX = "@@S1 "
 
 
 @dataclass
@@ -149,6 +150,83 @@ def _run_inprocess(
         env.close()
 
 
+def _sanitize_worker_noise(text: str) -> str:
+    """HF Hub tqdm / auth nags must never become the spoken CAD failure line."""
+    lines = []
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        low = s.lower()
+        if "fetching" in low and "files" in low:
+            continue
+        if "unauthenticated requests to the hf hub" in low:
+            continue
+        if "hf_token" in low:
+            continue
+        if s.startswith("\r") or "|██" in s or "|#" in s:
+            continue
+        lines.append(s)
+    return "\n".join(lines).strip()
+
+
+def _parse_worker_payload(stdout: str) -> dict[str, Any] | None:
+    for line in reversed((stdout or "").splitlines()):
+        s = line.strip()
+        if not s.startswith("{"):
+            continue
+        try:
+            data = json.loads(s)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and ("ok" in data or "message" in data):
+            return data
+    return None
+
+
+def ensure_taiga_model(*, on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
+    """Download/load Taiga weights once before a build (avoids HF spam mid-build)."""
+    model = s1_model()
+    py = s1_python()
+    repo = s1_repo()
+
+    def log(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
+    log(f"Loading Taiga model ({model})…")
+    env = os.environ.copy()
+    env.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    env.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    if repo is not None:
+        env["FREECAD_S1_REPO"] = str(repo.resolve())
+        env["PYTHONPATH"] = str(repo.resolve()) + os.pathsep + env.get("PYTHONPATH", "")
+    code = (
+        "import os, sys\n"
+        "repo = os.environ.get('FREECAD_S1_REPO','').strip()\n"
+        "if repo and repo not in sys.path: sys.path.insert(0, repo)\n"
+        "from freecad_s1.model.net import from_pretrained\n"
+        f"from_pretrained({model!r})\n"
+        "print('ok')\n"
+    )
+    exe = py or sys.executable
+    try:
+        proc = subprocess.run(
+            [exe, "-c", code],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=600,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Taiga model load failed: {exc}"
+    if proc.returncode != 0 or "ok" not in (proc.stdout or ""):
+        err = _sanitize_worker_noise(proc.stderr or proc.stdout or "model load failed")
+        return False, f"Taiga model load failed: {err[:400]}"
+    log("Taiga model ready")
+    return True, "ok"
+
+
 def _run_subprocess(
     goal: Goal,
     *,
@@ -162,6 +240,8 @@ def _run_subprocess(
     out_dir.mkdir(parents=True, exist_ok=True)
     goal_path.write_text(json.dumps(goal.to_json(), indent=2), encoding="utf-8")
     env = os.environ.copy()
+    env.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    env.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     repo = s1_repo()
     if repo is not None:
         env["FREECAD_S1_REPO"] = str(repo.resolve())
@@ -183,27 +263,24 @@ def _run_subprocess(
         str(delay),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=1800)
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "worker failed").strip()
-        return BuildResult(ok=False, message=err[:800], goal_summary=goal.summarize())
-    try:
-        payload = json.loads(proc.stdout.strip().splitlines()[-1])
-    except Exception as exc:
+    payload = _parse_worker_payload(proc.stdout or "")
+    if payload is not None:
         return BuildResult(
-            ok=False,
-            message=f"worker returned unreadable JSON: {exc}",
+            ok=bool(payload.get("ok")),
+            message=str(payload.get("message") or ""),
+            steps=int(payload.get("steps") or 0),
+            iou=payload.get("iou"),
+            fcstd=payload.get("fcstd"),
+            png=payload.get("png"),
             goal_summary=goal.summarize(),
-            log=(proc.stdout or "").splitlines()[-40:],
+            log=list(payload.get("log") or []),
         )
+    noise = _sanitize_worker_noise((proc.stderr or "") + "\n" + (proc.stdout or ""))
     return BuildResult(
-        ok=bool(payload.get("ok")),
-        message=str(payload.get("message") or ""),
-        steps=int(payload.get("steps") or 0),
-        iou=payload.get("iou"),
-        fcstd=payload.get("fcstd"),
-        png=payload.get("png"),
+        ok=False,
+        message=(noise[:500] if noise else f"Taiga worker failed (exit {proc.returncode})"),
         goal_summary=goal.summarize(),
-        log=list(payload.get("log") or []),
+        log=(proc.stdout or "").splitlines()[-40:],
     )
 
 
@@ -225,7 +302,9 @@ def build_part(
 
     from friday.config import WORKSPACE_DIR
 
-    out = Path(out_dir or Path(WORKSPACE_DIR) / "cad")
+    # FreeCAD's CWD is its Program Files bin — relative paths write there and Access Denied.
+    out = Path(out_dir or Path(WORKSPACE_DIR) / "cad").expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
     name = tag or f"part_{int(time.time())}"
 
     if st.freecad_s1_importable:

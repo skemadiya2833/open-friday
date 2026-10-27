@@ -13,6 +13,9 @@ _DUMP_PATTERNS = (
     r"(?i)\bprevious focus\b",
     r"(?i)\buser:\s*[\"']",
     r"(?i)\buser'?s\s+input\s*:",
+    r"(?i)\buser'?s\s+goal\s*:",
+    r"(?i)\bconstraint\s*\d+\s*:",
+    r"(?i)\b\*+\s*correction\s*\*+",
     r"(?i)\bcontext:\s*",
     r"(?i)\bpersona\s*:",
     r"(?i)\bconstraints?\s*:",
@@ -36,6 +39,8 @@ _DUMP_PATTERNS = (
     r"(?i)\bsystem prompt\b",
     r"(?i)\ban ai assistant\b",
     r"(?i)\b1-2 short sentences\b",
+    r"(?i)\bthe prompt says\b",
+    r"(?i)\btell the user you could not reach search\b",
     # Vision caption theater — models label the frame instead of answering.
     r"(?i)^\s*image\s*:",
     r"(?i)\ba screenshot of (a |the )?(windows )?desktop\b",

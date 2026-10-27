@@ -222,7 +222,11 @@ def test_cad_reports_when_ready_fails(monkeypatch, tmp_path):
     result = SkillHandler().run(SkillContext(message="make a 40x30x10 plate", session_id="t"))
     assert result.metadata.get("planned") is True
     assert result.metadata.get("built") is False
-    assert "socket cold" in result.reply
+    # Spoken reply stays human — raw ready.message stays in metadata only.
+    assert "40 by 30" in result.reply
+    assert "socket cold" not in result.reply
+    assert "×" not in result.reply and "Ø" not in result.reply
+    assert "relaunch" in result.reply.lower() or "build again" in result.reply.lower()
 
 
 def test_playbook_skill_md_parses():
@@ -231,3 +235,50 @@ def test_playbook_skill_md_parses():
     errs = validate_frontmatter(fm, PLAYBOOK.parent.name)
     assert errs == []
     assert "Taiga" in body or "taiga" in body.lower()
+
+
+def test_worker_noise_does_not_become_cad_error():
+    from friday.cad.runner import _parse_worker_payload, _sanitize_worker_noise
+
+    noise = (
+        "Fetching 2 files: 0%|          | 0/2 [00:00<?, ?it/s]\n"
+        "Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN\n"
+        "Fetching 2 files: 100%|##########| 2/2 [00:04<00:00]\n"
+        "socket closed\n"
+    )
+    clean = _sanitize_worker_noise(noise)
+    assert "fetching" not in clean.lower()
+    assert "hf_token" not in clean.lower()
+    assert "socket closed" in clean.lower()
+
+    stdout = noise + '{"ok": false, "message": "unexpected FreeCAD reply"}\n'
+    payload = _parse_worker_payload(stdout)
+    assert payload is not None
+    assert payload["ok"] is False
+    assert "FreeCAD" in payload["message"]
+
+
+def test_speak_summary_is_tts_friendly():
+    g = estimate_target(Goal(features=[
+        GoalFeature("base_box", {"w": 100, "d": 100, "h": 100}),
+        GoalFeature("hole", {"r": 1.5, "x": 50, "y": 50}),
+    ]))
+    spoken = g.speak_summary()
+    assert "×" not in spoken and "Ø" not in spoken and "→" not in spoken
+    assert ".0" not in spoken
+    assert "100 by 100" in spoken
+    assert "3 mm hole" in spoken
+    assert "center" in spoken
+
+
+def test_spoken_build_fail_hides_hf_spam():
+    from friday.skills.builtin.cad.handler import _spoken_build_fail
+
+    spam = (
+        "Fetching 2 files: 0%| | 0/2 [00:00<?, ?it/s]Warning: You are sending "
+        "unauthenticated requests to the HF Hub. Please set a HF_TOKEN"
+    )
+    out = _spoken_build_fail(spam)
+    assert "fetching" not in out.lower()
+    assert "hf_token" not in out.lower()
+    assert "download" in out.lower() or "build again" in out.lower()

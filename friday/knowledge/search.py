@@ -40,6 +40,35 @@ def last_search_payload() -> tuple[str, list[dict[str, str]], str] | None:
     return note.query, list(rows), note.summary
 
 
+def find_related_search(query: str, *, min_overlap: int = 2) -> tuple[str, list[dict[str, str]], str] | None:
+    """Reuse a prior cached search when the ask overlaps enough (same topic, new phrasing)."""
+    tokens = {t for t in re.findall(r"[a-z0-9]{3,}", _norm(query)) if t not in _STOP}
+    if len(tokens) < min_overlap:
+        return None
+    best: tuple[int, str, KnowledgeNote, list[dict[str, str]]] | None = None
+    for key, (_ts, note, rows) in _cache.items():
+        if not rows:
+            continue
+        prior = {t for t in re.findall(r"[a-z0-9]{3,}", key) if t not in _STOP}
+        score = len(tokens & prior)
+        if score < min_overlap:
+            continue
+        if best is None or score > best[0]:
+            best = (score, note.query, note, rows)
+    if not best:
+        return None
+    _score, q, note, rows = best
+    return q, list(rows), note.summary
+
+
+_STOP = frozenset({
+    "the", "and", "for", "with", "that", "this", "from", "about", "what", "when",
+    "where", "which", "could", "would", "should", "some", "into", "onto", "have",
+    "bring", "ideas", "maybe", "relevant", "targeting", "lets", "say", "tryto",
+    "print", "sell", "use",
+})
+
+
 def _norm(query: str) -> str:
     return _WS.sub(" ", query.strip().lower())
 
@@ -210,10 +239,9 @@ def format_results(query: str, rows: list[dict[str, str]]) -> str:
     from friday.security.taint import fence_untrusted
 
     if not rows:
-        return (
-            f"No web results came back for '{query}'. "
-            "Tell the user you could not reach search right now; do not open more tabs."
-        )
+        # Plain status for tools — never instruct the model how to phrase the reply
+        # (that caused "User's goal / Constraint / Correction" theater in chat).
+        return f"No web results came back for '{query}'."
     lines = [f"Search results for '{query}':"]
     for i, row in enumerate(rows, 1):
         title = row.get("title") or "(untitled)"
@@ -249,8 +277,33 @@ def perform_knowledge_search(query: str, *, open_browser: bool = False) -> Knowl
         _last_key = key
         return hit[1]
 
+    # Prefer a related prior brief when live fetch is likely to miss the same topic.
+    related = find_related_search(query)
     print(f"[Knowledge] Searching: {query}", flush=True)
     rows = fetch_web_results(query)
+    # One shortened retry — long voice transcripts often get zero DDG hits.
+    if not rows and len(query) > 80:
+        short = " ".join(query.split()[:12])
+        if short and _norm(short) != key:
+            print(f"[Knowledge] Retry short: {short}", flush=True)
+            rows = fetch_web_results(short)
+            if rows:
+                query = short
+                key = _norm(query)
+    if not rows and related:
+        prior_q, prior_rows, prior_summary = related
+        print(f"[Knowledge] Reusing related prior: {prior_q}", flush=True)
+        note = KnowledgeNote(
+            query=query,
+            summary=(
+                f"No fresh hits for '{query}'. "
+                f"Related prior search '{prior_q}' still applies:\n{prior_summary}"
+            ),
+            source="web_search_related",
+        )
+        _cache[key] = (now, note, prior_rows)
+        _last_key = key
+        return note
     summary = format_results(query, rows)
     if not rows and open_browser:
         url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
@@ -260,10 +313,7 @@ def perform_knowledge_search(query: str, *, open_browser: bool = False) -> Knowl
             webbrowser.open(url)
         except Exception:  # noqa: BLE001
             pass
-        summary = (
-            f"Could not fetch results for '{query}', opened one search tab as a fallback. "
-            "Read the visible results once, then answer; do not open another tab."
-        )
+        summary = f"Could not fetch results for '{query}'; opened one search tab as a fallback."
     note = KnowledgeNote(query=query, summary=summary, source="web_search")
     _cache[key] = (now, note, rows)
     _last_key = key

@@ -36,6 +36,30 @@ _ENABLE = re.compile(r"\b(enable|turn on|switch on)\b.{0,20}\b(cad|freecad|taiga
 _DISABLE = re.compile(r"\b(disable|turn off|switch off)\b.{0,20}\b(cad|freecad|taiga)\b", re.I)
 
 
+def _spoken_build_fail(detail: str) -> str:
+    """Short voice-safe failure — never read HF progress, paths, or IoU dumps aloud."""
+    low = (detail or "").lower()
+    if (
+        ("fetching" in low and "files" in low)
+        or "hf hub" in low
+        or "hf_token" in low
+        or "taiga model" in low
+    ):
+        return "the CAD model was still downloading — say build again and I'll finish it"
+    if "access is denied" in low or "create_directories" in low:
+        return "FreeCAD couldn't save the file — I'm fixing the save path"
+    if "socket" in low or "not listening" in low or "not reachable" in low:
+        return "FreeCAD wasn't ready on the CAD port — I'll relaunch it next try"
+    if "unexpected freecad reply" in low or "protocol" in low:
+        return "the FreeCAD link glitched — retrying should clear it"
+    # Keep one short clause; never dump stacks / tqdm.
+    clean = re.sub(r"\s+", " ", (detail or "").strip())
+    clean = re.sub(r"[\\|█#═\-_]{3,}", " ", clean)
+    if len(clean) > 90 or not clean or any(ch in clean for ch in "{}[]<>"):
+        return "I hit a snag in FreeCAD and I'm sorting it out"
+    return clean
+
+
 class SkillHandler(Skill):
     manifest = SkillManifest(
         id="cad",
@@ -157,9 +181,11 @@ class SkillHandler(Skill):
 
         assert plan.goal is not None
         goal = plan.goal
+        # Compact symbols for HUD/metadata; plain words for anything spoken.
         summary = plan.summary or goal.summarize()
+        spoken = goal.speak_summary()
 
-        out = Path(WORKSPACE_DIR) / "cad"
+        out = Path(WORKSPACE_DIR).expanduser().resolve() / "cad"
         out.mkdir(parents=True, exist_ok=True)
         tag = f"part_{int(time.time())}"
         goal_path = out / f"{tag}.goal.json"
@@ -168,25 +194,29 @@ class SkillHandler(Skill):
         if plan_only:
             ctx.emit("status", {"status": "idle"})
             return SkillResult(
-                reply=f"Plan: {summary}. Saved {goal_path.name} (not building).",
+                reply=f"Plan locked in, {owner}: {spoken}. Not building yet.",
                 skill_id="cad",
                 metadata={"planned": True, "built": False, "goal_path": str(goal_path), "summary": summary},
             )
 
         # Owner described a part → we bring FreeCAD/Taiga up ourselves, then build.
-        ctx.emit("activity", {"step": "cad_ready", "message": f"Got it — {summary[:70]}. Getting FreeCAD ready…"})
+        ctx.emit("activity", {"step": "cad_ready", "message": f"Got it — {spoken}. Getting FreeCAD ready…"})
         ctx.emit("status", {"status": "acting"})
 
         def progress(m: str) -> None:
-            ctx.emit("activity", {"step": "cad_ready", "message": m[:120]})
+            # Activity feed can stay a bit technical; strip HF tqdm if it leaks.
+            msg = m[:120]
+            if "fetching" in msg.lower() and "files" in msg.lower():
+                msg = "Loading CAD model…"
+            ctx.emit("activity", {"step": "cad_ready", "message": msg})
 
         ready = ensure_ready(on_progress=progress, launch_wait_s=90.0)
         if not ready.ok:
             ctx.emit("status", {"status": "idle"})
             return SkillResult(
                 reply=(
-                    f"I planned {summary} and saved {goal_path.name}, but couldn't get FreeCAD ready: "
-                    f"{ready.message}"
+                    f"I lined up {spoken} in CAD, but FreeCAD wasn't ready yet — "
+                    f"{_spoken_build_fail(ready.message)}. Say build again in a moment."
                 ),
                 skill_id="cad",
                 metadata={
@@ -194,13 +224,14 @@ class SkillHandler(Skill):
                     "built": False,
                     "goal_path": str(goal_path),
                     "summary": summary,
+                    "spoken": spoken,
                     "ready": ready.as_dict(),
                 },
             )
 
         from friday.cad.runner import build_part
 
-        ctx.emit("activity", {"step": "cad_build", "message": f"Building: {summary[:80]}…"})
+        ctx.emit("activity", {"step": "cad_build", "message": f"Building: {spoken}…"})
 
         def _step(n: int, action: str) -> None:
             ctx.emit("activity", {"step": "cad_step", "message": f"Step {n}: {action}"})
@@ -209,16 +240,12 @@ class SkillHandler(Skill):
         ctx.emit("status", {"status": "idle"})
 
         if result.ok:
-            where = result.fcstd or str(goal_path)
-            iou = f"{result.iou:.3f}" if result.iou is not None else "?"
-            reply = (
-                f"Built, {owner}: {summary}. "
-                f"{result.steps} steps, IoU {iou}. Saved {where}."
-            )
+            where = Path(result.fcstd).name if result.fcstd else goal_path.name
+            reply = f"Done, {owner} — {spoken}. Saved as {where}."
         else:
             reply = (
-                f"I planned {summary} and drove FreeCAD, but the build didn't finish cleanly: "
-                f"{result.message}"
+                f"I had {spoken} ready in CAD but hit an issue — "
+                f"{_spoken_build_fail(result.message)}. Trying to sort it; say build again if it stalls."
             )
         return SkillResult(
             reply=reply,
@@ -228,10 +255,12 @@ class SkillHandler(Skill):
                 "built": result.ok,
                 "goal_path": str(goal_path),
                 "summary": summary,
+                "spoken": spoken,
                 "fcstd": result.fcstd,
                 "png": result.png,
                 "steps": result.steps,
                 "iou": result.iou,
                 "ready": ready.as_dict(),
+                "error": None if result.ok else (result.message or "")[:500],
             },
         )

@@ -93,6 +93,18 @@ def ensure_ready(*, on_progress: Progress | None = None, launch_wait_s: float = 
                 status=st.as_dict(),
             )
 
+    # 4) Warm Taiga weights once (HF download must not become the build "error")
+    from friday.cad.runner import ensure_taiga_model
+
+    warm_ok, warm_msg = ensure_taiga_model(on_progress=log)
+    if not warm_ok:
+        return ReadyResult(
+            ok=False,
+            message=warm_msg,
+            steps=steps,
+            status=probe_status().as_dict(),
+        )
+
     st = probe_status()
     if st.ready_to_build:
         return ReadyResult(

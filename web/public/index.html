@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#05070c" />
   <title>F.R.I.D.A.Y. — HUD</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/styles.css?v=26" />
+  <link rel="stylesheet" href="/styles.css?v=27" />
   <link rel="stylesheet" href="/hud.css?v=4" />
 </head>
 
@@ -68,65 +68,67 @@
   </div>
   <div class="rem-popup" id="remPopup" aria-live="assertive"></div>
 
-  <div class="live hidden" id="liveOverlay" role="dialog" aria-label="Voice mode" data-state="listening">
-    <div class="live-chrome">
-      <div class="live-pace" role="group" aria-label="Voice pacing">
-        <button type="button" data-voice-style="realtime">Realtime</button>
-        <button type="button" data-voice-style="relaxed">Relaxed</button>
-        <span class="live-duplex" role="group" aria-label="Mic while Friday talks">
-          <button type="button" data-voice-duplex="hold" title="Speaker-safe: mic off while she talks">Hold</button>
-          <button type="button" data-voice-duplex="interrupt"
-            title="Barge-in (echo risk with open speakers)">Interrupt</button>
-        </span>
-      </div>
-      <div class="live-chrome-status" aria-live="polite">
-        <div class="live-state" id="liveState">LISTENING</div>
-        <div class="live-hint hidden" id="liveHint"></div>
-        <div class="camera-voice-badge hidden" id="cameraVoiceBadge" role="status">CAMERA · LOOKING</div>
-      </div>
-      <div class="live-chrome-actions">
-        <button type="button" class="live-type-toggle" id="liveTypeToggle"
-          title="Type instead of speaking">Type</button>
-        <button type="button" class="live-close" id="liveClose">&times; End voice</button>
-      </div>
-    </div>
-    <div class="live-body">
-      <canvas id="liveOrb" title="Hold mode — mic muted while Friday talks. Click to stop her."></canvas>
-      <div class="live-caps">
-        <div class="cap cap-user" id="capUser"></div>
-        <div class="cap cap-friday faded" id="capFriday"></div>
-      </div>
-      <div class="live-dock">
-        <div class="live-results" id="liveResults" hidden>
-          <div class="live-results-head">
-            <span class="eyebrow">RESULT</span>
-            <button type="button" class="live-results-clear" id="liveResultsClear" title="Clear">Clear</button>
-          </div>
-          <div class="live-activity" id="liveActivity" aria-live="polite"></div>
-          <pre class="live-reply" id="liveReply"></pre>
-        </div>
-        <form class="live-compose" id="liveCompose" autocomplete="off">
-          <textarea id="liveInput" rows="2" placeholder="Type here — Enter to send" enterkeyhint="send"></textarea>
-          <button type="submit" class="live-send">Send</button>
-        </form>
-      </div>
-    </div>
-  </div>
-
   <div class="shell">
     <aside class="rail panel-frame">
       <div class="brand">
-        <div class="orb" id="orb" data-state="idle" aria-hidden="true">
-          <span class="orb-ring outer"></span>
-          <span class="orb-ring mid"></span>
-          <span class="orb-core"></span>
-          <span class="orb-cross"></span>
-          <span class="orb-work-bubble hidden" id="orbWorkBubble" aria-live="polite">working</span>
+        <div class="orb-host" id="orbHost">
+          <div class="orb" id="orb" data-state="idle" aria-hidden="true">
+            <span class="orb-ring outer"></span>
+            <span class="orb-ring mid"></span>
+            <span class="orb-core"></span>
+            <span class="orb-cross"></span>
+            <span class="orb-work-bubble hidden" id="orbWorkBubble" aria-live="polite">working</span>
+          </div>
+          <canvas id="liveOrb" class="live-orb-canvas" width="116" height="116"
+            title="Friday presence — click mic to talk, or click the orb to interrupt."></canvas>
         </div>
         <div class="brand-copy">
           <div class="brand-name">FRIDAY</div>
           <div class="brand-tag">F.R.I.D.A.Y. · LOCAL PROTOCOL</div>
           <div class="brand-sub" id="statusLabel">STANDBY</div>
+        </div>
+      </div>
+
+      <!-- Live voice docks in the left rail; stage views stay swappable. -->
+      <div class="live hidden" id="liveOverlay" role="dialog" aria-label="Voice mode" data-state="listening">
+        <div class="live-chrome">
+          <div class="live-chrome-status" aria-live="polite">
+            <div class="live-state" id="liveState">LISTENING</div>
+            <div class="live-hint hidden" id="liveHint"></div>
+            <div class="camera-voice-badge hidden" id="cameraVoiceBadge" role="status">CAMERA · LOOKING</div>
+          </div>
+          <div class="live-chrome-actions">
+            <button type="button" class="live-type-toggle" id="liveTypeToggle"
+              title="Type instead of speaking">Type</button>
+            <button type="button" class="live-close" id="liveClose">&times; End</button>
+          </div>
+        </div>
+        <div class="live-pace" role="group" aria-label="Voice pacing">
+          <button type="button" data-voice-style="realtime">Realtime</button>
+          <button type="button" data-voice-style="relaxed">Relaxed</button>
+          <span class="live-duplex" role="group" aria-label="Mic while Friday talks">
+            <button type="button" data-voice-duplex="hold" title="Speaker-safe: mic off while she talks">Hold</button>
+            <button type="button" data-voice-duplex="interrupt"
+              title="Barge-in (echo risk with open speakers)">Interrupt</button>
+          </span>
+        </div>
+        <div class="live-caps">
+          <div class="cap cap-user" id="capUser"></div>
+          <div class="cap cap-friday faded" id="capFriday"></div>
+        </div>
+        <div class="live-dock">
+          <div class="live-results" id="liveResults" hidden>
+            <div class="live-results-head">
+              <span class="eyebrow">RESULT</span>
+              <button type="button" class="live-results-clear" id="liveResultsClear" title="Clear">Clear</button>
+            </div>
+            <div class="live-activity" id="liveActivity" aria-live="polite"></div>
+            <div class="live-reply" id="liveReply"></div>
+          </div>
+          <form class="live-compose" id="liveCompose" autocomplete="off">
+            <textarea id="liveInput" rows="2" placeholder="Type here — Enter to send" enterkeyhint="send"></textarea>
+            <button type="submit" class="live-send">Send</button>
+          </form>
         </div>
       </div>
 
@@ -409,10 +411,10 @@
   <div id="fridayDialog" class="fd-overlay" hidden></div>
 
   <script src="/dialog.js?v=1"></script>
-  <script src="/live.js?v=25"></script>
+  <script src="/live.js?v=26"></script>
   <script src="/turn.js?v=2"></script>
   <script src="/auth.js?v=6"></script>
-  <script src="/app.js?v=55"></script>
+  <script src="/app.js?v=56"></script>
   <script src="/systems-ui.js?v=8"></script>
   <script src="/tools.js?v=8"></script>
   <script src="/reports.js?v=4"></script>

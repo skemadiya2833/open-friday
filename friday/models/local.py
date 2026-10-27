@@ -66,6 +66,7 @@ def _stream_chat(
     num_predict: int | None = None,
     num_ctx: int | None = None,
     on_token: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
     _retried: bool = False,
 ) -> tuple[str, str]:
     payload: dict = {
@@ -155,6 +156,13 @@ def _stream_chat(
                         thinking_tok, content_tok = _extract_chat_tokens(chunk)
                         if thinking_tok:
                             native_thinking += thinking_tok
+                            if on_thinking:
+                                try:
+                                    on_thinking(thinking_tok)
+                                except Exception:  # noqa: BLE001
+                                    pass
+                            elif reasoning_mode:
+                                _push_reasoning()
                         if content_tok:
                             accumulated += content_tok
                             if _perf_ctx is not None:
@@ -189,6 +197,7 @@ def _stream_chat(
                 num_predict=num_predict,
                 num_ctx=num_ctx,
                 on_token=on_token,
+                on_thinking=on_thinking,
                 _retried=True,
             )
         raise RuntimeError(f"Ollama unreachable: {exc}") from exc
@@ -216,6 +225,7 @@ def query_model_text(
     num_predict: int | None = None,
     num_ctx: int | None = None,
     on_token: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
     messages: list[dict] | None = None,
     model: str | None = None,
 ) -> dict:
@@ -240,6 +250,7 @@ def query_model_text(
             num_predict=num_predict if num_predict is not None else CHAT_NUM_PREDICT,
             num_ctx=num_ctx if num_ctx is not None else CHAT_NUM_CTX,
             on_token=on_token,
+            on_thinking=on_thinking,
         )
     except RuntimeError as exc:
         print(f"[Model Error] {exc}")

@@ -29,6 +29,14 @@ def test_honest_fallback_never_says_glitched():
     out = H._honest_fallback("Did you pull up those 3D printing ideas", "boss")
     assert "glitched" not in out.lower()
     assert "research" in out.lower() or "look" in out.lower()
+    # "3D printing" must not steal the CAD / FreeCAD fallback path.
+    assert "freecad" not in out.lower()
+
+
+def test_honest_fallback_greeting_is_present():
+    out = H._honest_fallback("Hey Friday what are you doing", "boss")
+    assert "one more detail" not in out.lower()
+    assert "standing by" in out.lower() or "right here" in out.lower()
 
 
 def test_prior_research_ask_routes_to_research():

@@ -528,6 +528,32 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
 });
 
+/** Strip model theater / raw JSON before it hits the chat bubble or captions. */
+function sanitizeAssistantText(text) {
+  let t = String(text || "").trim();
+  if (!t) return "";
+  // Raw JSON / tool payload dumps
+  if (/^\s*[\{\[]/.test(t) && /"ok"\s*:|"tool"\s*:|"message"\s*:/.test(t)) {
+    try {
+      const obj = JSON.parse(t);
+      if (obj && typeof obj.message === "string" && obj.message.trim()) return obj.message.trim();
+      if (obj && typeof obj.reply === "string" && obj.reply.trim()) return obj.reply.trim();
+    } catch (_) { /* fall through */ }
+    return "I hit a snag formatting that reply — ask me once more.";
+  }
+  // Planning / prompt theater the model sometimes speaks aloud
+  if (
+    /\buser'?s?\s+goal\s*:/i.test(t)
+    || /\bconstraint\s*\d+\s*:/i.test(t)
+    || /\*{1,2}\s*correction\s*\*{0,2}/i.test(t)
+    || /\bthe prompt says\b/i.test(t)
+    || /\btell the user you could not reach search\b/i.test(t)
+  ) {
+    return "Search didn't come back clean — want me to try a tighter query?";
+  }
+  return t;
+}
+
 function addBubble(role, text, meta = "") {
   const el = document.createElement("div");
   el.className = `bubble ${role}`;
@@ -540,7 +566,8 @@ function addBubble(role, text, meta = "") {
       <button type="button" class="fb-down" title="Thumbs down" aria-label="Thumbs down">▼</button>
     </div>`;
   }
-  el.innerHTML = `${meta ? `<div class="meta">${meta}</div>` : ""}<div class="body">${escapeHtml(text)}</div>${feedback}`;
+  const body = role === "assistant" ? sanitizeAssistantText(text) : text;
+  el.innerHTML = `${meta ? `<div class="meta">${escapeHtml(meta)}</div>` : ""}<div class="body">${escapeHtml(body)}</div>${feedback}`;
   $("#messages").appendChild(el);
   el.querySelector(".fb-up")?.addEventListener("click", () => sendFeedback(el, "up"));
   el.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(el, "down"));
@@ -797,7 +824,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     FridayLive.clearResult();
     FridayLive.clearHint && FridayLive.clearHint();
   }
-  if (!(fromVoice || voiceMode)) pushActivity("Thinking…");
+  pushActivity("Thinking…");
   const skillOverride = $("#skillOverride").value || null;
   const chip = $("#skillChip");
   const useVoice = fromVoice || voiceMode;
@@ -816,12 +843,13 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   }
 
   // live voice: sentence-pipelined speech. Hold = mic muted; Interrupt = barge-in allowed.
+  // Typed chat still gets caption/progress fillers when Live HUD is open — audio only with voice TTS.
   const vcfg = window.FridayVoice ? FridayVoice.cfg() : { streamSpeech: true };
   const speaker = useVoice && speakEnabled() && window.FridayLive
     ? FridayLive.speaker({ onFirst: () => setState("speaking", { force: true }) })
     : null;
-  const filler = useVoice && speakEnabled() && window.FridayLive
-    ? FridayLive.fillers(speaker)
+  const filler = window.FridayLive
+    ? FridayLive.fillers(useVoice && speakEnabled() ? speaker : null)
     : null;
   filler && filler.start();
   let fillerCleared = false;
@@ -865,15 +893,25 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       if (ev.type === "activity") {
         if (filler && /search|web|look|memory|recall/i.test(ev.message || "")) filler.lookup();
         pushActivity(ev.message || ev.step || "…", { detail: ev.detail || "" });
-        if (ev.message && !useVoice) liveMeta.textContent = ev.message;
+        if (ev.message) liveMeta.textContent = ev.message;
+      }
+      if (ev.type === "thinking_token" && (ev.token || ev.text)) {
+        const scrap = String(ev.token || ev.text || "").trim();
+        if (scrap) {
+          if (filler && typeof filler.thinking === "function") filler.thinking(scrap);
+          else if (window.FridayLive) FridayLive.friday(scrap.slice(0, 160), { filler: true });
+          liveMeta.textContent = "thinking…";
+        }
+      }
+      if (ev.type === "thinking_set" && ev.text) {
+        const scrap = String(ev.text).trim();
+        if (scrap && filler && typeof filler.thinking === "function") filler.thinking(scrap);
       }
       if (ev.type === "intent") {
-        if (!useVoice) {
-          pushActivity(`Intent · ${ev.mode} → ${ev.skill_id}`, {
-            detail: ev.reason || "",
-          });
-          liveMeta.textContent = `${ev.mode} · ${ev.skill_id}`;
-        }
+        pushActivity(`Intent · ${ev.mode} → ${ev.skill_id}`, {
+          detail: ev.reason || "",
+        });
+        liveMeta.textContent = `${ev.mode} · ${ev.skill_id}`;
       }
       if (ev.type === "skill_selected") {
         skillId = ev.skill_id;
@@ -968,15 +1006,16 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       if (ev.type === "skill_token" && ev.text) {
         if (epoch !== turnEpoch) return;
         streamed += ev.text;
-        fridayReply = streamed;
-        liveBody.textContent = streamed;
+        const shown = sanitizeAssistantText(streamed);
+        fridayReply = shown;
+        liveBody.textContent = shown;
         if (window.FridayLive && FridayLive.isOpen()) {
-          FridayLive.result(streamed);
-          if (!(speaker && vcfg.streamSpeech)) FridayLive.friday(streamed);
+          FridayLive.result(shown);
+          if (!(speaker && vcfg.streamSpeech)) FridayLive.friday(shown);
         }
         if (speaker && vcfg.streamSpeech) {
           clearFillerForReply();
-          speaker.push(ev.text);
+          if (shown === streamed || !/^\s*[\{\[]/.test(streamed)) speaker.push(ev.text);
         }
         $("#messages").scrollTop = $("#messages").scrollHeight;
       }
@@ -1054,7 +1093,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     }
 
     if (epoch !== turnEpoch) return;
-    const textOut = (finalReply || streamed || "").trim()
+    const textOut = sanitizeAssistantText((finalReply || streamed || "").trim())
       || (useVoice
         ? "I blanked on that reply — give me a second and say it again."
         : "No reply came back from the model.");
@@ -2046,6 +2085,7 @@ window.speakBrowser = speakBrowser;
 window.stopSpeech = stopSpeech;
 window.speak = speak;
 window.speakFiller = speakFiller;
+window.sanitizeAssistantText = sanitizeAssistantText;
 
 // ---------------------------------------------------------------- reminders + notifications
 const shownReminders = new Set(JSON.parse(sessionStorage.getItem("friday.shownReminders") || "[]"));

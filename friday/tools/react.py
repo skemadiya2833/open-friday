@@ -57,6 +57,11 @@ _RESEARCH_META_DUMP = re.compile(
     r"from a mock\s*[`']?web_search|"
     r"a [\"']boss[\"'] asked me|"
     r"the (?:user|owner|boss) (?:asked|wants) me to\b|"
+    r"user'?s?\s+goal\s*:|"
+    r"constraint\s*\d+\s*:|"
+    r"\*+\s*correction\s*\*+|"
+    r"the prompt says\b|"
+    r"tell the user you could not reach search\b|"
     r"search results? (?:were|was) (?:provided|given|returned) (?:to me|as)\b"
     r")\b"
 )
@@ -440,6 +445,7 @@ def _spoken_tool_result(tool: str, raw: str) -> str:
 
 def _spoken_web_search(raw: str) -> str:
     """Turn fenced search dumps into a short spoken list of titles."""
+    from friday.assistant.reply_guard import looks_like_prompt_dump
     from friday.persona import owner_name
 
     hit = (raw or "").strip()
@@ -449,6 +455,16 @@ def _spoken_web_search(raw: str) -> str:
         re.S,
     )
     body = (m.group(1) if m else hit).strip()
+    if re.search(r"(?i)^no web results came back|^could not fetch results", body):
+        return (
+            f"Search didn't return usable results right now, {owner_name()}. "
+            "I can retry with a shorter query, or dig from what we already looked up."
+        )
+    related = re.search(
+        r"(?i)related prior search ['\"]([^'\"]+)['\"].*?still applies:\s*(.*)$",
+        body,
+        re.S,
+    )
     titles: list[str] = []
     for line in body.splitlines():
         mm = re.match(r"^\s*\d+\.\s+(.+)$", line)
@@ -458,6 +474,20 @@ def _spoken_web_search(raw: str) -> str:
                 titles.append(title)
     if titles:
         top = "; ".join(titles[:5])
+        if related:
+            prior = related.group(1).strip()
+            return (
+                f"No fresh hits, {owner_name()} — reusing what we found earlier on "
+                f"'{prior}': {top}."
+            )[:900]
         return f"Top hits: {top}."[:900]
+    if related:
+        prior = related.group(1).strip()
+        return (
+            f"No fresh hits, {owner_name()}. We covered '{prior}' earlier — "
+            "say open findings if you want that brief on screen."
+        )
     clean = re.sub(r"\s+", " ", body).strip()
+    if looks_like_prompt_dump(clean) or _RESEARCH_META_DUMP.search(clean):
+        return f"Search came back empty, {owner_name()}. Want me to try a tighter query?"
     return clean[:900] if clean else f"Search came back empty, {owner_name()}."

@@ -7,6 +7,7 @@ Ref-counted: nested observe / agent ticks stay lit until the outer looking sessi
 from __future__ import annotations
 
 import math
+import os
 import queue
 import threading
 import time
@@ -36,6 +37,9 @@ SW_SHOWNOACTIVATE = 4
 _CLASS = "FridayLookRim"
 _hinstance = kernel32.GetModuleHandleW(None)
 _class_registered = False
+# Keep WNDCLASSEX + class-name pointer alive — GC of these AVs RegisterClassExW on CI.
+_wc_keep: Any = None
+_class_name_keep: Any = None
 
 # Soft orange — matches HUD "acting" accent.
 _ORANGE = (255, 106, 43)
@@ -47,7 +51,21 @@ _looking_depth = 0
 _hidden_for_capture = False
 
 
+def _headless_or_test() -> bool:
+    """Win32 layered windows AV / hang on GH runners and under pytest — never create them there."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return True
+    if os.environ.get("FRIDAY_HEADLESS", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    ci = os.environ.get("CI", "").strip().lower()
+    if ci in ("1", "true", "yes"):
+        return True
+    return False
+
+
 def _enabled() -> bool:
+    if _headless_or_test():
+        return False
     try:
         from friday.runtime.prefs import get as pref_get
 
@@ -57,7 +75,7 @@ def _enabled() -> bool:
 
 
 def _register_class() -> None:
-    global _class_registered
+    global _class_registered, _wc_keep, _class_name_keep
     if _class_registered:
         return
     import ctypes
@@ -72,8 +90,11 @@ def _register_class() -> None:
     wc.hInstance = _hinstance
     wc.hCursor = user32.LoadCursorW(None, wt.LPCWSTR(IDC_ARROW))
     wc.hbrBackground = None
-    wc.lpszClassName = _CLASS
-    if user32.RegisterClassExW(ctypes.byref(wc)):
+    _class_name_keep = ctypes.c_wchar_p(_CLASS)
+    wc.lpszClassName = _class_name_keep
+    atom = user32.RegisterClassExW(ctypes.byref(wc))
+    if atom:
+        _wc_keep = wc
         _class_registered = True
 
 
@@ -107,9 +128,12 @@ class LookRimController:
         self._ready = threading.Event()
 
     def _ensure(self) -> None:
+        if not _enabled():
+            return
         if self._running:
             return
         self._running = True
+        self._ready.clear()
         self._thread = threading.Thread(target=self._run, name="FridayLookRim", daemon=True)
         self._thread.start()
         self._ready.wait(timeout=1.5)
@@ -118,6 +142,8 @@ class LookRimController:
         if not _enabled():
             return
         self._ensure()
+        if not self._running:
+            return
         self._cmd.put({"op": "show"})
 
     def hide(self) -> None:
@@ -133,6 +159,12 @@ class LookRimController:
         self._running = False
 
     def _run(self) -> None:
+        # Belt-and-suspenders: never touch Win32 window APIs in CI/pytest.
+        if _headless_or_test():
+            self._running = False
+            self._ready.set()
+            return
+
         EX_STYLE = (
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW
             | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT
@@ -147,6 +179,8 @@ class LookRimController:
 
         try:
             _register_class()
+            if not _class_registered:
+                return
             hwnd = user32.CreateWindowExW(
                 EX_STYLE, _CLASS, "FridayLookRim",
                 WS_POPUP, 0, 0, screen_w, screen_h,
