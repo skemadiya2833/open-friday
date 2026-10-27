@@ -222,11 +222,19 @@ class RunManager:
 
 
 def maybe_propose_skill(objective: str, ctrl: AgentController, status) -> str | None:
-    """Skill-proposal loop. Off unless SKILL_PROPOSALS=true. Writes an instruction-only draft into the
-    proposals folder; the draft is never usable until the owner approves it in the Control Center."""
+    """Skill-proposal loop. Off unless SKILL_PROPOSALS=true or Systems pref skill_proposals.
+    Writes an instruction-only draft into proposals; never usable until owner approves."""
     import os
 
-    if os.getenv("SKILL_PROPOSALS", "false").lower() not in ("1", "true", "yes"):
+    enabled = os.getenv("SKILL_PROPOSALS", "false").lower() in ("1", "true", "yes")
+    if not enabled:
+        try:
+            from friday.runtime.prefs import get as pref_get
+
+            enabled = bool(pref_get("skill_proposals"))
+        except Exception:  # noqa: BLE001
+            enabled = False
+    if not enabled:
         return None
     try:
         if getattr(status, "value", status) != "completed":

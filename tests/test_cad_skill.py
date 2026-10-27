@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from friday.cad.planner import _coerce_goal, _heuristic_plan
 from friday.cad.schema import Goal, GoalFeature, estimate_target, validate_goal
 from friday.skills.agentskills import split_frontmatter, validate_frontmatter
@@ -78,6 +76,10 @@ def test_intent_routes_freecad_to_cad():
         "let's make a 3d model for a bracket about 60mm wide",
         "make a 40x30x10 plate with a hole",
         "can we model a cylinder 30mm diameter 10mm tall",
+        "make a cube",
+        "create a freecad file on my desktop",
+        "save an fcstd to the desktop",
+        "how about a 3d model of a box",
     ):
         got = intent_mod._deterministic_intent(msg)
         assert got is not None, msg

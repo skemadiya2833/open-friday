@@ -18,7 +18,12 @@ from typing import Any, Literal
 
 from friday.atomic import write_text_atomic
 
-PrefKind = Literal["bool", "str", "choice", "int", "float"]
+PrefKind = Literal["bool", "str", "secret", "choice", "int", "float"]
+
+# Mask shown to Systems GET when a secret is stored (never return plaintext).
+SECRET_MASK = "••••••••"
+# Client may send this sentinel on PATCH to mean "keep existing secret".
+SECRET_KEEP = "__KEEP__"
 
 # Optimum defaults: sensible first-run values. UI "Reset to optima" restores these.
 SCHEMA: dict[str, dict[str, Any]] = {
@@ -88,7 +93,7 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "env": "FRIDAY_APPROVAL_MODE",
         "group": "safety",
         "label": "Approval mode",
-        "help": "Attended waits for you. Unattended auto-allows policy-permitted tools.",
+        "help": "Attended (default) shows Allow/Deny for shell & risky tools. Unattended denies anything that needs a click — only for benches. Interactive use should stay Attended.",
     },
     "approval_beep": {
         "kind": "bool",
@@ -164,7 +169,7 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "env": "CHAT_MODEL",
         "group": "models",
         "label": "Chat model",
-        "help": "Ollama tag for talk / tools / research. Switch anytime from Systems — no .env edit.",
+        "help": "Ollama tag for talk / tools / research. On 16 GB prefer one multimodal for chat+vision (e.g. gemma4:12b, or saluki only if built with mmproj).",
     },
     "vision_model": {
         "kind": "str",
@@ -248,6 +253,80 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Taiga socket port",
         "help": "Local FreeCAD GUI server port (default 8765).",
     },
+    # --- Channels / integrations (phone Control Center + optional Telegram) ---
+    "telegram_enabled": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_TELEGRAM",
+        "group": "channels",
+        "label": "Telegram remote",
+        "help": "Optional phone channel via Bot API (ZYRON-style). Passkey Control Center still works. Off by default.",
+    },
+    "telegram_bot_token": {
+        "kind": "secret",
+        "default": "",
+        "env": "FRIDAY_TELEGRAM_BOT_TOKEN",
+        "group": "channels",
+        "label": "Telegram bot token",
+        "help": "From @BotFather. Stored locally; Systems never shows the plaintext after save. Leave blank to clear.",
+        "secret": True,
+    },
+    "telegram_allowed_chat_ids": {
+        "kind": "str",
+        "default": "",
+        "env": "FRIDAY_TELEGRAM_CHAT_IDS",
+        "group": "channels",
+        "label": "Telegram allowed chat IDs",
+        "help": "Comma-separated chat IDs that may talk to Friday. Empty = deny all (safe).",
+    },
+    "cua_enabled": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_CUA",
+        "group": "channels",
+        "label": "Cua Driver (MCP)",
+        "help": "Start trycua Cua Driver as an MCP server when installed (background computer-use). Off by default.",
+    },
+    "skill_hub_fetch": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_SKILL_HUB_FETCH",
+        "group": "channels",
+        "label": "Skill hub fetch",
+        "help": "Allow importing SKILL.md from git/HTTPS into the inbox (quarantine → owner approve). Off by default.",
+    },
+    "presence_orb": {
+        "kind": "bool",
+        "default": True,
+        "env": "FRIDAY_PRESENCE_ORB",
+        "group": "persona",
+        "label": "Presence working bubble",
+        "help": "Show a request-scoped working bubble on the HUD orb during long tool runs.",
+    },
+    "look_rim": {
+        "kind": "bool",
+        "default": True,
+        "env": "FRIDAY_LOOK_RIM",
+        "group": "persona",
+        "label": "Screen look glow",
+        "help": "Orange glow on all four screen edges while Friday is capturing or describing your desktop.",
+    },
+    "skill_proposals": {
+        "kind": "bool",
+        "default": False,
+        "env": "SKILL_PROPOSALS",
+        "group": "agent",
+        "label": "Auto skill proposals",
+        "help": "After successful runs, draft instruction-only skills into proposals (owner must approve). Off by default.",
+    },
+    "dream_mode": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_DREAM_MODE",
+        "group": "agent",
+        "label": "Dream mode (diary proposals)",
+        "help": "Opt-in background diary synthesis notes — never silent memory writes. Off by default.",
+    },
 }
 
 _GROUPS = [
@@ -258,6 +337,7 @@ _GROUPS = [
     ("models", "Models"),
     ("perf", "Performance"),
     ("cad", "CAD / FreeCAD"),
+    ("channels", "Channels / integrations"),
 ]
 
 _lock = threading.RLock()
@@ -305,6 +385,11 @@ def save_raw(data: dict[str, Any]) -> dict[str, Any]:
         return dict(clean)
 
 
+def is_secret(key: str) -> bool:
+    spec = SCHEMA.get(key) or {}
+    return bool(spec.get("secret")) or spec.get("kind") == "secret"
+
+
 def _coerce(spec: dict[str, Any], raw: Any) -> Any:
     kind = spec["kind"]
     if kind == "bool":
@@ -322,7 +407,10 @@ def _coerce(spec: dict[str, Any], raw: Any) -> Any:
         if key in lower_map:
             return lower_map[key]
         return deepcopy(spec["default"])
+    # str + secret
     s = str(raw).strip()
+    if kind == "secret":
+        return s  # empty allowed (clears)
     return s or deepcopy(spec["default"])
 
 
@@ -364,13 +452,25 @@ def source_of(key: str) -> str:
 
 
 def update(patch: dict[str, Any]) -> dict[str, Any]:
-    """Merge UI patch into prefs. Unknown keys ignored. None deletes key (fall back to env/default)."""
+    """Merge UI patch into prefs. Unknown keys ignored. None deletes key (fall back to env/default).
+
+    Secrets: empty string clears; SECRET_MASK / SECRET_KEEP leaves the stored value unchanged.
+    """
     data = load_raw()
     for key, val in patch.items():
         if key not in SCHEMA:
             continue
         if val is None:
             data.pop(key, None)
+            continue
+        if is_secret(key):
+            s = str(val).strip() if val is not None else ""
+            if s in ("",):
+                data.pop(key, None)
+                continue
+            if s in (SECRET_MASK, SECRET_KEEP):
+                continue  # keep existing
+            data[key] = _coerce(SCHEMA[key], s)
             continue
         data[key] = _coerce(SCHEMA[key], val)
     return save_raw(data)
@@ -388,14 +488,26 @@ def clear_all() -> dict[str, Any]:
 
 
 def snapshot() -> dict[str, Any]:
-    """Full Systems payload: groups, effective values, sources, schema."""
+    """Full Systems payload: groups, effective values, sources, schema.
+
+    Secret values are never returned in plaintext — only a mask when set.
+    """
     items = []
     for key, spec in SCHEMA.items():
+        effective = get(key)
+        secret = is_secret(key)
+        has_secret = bool(str(effective or "").strip()) if secret else False
+        if secret:
+            display = SECRET_MASK if has_secret else ""
+            default_out = ""
+        else:
+            display = effective
+            default_out = deepcopy(spec["default"])
         items.append(
             {
                 "key": key,
-                "value": get(key),
-                "default": deepcopy(spec["default"]),
+                "value": display,
+                "default": default_out,
                 "source": source_of(key),
                 "kind": spec["kind"],
                 "choices": list(spec.get("choices") or []),
@@ -404,6 +516,8 @@ def snapshot() -> dict[str, Any]:
                 "help": spec.get("help") or "",
                 "restart": bool(spec.get("restart")),
                 "env": spec.get("env") or "",
+                "secret": secret,
+                "has_secret": has_secret if secret else False,
             }
         )
     return {

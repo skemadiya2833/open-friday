@@ -907,26 +907,28 @@ def _open_text_on_screen(text: str, *, stem: str = "friday-note") -> Path:
 
 def _screenshot_describe(*, describe: bool = True) -> str:
     from friday.models.local import describe_screen
+    from friday.ui.look_rim import looking
     from friday.vision.feed import LiveScreenFeed
 
-    feed = LiveScreenFeed(mask_overlay=False)
-    vision = feed.capture_oneshot()
-    b64 = vision.frame_b64 if vision else None
-    if vision is not None:
+    with looking():
+        feed = LiveScreenFeed(mask_overlay=False)
+        vision = feed.capture_oneshot()
+        b64 = vision.frame_b64 if vision else None
+        if vision is not None:
+            try:
+                vision.frame_b64_list.clear()
+            except Exception:  # noqa: BLE001
+                pass
+        if not b64:
+            raise RuntimeError("no screenshot")
+        if not describe:
+            n = len(b64)
+            b64 = ""
+            return f"Screenshot captured ({n} b64 chars)."
         try:
-            vision.frame_b64_list.clear()
-        except Exception:  # noqa: BLE001
-            pass
-    if not b64:
-        raise RuntimeError("no screenshot")
-    if not describe:
-        n = len(b64)
-        b64 = ""
-        return f"Screenshot captured ({n} b64 chars)."
-    try:
-        return describe_screen("What is visibly open on the desktop? Be brief.", frame_b64=b64)
-    finally:
-        b64 = ""
+            return describe_screen("What is visibly open on the desktop? Be brief.", frame_b64=b64)
+        finally:
+            b64 = ""
 
 
 def is_make_html_request(objective: str) -> bool:

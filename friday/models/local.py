@@ -28,7 +28,7 @@ if OVERLAY_ENABLED:
     from friday.ui import overlay
 
 _THINKING_MODEL_PREFIXES = (
-    "qwen3", "qwen3.5", "deepseek-r1", "deepseek-r1:", "gpt-oss",
+    "qwen3", "qwen3.5", "qwen3.8", "saluki", "deepseek-r1", "deepseek-r1:", "gpt-oss",
 )
 
 

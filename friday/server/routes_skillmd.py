@@ -17,6 +17,11 @@ class Name(BaseModel):
     expected_hash: str | None = None
 
 
+class FetchBody(BaseModel):
+    url: str
+    name_hint: str | None = None
+
+
 def _require_ui(request: Request) -> None:
     """Same bar as granting a tool approval: a same-origin browser request from the Friday page."""
     if not request.headers.get("origin") or request.headers.get("sec-fetch-site") != "same-origin":
@@ -39,6 +44,17 @@ def import_skill(body: Name, request: Request) -> dict[str, Any]:
     _require_ui(request)
     try:
         return {"quarantined": True, "review": get_store().import_from_inbox(body.name)}
+    except SkillError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/fetch")
+def fetch_skill(body: FetchBody, request: Request) -> dict[str, Any]:
+    """HTTPS/git-raw SKILL.md or zip → inbox only. Requires Systems skill_hub_fetch."""
+    _require_ui(request)
+    try:
+        result = get_store().fetch_into_inbox(body.url, name_hint=body.name_hint)
+        return {"fetched": True, **result}
     except SkillError as exc:
         raise HTTPException(400, str(exc)) from exc
 

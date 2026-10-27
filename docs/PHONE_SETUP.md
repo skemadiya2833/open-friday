@@ -75,6 +75,19 @@ No phone. Optional Windows Hello passkey for practice.
 
 ---
 
+## Optional — Telegram remote (alongside Control Center)
+
+Passkey / LAN phone access above stays primary. For a Bot API channel (ZYRON-style):
+
+1. Systems → **Telegram remote** = on.
+2. Paste **Telegram bot token** (from @BotFather). Systems stores it locally and never shows plaintext after save.
+3. Set **Telegram allowed chat IDs** (comma-separated). Empty allow-list = deny all.
+4. Restart is not required; prefs sync starts/stops the long-poll thread.
+
+File exfil over Telegram is not auto-enabled — keep using Control Center for sensitive work.
+
+---
+
 ## Rules
 
 - **LAN:** identity = owner-approved device session. Soft signals (UA/IP/name) are informational only.
@@ -82,3 +95,4 @@ No phone. Optional Windows Hello passkey for practice.
 - New phones get role `chat`. Raise roles on the PC Devices page.
 - Revoke a device to kill its sessions.
 - `FRIDAY_API_TOKEN` is for local scripts only.
+- Telegram bot token is a secret pref — never commit it.

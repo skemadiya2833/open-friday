@@ -143,6 +143,17 @@ function prefItemHtml(it) {
         <span class="muted" id="modelPrefHint" style="font-size:12px"></span>
       </div>`;
     }
+  } else if (it.kind === "secret" || it.secret) {
+    const saved = it.has_secret
+      ? `<span class="muted" style="font-size:12px;margin-left:8px">saved</span>`
+      : `<span class="muted" style="font-size:12px;margin-left:8px">not set</span>`;
+    control = `<div style="margin-top:8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+      <input type="password" autocomplete="new-password" data-pref="${escapeHtml(it.key)}" data-secret="1"
+        placeholder="${it.has_secret ? "•••••••• (leave blank to keep)" : "paste token here"}"
+        value="" style="width:min(360px,100%);padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)" />
+      ${saved}
+      ${it.has_secret ? `<button type="button" class="ghost" data-clear-secret="${escapeHtml(it.key)}" title="Clear stored token">Clear</button>` : ""}
+    </div>`;
   } else {
     const wide = /path|install|repo|python|model|folder/i.test(it.key) || it.group === "cad";
     const w = wide ? "min(520px,100%)" : "min(280px,100%)";
@@ -289,6 +300,33 @@ function bindPrefsControls(snap) {
     el.addEventListener("input", () => {
       clearTimeout(timer);
       timer = setTimeout(save, 500);
+    });
+  });
+  document.querySelectorAll("#settingsGrid input[type=password][data-pref][data-secret]").forEach((el) => {
+    el.addEventListener("change", async () => {
+      const key = el.getAttribute("data-pref");
+      const val = (el.value || "").trim();
+      if (!val) return; // blank = keep existing (server also ignores mask)
+      try {
+        const snap2 = await patchPrefs({ [key]: val });
+        el.value = "";
+        afterSave(snap2);
+        refreshSettings();
+      } catch (_) {
+        setHint("Save failed");
+      }
+    });
+  });
+  document.querySelectorAll("#settingsGrid [data-clear-secret]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const key = btn.getAttribute("data-clear-secret");
+      try {
+        const snap2 = await patchPrefs({ [key]: "" });
+        afterSave(snap2);
+        refreshSettings();
+      } catch (_) {
+        setHint("Clear failed");
+      }
     });
   });
   bindModelPrefSelects(setHint, afterSave);

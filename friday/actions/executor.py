@@ -9,7 +9,7 @@ import pyperclip
 
 from friday.actions.catalog import AIM_ACTIONS, REOBSERVE_ACTIONS
 from friday.actions.coordinates import extract_win_search_text
-from friday.config import AIM_VERIFY_ENABLED, CLICK_MARKER_ENABLED, OVERLAY_ENABLED
+from friday.config import AIM_VERIFY_ENABLED, CLICK_MARKER_ENABLED, MAX_STUCK_ACTIONS, OVERLAY_ENABLED
 from friday.safety import is_risky, prompt_approval
 from friday.types import ActionStep, StepResult, VisionPayload
 
@@ -477,6 +477,17 @@ def _dispatch(step: ActionStep, session=None) -> StepResult:
         emit("shell_end", command=cmd, exit_code=code, output=out)
         print(f"  -> Shell result (error={result.is_error})\n{out[:500]}")
         if result.metadata.get("denied"):
+            # FreeCAD / Taiga must go through the cad skill — vision+shell invents bad paths.
+            low = cmd.lower()
+            if "freecad" in low or "8765" in low or "taiga" in low:
+                tip = (
+                    "Shell blocked for FreeCAD. Say: enable CAD / build a plate in FreeCAD — "
+                    "I'll use the cad skill (correct install path), not the vision agent."
+                )
+                print(f"  -> {tip}")
+                if session is not None:
+                    session.history.append(f"x RUN_SHELL denied-cad :: {tip}")
+                    session.stuck_count = max(session.stuck_count, MAX_STUCK_ACTIONS - 1)
             return StepResult.SKIPPED
         if session is not None:
             session.history.append(f"{'x' if result.is_error else 'ok'} RUN_SHELL exit={code} :: {cmd[:60]}")

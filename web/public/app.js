@@ -58,6 +58,13 @@ function voiceHoldMode() {
   return !(window.FridayVoice && FridayVoice.duplex && FridayVoice.duplex() === "interrupt");
 }
 
+/** Desktop screen look — Control Center pill (orange edge glow is on the real desktop). */
+function setScreenLooking(on) {
+  const pill = $("#screenLookPill");
+  if (pill) pill.classList.toggle("hidden", !on);
+  document.body.classList.toggle("screen-looking", !!on);
+}
+
 /** Show / hide global "CAMERA LIVE" while Friday is looking through the webcam. */
 function setCameraLooking(on, phase) {
   const hud = $("#cameraHudPill");
@@ -78,6 +85,29 @@ function setCameraLooking(on, phase) {
   document.body.classList.toggle("camera-looking", show);
 }
 
+/** Presence working bubble — Systems `presence_orb` (default on). */
+let presenceOrbEnabled = true;
+
+async function refreshPresenceOrbPref() {
+  try {
+    const res = await apiFetch("/api/systems/prefs");
+    if (!res.ok) return;
+    const snap = await res.json();
+    const it = (snap.items || []).find((x) => x.key === "presence_orb");
+    if (it) presenceOrbEnabled = !!it.value;
+  } catch (_) {
+    /* keep default */
+  }
+}
+
+function syncOrbWorkBubble(state) {
+  const bubble = $("#orbWorkBubble");
+  if (!bubble) return;
+  const working = presenceOrbEnabled && (state === "acting" || state === "thinking");
+  bubble.classList.toggle("hidden", !working);
+  if (working) bubble.textContent = state === "acting" ? "working" : "thinking";
+}
+
 function setState(state, { force = false } = {}) {
   // During a turn, never flash back to listening/idle (yellow↔blue flicker).
   if (!force && voiceMode && voiceBusy && (state === "listening" || state === "idle")) return;
@@ -89,6 +119,7 @@ function setState(state, { force = false } = {}) {
   window.FridayLive && FridayLive.state(state);
   if (orb) orb.dataset.state = state;
   if (statusLabel) statusLabel.textContent = String(state || "standby").toUpperCase();
+  syncOrbWorkBubble(state);
   syncZenChips();
   const core = $("#coreState");
   if (core) {
@@ -886,11 +917,15 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         $("#messages").scrollTop = $("#messages").scrollHeight;
         pushActivity("Camera frame shown", { live: false });
       }
+      if (ev.type === "screen_looking") {
+        setScreenLooking(!!ev.on);
+      }
       if (ev.type === "observation") {
         if (ev.source === "camera") {
           const sz = Array.isArray(ev.size) ? `${ev.size[0]}×${ev.size[1]}` : "";
           pushActivity(`Webcam frame${sz ? ` · ${sz}` : ""}`);
         } else {
+          setScreenLooking(true);
           const size = ev.native_size ? `${ev.native_size[0]}×${ev.native_size[1]}` : "";
           pushActivity(`Screenshot captured${size ? ` · ${size}` : ""}`);
         }
@@ -1071,6 +1106,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     pushActivity(`Error · ${err.message}`, { live: false });
   } finally {
     filler && filler.stop();
+    setScreenLooking(false);
     // Always clear busy — even if interrupted (epoch mismatch). Skipping this left the mic deaf.
     voiceBusy = false;
     finalBuffer = "";
@@ -2203,6 +2239,7 @@ document.addEventListener("visibilitychange", () => {
   syncZenChips();
   await refreshSkills();
   await refreshSettings();
+  await refreshPresenceOrbPref();
   await restoreChat();
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission().catch(() => {});

@@ -183,6 +183,34 @@ body {
   to { transform: scale(1.04); }
 }
 
+/* Request-scoped working bubble (DesktopClaw-inspired; native) */
+.orb {
+  position: relative;
+}
+.orb-work-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  background: rgba(8, 18, 28, 0.92);
+  color: var(--cyan, #3ecbff);
+  pointer-events: none;
+  z-index: 2;
+}
+.orb-work-bubble.hidden {
+  display: none;
+}
+.orb[data-state="acting"] .orb-work-bubble:not(.hidden),
+.orb[data-state="thinking"] .orb-work-bubble:not(.hidden) {
+  animation: hudOrbPulse 1.2s ease-in-out infinite;
+}
+
 /* Header HUD controls */
 .hud-ctl {
   appearance: none;

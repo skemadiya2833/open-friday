@@ -33,7 +33,7 @@ def _tool_name(server: str, tool: str) -> str:
 
 
 def resolve_command(cmd: str) -> str:
-    """PATH first, then the venv Scripts directory next to this interpreter (uv lives there)."""
+    """PATH first, then venv Scripts, then known Cua install junction."""
     found = shutil.which(cmd)
     if found:
         return found
@@ -41,6 +41,10 @@ def resolve_command(cmd: str) -> str:
     for cand in (scripts / f"{cmd}.exe", scripts / cmd):
         if cand.exists():
             return str(cand)
+    if cmd in ("cua-driver", "cua-driver.exe"):
+        cua = Path.home() / "AppData/Local/Programs/Cua/cua-driver/bin/cua-driver.exe"
+        if cua.is_file():
+            return str(cua)
     raise FileNotFoundError(f"command not found: {cmd}")
 
 
@@ -159,9 +163,17 @@ class McpManager:
     def start_enabled(self) -> list[str]:
         if self._config is None:
             self.load()
+        pref_on: set[str] = set()
+        try:
+            from friday.runtime.prefs import get as pref_get
+
+            if pref_get("cua_enabled"):
+                pref_on.add("cua")
+        except Exception:  # noqa: BLE001
+            pass
         started = []
         for name, st in list(self._states.items()):
-            if st.config.enabled:
+            if st.config.enabled or name in pref_on:
                 self.start(name)
                 started.append(name)
         return started

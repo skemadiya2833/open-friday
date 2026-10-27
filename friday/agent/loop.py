@@ -61,18 +61,21 @@ def run_agent(
     session = AgentSession(objective=objective)
     feed = LiveScreenFeed(mask_overlay=show_overlay)
 
-    try:
-        if LIVE_MODE:
-            feed.start()
-            emit("status", status="live")
-            if not feed.wait_until_ready(timeout=8.0):
-                print("[Friday] Warning: live feed did not produce frames in time.")
-        else:
-            print("[Friday] LIVE_MODE=false — using one-shot capture each tick.")
+    from friday.ui.look_rim import looking
 
-        status = _loop(session, feed, ctrl, show_overlay)
-        emit("session_end", status=status.value, objective=objective)
-        return status
+    try:
+        with looking():
+            if LIVE_MODE:
+                feed.start()
+                emit("status", status="live")
+                if not feed.wait_until_ready(timeout=8.0):
+                    print("[Friday] Warning: live feed did not produce frames in time.")
+            else:
+                print("[Friday] LIVE_MODE=false — using one-shot capture each tick.")
+
+            status = _loop(session, feed, ctrl, show_overlay)
+            emit("session_end", status=status.value, objective=objective)
+            return status
     finally:
         feed.stop()
         release_controller(ctrl)

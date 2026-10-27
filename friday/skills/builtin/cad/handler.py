@@ -79,7 +79,7 @@ class SkillHandler(Skill):
         if _ENABLE.search(msg) and not _SETUP.search(msg):
             apply_patch({"cad_enabled": True})
             return SkillResult(
-                reply=f"CAD is on. Describe a part in mm (I'll assume sensible defaults) and I'll build it.",
+                reply="CAD is on. Describe a part in mm (I'll assume sensible defaults) and I'll build it.",
                 skill_id="cad",
                 metadata={"cad_enabled": True},
             )

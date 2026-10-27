@@ -17,45 +17,50 @@ class SkillHandler(Skill):
     def run(self, ctx: SkillContext) -> SkillResult:
         from friday.models.local import describe_screen
         from friday.models.manager import get_model_manager
+        from friday.ui.look_rim import looking
         from friday.vision.feed import LiveScreenFeed
 
         get_model_manager().ensure_loaded("vision")
         ctx.emit("status", {"status": "thinking"})
         ctx.emit("activity", {"step": "capture", "message": "Capturing desktop screenshot…"})
-
-        feed = LiveScreenFeed(mask_overlay=False)
-        vision = feed.capture_oneshot()
-        if vision is None or not vision.frame_b64:
-            reply = "I couldn't capture the screen right now. Try again in a moment."
-            return SkillResult(reply=reply, skill_id="observe")
-
-        ctx.emit("observation", {
-            "native_size": vision.native_size,
-            "image_size": vision.image_size,
-        })
-        ctx.emit("activity", {
-            "step": "describe",
-            "message": f"Describing screen ({vision.native_size[0]}×{vision.native_size[1]})…",
-        })
-
-        frame = vision.frame_b64 or ""
-        native = vision.native_size
-        # Drop payload frames ASAP — chat keeps the text description only.
+        ctx.emit("screen_looking", {"on": True})
         try:
-            vision.frame_b64_list.clear()
-        except Exception:  # noqa: BLE001
-            pass
-        reply = describe_screen(
-            ctx.message,
-            frame_b64=frame,
-            on_token=lambda t: ctx.emit("skill_token", {"text": t}),
-            voice_mode=ctx.voice_mode,
-        )
-        frame = ""
-        if not reply.strip():
-            reply = "I captured the screen but couldn't describe it. Please try again."
-        return SkillResult(
-            reply=reply.strip(),
-            skill_id="observe",
-            metadata={"native_size": native},
-        )
+            with looking():
+                feed = LiveScreenFeed(mask_overlay=False)
+                vision = feed.capture_oneshot()
+                if vision is None or not vision.frame_b64:
+                    reply = "I couldn't capture the screen right now. Try again in a moment."
+                    return SkillResult(reply=reply, skill_id="observe")
+
+                ctx.emit("observation", {
+                    "native_size": vision.native_size,
+                    "image_size": vision.image_size,
+                })
+                ctx.emit("activity", {
+                    "step": "describe",
+                    "message": f"Describing screen ({vision.native_size[0]}×{vision.native_size[1]})…",
+                })
+
+                frame = vision.frame_b64 or ""
+                native = vision.native_size
+                # Drop payload frames ASAP — chat keeps the text description only.
+                try:
+                    vision.frame_b64_list.clear()
+                except Exception:  # noqa: BLE001
+                    pass
+                reply = describe_screen(
+                    ctx.message,
+                    frame_b64=frame,
+                    on_token=lambda t: ctx.emit("skill_token", {"text": t}),
+                    voice_mode=ctx.voice_mode,
+                )
+                frame = ""
+                if not reply.strip():
+                    reply = "I captured the screen but couldn't describe it. Please try again."
+                return SkillResult(
+                    reply=reply.strip(),
+                    skill_id="observe",
+                    metadata={"native_size": native},
+                )
+        finally:
+            ctx.emit("screen_looking", {"on": False})

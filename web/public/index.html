@@ -46,6 +46,8 @@
       <button type="button" class="ghost zen-toggle" id="btnZen" title="Zen focus (Ctrl+B)">ZEN</button>
       <span class="pill camera-hud-pill hidden" id="cameraHudPill" title="Webcam is in use for this turn" role="status"
         aria-live="polite">CAMERA LIVE</span>
+      <span class="pill screen-look-pill hidden" id="screenLookPill" title="Friday is looking at your desktop"
+        role="status" aria-live="polite">SCREEN · LOOKING</span>
       <button type="button" class="bell" id="btnBell" title="Reminders and notifications">&#128276;<span
           class="bell-count hidden" id="bellCount"></span></button>
       <span class="telemetry" id="uplinkStatus">UPLINK · SECURE</span>
@@ -119,6 +121,7 @@
           <span class="orb-ring mid"></span>
           <span class="orb-core"></span>
           <span class="orb-cross"></span>
+          <span class="orb-work-bubble hidden" id="orbWorkBubble" aria-live="polite">working</span>
         </div>
         <div class="brand-copy">
           <div class="brand-name">FRIDAY</div>

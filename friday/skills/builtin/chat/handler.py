@@ -48,6 +48,14 @@ def _honest_fallback(message: str, owner: str) -> str:
             f"Fair call, {owner}. That last answer failed. "
             "Say the task once more and I'll take it cleanly."
         )
+    if re.search(
+        r"(?i)\b(freecad|fcstd|3\s*-?\s*d|cad|cube|bracket|plate|desktop|save|create)\b",
+        low,
+    ):
+        return (
+            f"I haven't run FreeCAD or saved anything on this turn, {owner}. "
+            "Say the part clearly (for example: make a 40×30×10 plate in FreeCAD) and I'll use the CAD path for real."
+        )
     if re.search(r"(?i)\b(pull(ed)? up|research|search|look(ed)? up|findings?|ideas?)\b", low):
         return (
             f"I don't have that research on this turn, {owner}. "
@@ -141,10 +149,14 @@ class SkillHandler(Skill):
             return SkillResult(reply=reply, skill_id="chat", metadata={"error": why})
         reply = (result.get("message") or result.get("raw") or "").strip()
         upgrades: list[str] = []
-        from friday.assistant.reply_guard import looks_like_prompt_dump
+        from friday.assistant.reply_guard import claims_unbacked_pc_action, looks_like_prompt_dump
 
         who = owner_name()
         if not reply:
+            reply = _honest_fallback(ctx.message, who)
+        elif claims_unbacked_pc_action(reply):
+            # Chat has no tools — never let the model invent Desktop / FreeCAD side effects.
+            print("[Chat] blocked unbacked PC/CAD claim in reply")
             reply = _honest_fallback(ctx.message, who)
         elif looks_like_prompt_dump(reply):
             # Model recited scaffolding — one hard retry with clean prompt, no history ballast.

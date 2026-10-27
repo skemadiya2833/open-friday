@@ -252,6 +252,71 @@ def _check_toasts() -> Check:
     )
 
 
+def _check_channels() -> Check:
+    """Telegram + skill hub + Cua prefs (never print secrets)."""
+    try:
+        from friday.runtime.prefs import get as pref_get
+
+        tg_on = bool(pref_get("telegram_enabled"))
+        token = str(pref_get("telegram_bot_token") or "").strip()
+        allow = str(pref_get("telegram_allowed_chat_ids") or "").strip()
+        hub = bool(pref_get("skill_hub_fetch"))
+        cua = bool(pref_get("cua_enabled"))
+        detail = {
+            "telegram_enabled": tg_on,
+            "telegram_token_set": bool(token),
+            "telegram_allowlist_set": bool(allow),
+            "skill_hub_fetch": hub,
+            "cua_enabled": cua,
+        }
+        if tg_on and not token:
+            return Check("channels", "warn", "Telegram enabled but bot token not set (Systems)", detail)
+        if tg_on and token and not allow:
+            return Check(
+                "channels",
+                "warn",
+                "Telegram enabled but allow-list empty — all chats denied until you add chat IDs",
+                detail,
+            )
+        bits = []
+        if tg_on:
+            bits.append("telegram on")
+        if hub:
+            bits.append("skill fetch on")
+        if cua:
+            bits.append("cua on")
+        msg = "Channels: " + (", ".join(bits) if bits else "all optional remotes off (safe)")
+        return Check("channels", "pass", msg, detail)
+    except Exception as exc:  # noqa: BLE001
+        return Check("channels", "skip", f"channels probe failed: {exc}")
+
+
+def _check_cua_binary() -> Check:
+    try:
+        from friday.runtime.prefs import get as pref_get
+
+        want = bool(pref_get("cua_enabled"))
+    except Exception:  # noqa: BLE001
+        want = False
+    found = shutil.which("cua-driver")
+    # Prefer the known install junction even if this shell's PATH is stale.
+    if not found:
+        cand = Path.home() / "AppData/Local/Programs/Cua/cua-driver/bin/cua-driver.exe"
+        if cand.is_file():
+            found = str(cand)
+    detail = {"cua_enabled": want, "cua_driver_on_path": bool(found)}
+    if want and not found:
+        return Check(
+            "cua",
+            "warn",
+            "Cua enabled — binary missing; Friday will auto-install on next start (or run cua.ai installer)",
+            detail,
+        )
+    if found:
+        return Check("cua", "pass", f"cua-driver found ({found})", detail)
+    return Check("cua", "pass", "Cua Driver not required (pref off)", detail)
+
+
 def _check_camera() -> Check:
     from friday.camera.capture import opencv_available
     from friday.camera.session import camera_feature_enabled, camera_index, get_camera_session
@@ -434,6 +499,8 @@ def run_doctor(*, probe_hardware: bool = True) -> dict[str, Any]:
     checks.append(_check_voice())
     checks.append(_check_toasts())
     checks.append(_check_camera())
+    checks.append(_check_channels())
+    checks.append(_check_cua_binary())
 
     next_steps = _build_next_steps(checks, required, missing if up else dict(required))
 

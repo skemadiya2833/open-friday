@@ -352,6 +352,11 @@ def _hide_ui_for_capture() -> None:
             overlay.hide_for_capture()
         except Exception:
             pass
+    try:
+        from friday.ui import look_rim
+        look_rim.hide_for_capture()
+    except Exception:
+        pass
 
 
 def _restore_ui_after_capture() -> None:
@@ -366,6 +371,11 @@ def _restore_ui_after_capture() -> None:
             overlay.show_after_capture()
         except Exception:
             pass
+    try:
+        from friday.ui import look_rim
+        look_rim.show_after_capture()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

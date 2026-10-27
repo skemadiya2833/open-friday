@@ -63,7 +63,11 @@ def keep_alive_for_role(role: str) -> int | str:
         # Short residency so look turns don't pin VL forever over the 27B chat brain.
         raw = os.getenv("FRIDAY_VISION_KEEP_ALIVE", "3m")
     elif role in ("main", "chat", "fast"):
-        raw = os.getenv("FRIDAY_MAIN_KEEP_ALIVE", MODEL_KEEP_ALIVE)
+        # Voice assistants want a warm model (alexberardi latency pattern — architecture only).
+        default_main = MODEL_KEEP_ALIVE
+        if os.getenv("VOICE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+            default_main = os.getenv("FRIDAY_VOICE_KEEP_ALIVE", MODEL_KEEP_ALIVE or "-1")
+        raw = os.getenv("FRIDAY_MAIN_KEEP_ALIVE", default_main)
     else:
         raw = MODEL_KEEP_ALIVE
     try:

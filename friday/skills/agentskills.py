@@ -390,6 +390,65 @@ class SkillStore:
         return True
 
     # proposals ------------------------------------------------------
+    def fetch_into_inbox(self, url: str, *, name_hint: str | None = None) -> dict[str, Any]:
+        """Download a SKILL.md or zip from HTTPS into ``inbox/``. Does not quarantine or install.
+
+        Gated by Systems pref ``skill_hub_fetch``. SSRF-checked. Owner must import → approve.
+        """
+        from friday.runtime.prefs import get as pref_get
+        from friday.security.ssrf import SSRFBlocked, assert_url_safe
+
+        if not pref_get("skill_hub_fetch"):
+            raise SkillError("skill hub fetch is off (Systems → Skill hub fetch)")
+        url = (url or "").strip()
+        if not url.startswith(("https://", "http://")):
+            raise SkillError("only http(s) URLs are supported (use a raw SKILL.md or .zip link)")
+        try:
+            assert_url_safe(url)
+        except SSRFBlocked as exc:
+            raise SkillError(str(exc)) from exc
+
+        import httpx
+
+        with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+            r = client.get(url)
+            r.raise_for_status()
+            content_type = (r.headers.get("content-type") or "").lower()
+            data = r.content
+        if len(data) > MAX_SKILL_BYTES:
+            raise SkillError("download too large")
+
+        hint = (name_hint or "").strip().lower()
+        if hint and not NAME_RE.match(hint):
+            raise SkillError("invalid name_hint")
+
+        # Zip archive
+        if "zip" in content_type or url.lower().endswith(".zip") or data[:2] == b"PK":
+            name = hint or "fetched-skill"
+            if not NAME_RE.match(name):
+                name = "fetched-skill"
+            dest = self.inbox / f"{name}.zip"
+            if dest.exists() or (self.inbox / name).exists():
+                raise SkillError(f"inbox already has '{name}'")
+            dest.write_bytes(data)
+            return {"inbox": str(dest), "kind": "zip", "name": name}
+
+        # Raw SKILL.md text
+        text = data.decode("utf-8", errors="replace")
+        try:
+            fm, _body = split_frontmatter(text)
+        except SkillError:
+            raise
+        name = hint or str(fm.get("name") or "").strip()
+        if not NAME_RE.match(name):
+            raise SkillError("skill name missing or invalid in frontmatter; pass name_hint")
+        folder = self.inbox / name
+        if folder.exists() or (self.inbox / f"{name}.zip").exists():
+            raise SkillError(f"inbox already has '{name}'")
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text(text, encoding="utf-8")
+        return {"inbox": str(folder), "kind": "folder", "name": name}
+
     def propose(self, name: str, description: str, body: str, *, rationale: str = "",
                 proposed_by: str = "agent", run_id: str | None = None) -> Path:
         """Agent-written skill. Instruction-only by construction; waits for owner approval."""

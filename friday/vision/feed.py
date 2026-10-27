@@ -48,6 +48,11 @@ def _hide_friday_ui() -> None:
             overlay.hide_for_capture()
         except Exception:
             pass
+    try:
+        from friday.ui import look_rim
+        look_rim.hide_for_capture()
+    except Exception:
+        pass
 
 
 def _restore_friday_ui() -> None:
@@ -59,6 +64,11 @@ def _restore_friday_ui() -> None:
             overlay.show_after_capture()
         except Exception:
             pass
+    try:
+        from friday.ui import look_rim
+        look_rim.show_after_capture()
+    except Exception:
+        pass
 
 
 def _mask_ui_region(img: Image.Image, *, mask_overlay: bool) -> Image.Image:

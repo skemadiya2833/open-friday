@@ -16,9 +16,16 @@ tools:
   # Do not set it to "allow" here.
 
 shell:
-  mode: ask               # ask: approve every command | allowlist: auto-approve matching commands only
+  # allowlist: matching commands auto-approve (even if Approvals are unattended); everything else still asks.
+  mode: allowlist
   timeout_seconds: 30
   max_timeout_seconds: 120
   max_output_chars: 4000
-  # Full-match regular expressions, only used when mode: allowlist (anything else is still "ask").
-  allowlist: []
+  # Full-match regexes — CAD / local setup only. No arbitrary PowerShell.
+  allowlist:
+    - '(?is)^netstat(\.exe)?\s+-ano\s*\|\s*findstr\s+:?8765\s*$'
+    - '(?is)^Get-NetTCPConnection\s+-LocalPort\s+8765(\s+\|\s*.*)?$'
+    - '(?is)^.*FreeCAD 1\.1\\bin\\(FreeCAD|freecad)\.exe.*$'
+    - '(?is)^Start-Process\s+".*FreeCAD 1\.1\\bin\\(FreeCAD|freecad)\.exe".*$'
+    - '(?is)^cua-driver(\.exe)?(\s+(status|doctor|version|mcp))?(\s.*)?$'
+    - '(?is)^friday(\.exe)?\s+doctor(\s.*)?$'

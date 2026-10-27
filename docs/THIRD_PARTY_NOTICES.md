@@ -27,3 +27,36 @@ description of changes. Original copyright notices are preserved.
 
 Full Apache-2.0 text: see the `LICENSE` file in the OpenJarvis repository at the commit above,
 or <http://www.apache.org/licenses/LICENSE-2.0>.
+
+---
+
+## Cua Driver (MIT) — wrapped MCP
+
+- **Project:** [trycua/cua](https://github.com/trycua/cua) · [cua.ai/docs/cua-driver](https://cua.ai/docs/cua-driver)
+- **License:** MIT (Cua Driver)
+- **Use in Friday:** Optional MCP server `cua` in `config/mcp_servers.yaml`, gated by Systems pref `cua_enabled`. Friday does not vendor Cua source; the owner installs `cua-driver` separately.
+
+## OpenClaw / ClawHub / Hermes Agent — skill format (MIT / check per-skill)
+
+- **Projects:** [openclaw/openclaw](https://github.com/openclaw/openclaw), [clawhub.ai](https://clawhub.ai), [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)
+- **Use in Friday:** agentskills.io `SKILL.md` inbox → quarantine → hash-bound install (`friday/skills/agentskills.py`). Optional HTTPS/git fetch into inbox when `skill_hub_fetch` is on. Individual imported skills retain their own licenses — credit them in the skill folder.
+
+## ZYRON — Telegram remote pattern (MIT)
+
+- **Project:** [Surajkumar5050/zyron-assistant](https://github.com/Surajkumar5050/zyron-assistant)
+- **Use in Friday:** Native long-poll Bot API channel (`friday/channels/telegram.py`). Token lives in Systems as a secret pref. Architecture inspired by ZYRON’s phone-remote idea; code is Friday-native.
+
+## Presence / HUD working bubble — ideas
+
+- **Inspiration:** DesktopClaw ([varun86/DesktopClaw](https://github.com/varun86/DesktopClaw)), jarvis-py HUD ([Shaan-alpha/jarvis-py](https://github.com/Shaan-alpha/jarvis-py))
+- **Use in Friday:** Native HUD orb + request-scoped working bubble (`presence_orb` pref). No Electron pet fork.
+
+## Voice latency — architecture only (no AGPL vendor)
+
+- **Inspiration:** alexberardi/jarvis (AGPL server) — stream LLM→TTS, keep model warm
+- **Use in Friday:** Ollama `keep_alive` + existing barge-in speaker pipeline. We do **not** vendor AGPL server code.
+
+## Plan approve / versioning — ideas
+
+- **Inspiration:** porokka/jarvis-os plan runner
+- **Use in Friday:** Native `friday/plans/` store with approve / rerun versioning for multi-step jobs.

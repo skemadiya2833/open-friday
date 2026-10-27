@@ -454,19 +454,25 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
 
     # Conversational CAD: "make a 3d model…", plates/brackets with sizes, FreeCAD/Taiga.
     # Before HTML "build a page" / research. Skip filament / slicer shopping.
+    # Also catch short solids ("make a cube") — otherwise chat invents .FCStd / desktop saves.
     if (
         re.search(
-            r"\b(freecad|free\s*cad|taiga(?:-s1)?|biome-s1)\b|"
+            r"\b(freecad|free\s*cad|taiga(?:-s1)?|biome-s1|\.?fcstd)\b|"
             r"\b(?:set\s*up|setup|enable|disable|launch|start)\b.{0,40}\b(?:cad|freecad|taiga)\b|"
             r"\b(?:cad|freecad|taiga)\b.{0,40}\b(?:set\s*up|setup|status|enable|disable|launch)\b|"
-            r"\b(?:3\s*-?\s*d|3d|cad)\s*(?:model|part|solid|object)\b|"
-            r"\b(?:make|build|model|design|sketch|create)\b.{0,40}\b(?:a\s+)?(?:3\s*-?\s*d|3d)\s*(?:model|part)?\b|"
+            r"\b(?:3\s*-?\s*d|3d|cad)\s*(?:model|part|solid|object|file)\b|"
+            r"\b(?:make|build|model|design|sketch|create|save)\b.{0,40}\b(?:a\s+)?(?:3\s*-?\s*d|3d)\s*(?:model|part|file)?\b|"
             r"\b(?:how about|let'?s|can we|could we|we (?:should|could)|i want)\b.{0,80}\b"
-            r"(?:3\s*-?\s*d|3d|cad|model|plate|bracket|flange|part)\b|"
-            r"\b(?:build|make|model|design|sketch)\b.{0,80}\b(?:in\s+)?freecad\b|"
+            r"(?:3\s*-?\s*d|3d|cad|model|plate|bracket|flange|part|cube|box|sphere)\b|"
+            r"\b(?:build|make|model|design|sketch|create|save)\b.{0,80}\b(?:in\s+)?freecad\b|"
             r"\b(?:cad|partdesign|part\s*design)\b.{0,60}\b(?:part|plate|bracket|flange|model)\b|"
-            r"\b(?:build|make|model|design)\b.{0,80}\b"
-            r"(?:plate|bracket|flange|boss|pocket|cylinder|hex(?:agon)?)\b|"
+            r"\b(?:build|make|model|design|create)\b.{0,80}\b"
+            r"(?:plate|bracket|flange|boss|pocket|cylinder|hex(?:agon)?|cube|box|sphere|solid)\b|"
+            r"\b(?:make|build|create|model)\b.{0,40}\b(?:a\s+)?(?:cube|box|sphere|cylinder)\b|"
+            r"\b(?:save|put|drop|create)\b.{0,60}\b(?:fcstd|\.fcstd|freecad|3\s*-?\s*d|cad)\b.{0,40}\b"
+            r"(?:desktop|download)\b|"
+            r"\b(?:fcstd|\.fcstd|freecad|3\s*-?\s*d\s*model|cad\s*(?:file|part))\b.{0,40}\b"
+            r"(?:on\s+(?:my\s+)?desktop|to\s+(?:my\s+)?desktop)\b|"
             r"\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b.{0,40}\b"
             r"(?:plate|box|block|bracket|mm|fillet|hole)\b|"
             r"\b(?:plate|bracket|flange)\b.{0,60}\b(?:mm|fillet|hole|chamfer|polar)\b|"
@@ -544,6 +550,30 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # Project continuity / brainstorm with the owner — chat + memory, NOT a web crawl.
+    if re.search(
+        r"(?i)\b("
+        r"continue (on |with )?(our |the |my )?|"
+        r"other tasks? (we|i) could|"
+        r"what else (can|should|could) we|"
+        r"what (can|should|could) we (do|work on)|"
+        r"brainstorm|"
+        r"our (robot|esp|taskbot|project|setup)|"
+        r"how (can|do) (i|we) get .{0,40} setup|"
+        r"finish (the |our )?setup|"
+        r"pick up where we left"
+        r")\b",
+        msg,
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="chat",
+            confidence=0.92,
+            objective=msg,
+            reason="deterministic: project continuity / brainstorm",
+            source="policy",
+        )
+
     # Web lookup (news, google, "what's the weather") is research — not desktop control.
     # Do not treat "open google calendar/maps/…" as a search.
     # Bare "search" alone is NOT enough (that caught "search your memory").
@@ -552,6 +582,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         and not _DESKTOP_TARGET.search(msg)
         and not re.search(r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b", msg, re.I)
         and not re.search(r"\b(your |my )?memory\b", msg, re.I)
+        and not re.search(r"(?i)\b(tell me (some |an? )?(other )?tasks?|continue on our)\b", msg)
     ):
         if not _research_topic_residue(msg):
             return Intent(
@@ -1096,7 +1127,7 @@ _NEEDS_LLM = re.compile(
     r"file|files|folder|search|google|look ?up|research|browse|website|find|plan|agenda|task|tasks|memory|forget|download|"
     r"install|run|play|send|email|e-?mail|message|whatsapp|rename|move|copy|paste|scroll|press|drag|"
     r"notepad|chrome|excel|word|discord|spotify|settings|pc|computer|"
-    r"freecad|taiga|cad|bracket|fillet|chamfer)\b",
+    r"freecad|taiga|cad|bracket|fillet|chamfer|fcstd|cube|sphere|cylinder|3d|create|build|model)\b",
     re.I,
 )
 

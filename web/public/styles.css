@@ -164,8 +164,19 @@ body {
   letter-spacing: 0.08em;
   animation: cameraPulse 1.1s ease-in-out infinite;
 }
+.screen-look-pill {
+  border-color: rgba(255, 106, 43, 0.65);
+  color: #ff9a5c;
+  background: rgba(255, 106, 43, 0.14);
+  letter-spacing: 0.08em;
+  animation: cameraPulse 1.1s ease-in-out infinite;
+}
 .hidden { display: none !important; }
-.camera-hud-pill.hidden { display: none; }
+.camera-hud-pill.hidden,
+.screen-look-pill.hidden { display: none; }
+body.screen-looking .orb[data-state] {
+  box-shadow: 0 0 0 1px rgba(255, 106, 43, 0.4), 0 0 28px rgba(255, 106, 43, 0.28);
+}
 @keyframes cameraPulse {
   0%, 100% { opacity: 0.75; }
   50% { opacity: 1; }

@@ -20,13 +20,20 @@ Licenses recorded as read from each project’s `LICENSE` (or published docs) at
 | **Model Context Protocol Python SDK** | https://github.com/modelcontextprotocol/python-sdk | MIT | MCP client (`mcp` package). | v2.x (see ADR-0006) |
 | **Fara** | https://github.com/microsoft/fara | MIT | Browser automation research (evaluate if servable). | upstream README |
 | **Qwen / Qwen3.5** (Alibaba) | https://github.com/QwenLM | Apache-2.0 (model cards vary) | **Models** via Ollama — not redistributed in this repo. | local Ollama tags |
+| **Underdog Saluki 27B** | https://underdog.ai/saluki · https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0 | Apache-2.0 | **Optional** local chat/agent GGUF (tool-calling). Import via `scripts/setup_saluki.ps1`. Text-only — vision stays on a VL tag. | 1.0 IQ2-mix |
 | **Arwes** | https://github.com/arwes/arwes | MIT | **Ideas only** — sci-fi HUD framing; see `docs/design/hud.md`. | ideas only |
 | **Ollama** | https://ollama.com | MIT | **Runtime** for local inference. | as installed |
 | **nomic-embed-text** | Nomic AI / Ollama library | Check model card | **Embedding model** via Ollama. | as installed |
 | **Open WebUI** | https://github.com/open-webui/open-webui | BSD-3-Clause (verify) | **Ideas only**: admin/metrics panels, env-driven toggles. | survey |
 | **Home Assistant** | https://github.com/home-assistant/core | Apache-2.0 | **Ideas only**: consolidated ops state. | survey |
 | **Leon** | https://github.com/leon-ai/leon | GPL-3.0 (verify) | **Ideas only**: skill/status overview — no code copied. | survey |
-| **OpenClaw** | https://github.com/openclaw/openclaw | Check upstream | **Ideas only**: pre-flight before agent runs. | survey |
+| **OpenClaw / ClawHub** | https://github.com/openclaw/openclaw · https://clawhub.ai | Check upstream / MIT registry | **Skill hub fetch** into inbox (`skill_hub_fetch`); agentskills.io install path. | hybrid absorb |
+| **Cua Driver** | https://github.com/trycua/cua | MIT (driver) | **Optional MCP** `cua` in `config/mcp_servers.yaml`; Systems `cua_enabled`. Not vendored. | hybrid absorb |
+| **ZYRON** | https://github.com/Surajkumar5050/zyron-assistant | MIT | **Telegram remote pattern** → native `friday/channels/telegram.py` (token in Systems). | hybrid absorb |
+| **DesktopClaw / jarvis-py** | https://github.com/varun86/DesktopClaw · https://github.com/Shaan-alpha/jarvis-py | Check | **Presence working bubble** on HUD orb (`presence_orb`). | ideas → native |
+| **alexberardi/jarvis** | https://github.com/alexberardi/jarvis | AGPL server | **Latency ideas only** (keep_alive / stream TTS). No AGPL code vendored. | architecture only |
+| **jarvis-os** | https://github.com/porokka/jarvis-os | Check | **Plan approve / versioned rerun** → `friday/plans/`. | ideas → native |
+| **OpenClaw** (legacy row) | https://github.com/openclaw/openclaw | Check upstream | **Ideas only**: pre-flight before agent runs. | survey |
 | **OpenVoiceOS (OVOS)** | https://github.com/OpenVoiceOS/OVOS | Apache-2.0 (typical) | **Ideas only**: readiness messaging. | survey |
 | **OpenAI Realtime VAD** | https://developers.openai.com/api/docs/guides/realtime-vad | Docs (API product) | **Ideas only**: semantic vs silence turn detection, eagerness timeouts — local heuristics in `web/public/turn.js`. | docs 2026 |
 | **Deepgram endpointing** | https://developers.deepgram.com/docs/understanding-end-of-speech-detection | Docs | **Ideas only**: utterance-end word-gap ≥1s; VAD+transcript. | docs |

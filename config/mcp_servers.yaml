@@ -58,3 +58,23 @@ servers:
       safe: [Screenshot, Snapshot, DisplayInventory, Wait, WaitFor]
       confirm: [Click, Type, Scroll, Move, Shortcut, MultiSelect, MultiEdit, App, Clipboard, Notification, Scrape]
       dangerous: [FileSystem, Process, PowerShell, Registry]
+
+  cua:
+    description: >-
+      trycua Cua Driver (MIT). Background computer-use over MCP when cua-driver is installed.
+      Enable via Systems → Cua Driver (cua_enabled). Auto-bootstrap on Friday start if missing.
+    enabled: false
+    # Prefer PATH; Friday also resolves Local\Programs\Cua\cua-driver\bin when PATH is stale.
+    command: cua-driver
+    args:
+      - mcp
+    env: {}
+    startup_timeout_seconds: 60
+    call_timeout_seconds: 120
+    exclude_tools: []
+    trust_annotations: false
+    risk:
+      default: confirm
+      safe: [screenshot, Screenshot, snapshot, Snapshot, status, Status, doctor, Doctor]
+      confirm: [click, Click, type, Type, scroll, Scroll, key, Key, move, Move]
+      dangerous: []

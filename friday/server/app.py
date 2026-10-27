@@ -33,6 +33,7 @@ from friday.server.routes_activity import router as activity_router
 from friday.server.routes_camera import router as camera_router
 from friday.server.routes_cad import router as cad_router
 from friday.server.routes_systems import router as systems_router
+from friday.server.routes_plans import router as plans_router
 from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback, set_listen_host
 
 ensure_data_dirs()
@@ -64,6 +65,18 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:  # noqa: BLE001 - never block the UI on an MCP problem
         print(f"[MCP] startup skipped: {exc}")
     try:
+        from friday.channels.telegram import sync_from_prefs
+
+        sync_from_prefs()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Telegram] startup skipped: {exc}")
+    try:
+        from friday.runtime.bootstrap_integrations import sync_integrations_background
+
+        sync_integrations_background()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Bootstrap] skipped: {exc}")
+    try:
         from friday.tasks.scheduler import get_scheduler
 
         get_scheduler()                 # arm saved reminders; late ones are delivered immediately
@@ -81,6 +94,12 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         print(f"[Tasks] scheduler startup skipped: {exc}")
     yield
+    try:
+        from friday.channels.telegram import stop as stop_telegram
+
+        stop_telegram()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from friday.mcp_client import get_mcp_manager
 
@@ -144,6 +163,7 @@ app.include_router(activity_router)
 app.include_router(camera_router)
 app.include_router(cad_router)
 app.include_router(systems_router)
+app.include_router(plans_router)
 
 _ws_clients: list[WebSocket] = []
 

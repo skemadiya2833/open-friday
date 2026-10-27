@@ -83,6 +83,26 @@ def looks_like_prompt_dump(reply: str) -> bool:
     return False
 
 
+# Chat / talk turns with no tools must not invent PC side effects.
+_FAKE_SIDE_EFFECT = re.compile(
+    r"(?i)\b("
+    r"i('?ve| have)?\s+(just\s+)?(created|saved|exported|written|wrote|put|placed|dropped|built|made)\b.{0,80}\b"
+    r"(on (your|the|my) desktop|to (your|the|my) desktop|as .*\.fcstd|\.fcstd|freecad|"
+    r"cad (file|part)|3\s*-?\s*d\s*(model|file)|desktop)"
+    r"|"
+    r"(file|model|part|\.fcstd|fcstd)\b.{0,40}\b(is|are|was|were)\b.{0,40}\b"
+    r"(on (your|the) desktop|ready on (your|the) desktop|saved)"
+    r"|"
+    r"(opened|launched|started)\b.{0,40}\bfreecad\b.{0,40}\b(and|&)\b.{0,40}\b(built|created|saved)"
+    r")",
+)
+
+
+def claims_unbacked_pc_action(reply: str) -> bool:
+    """True if the reply asserts a file/CAD/desktop action that needs a real tool."""
+    return bool(_FAKE_SIDE_EFFECT.search(reply or ""))
+
+
 def sanitize_assistant_reply(reply: str, *, fallback: str) -> str:
     text = (reply or "").strip()
     if not text or looks_like_prompt_dump(text):

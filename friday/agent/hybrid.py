@@ -561,18 +561,21 @@ def run_hybrid(
         decide = decider or _ollama_decider(cfg)
         if cfg.planner_executor and decider is None:
             decide = PX.wrap(decide, PX.ollama_planner(cfg.model, cfg.num_ctx))
-        status = _loop(objective, ctrl, cfg, desk, decide, hints=hints, recorder=rec)
-        if rec is not None and store is not None:
-            try:
-                tr = rec.finish(status.value, getattr(ctrl, "failure", None))
-                ctrl.trajectory = tr
-                store.record(tr)
-                if os.getenv("FRIDAY_MEMORY_DEFER", "") not in ("1", "true"):      # benchmarks ingest after the objective check
-                    store.ingest(tr)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[Friday] experience recording failed: {exc}")
-        emit("session_end", status=status.value, objective=objective)
-        return status
+        from friday.ui.look_rim import looking
+
+        with looking():
+            status = _loop(objective, ctrl, cfg, desk, decide, hints=hints, recorder=rec)
+            if rec is not None and store is not None:
+                try:
+                    tr = rec.finish(status.value, getattr(ctrl, "failure", None))
+                    ctrl.trajectory = tr
+                    store.record(tr)
+                    if os.getenv("FRIDAY_MEMORY_DEFER", "") not in ("1", "true"):      # benchmarks ingest after the objective check
+                        store.ingest(tr)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[Friday] experience recording failed: {exc}")
+            emit("session_end", status=status.value, objective=objective)
+            return status
     finally:
         GR.revoke_run(run_id)
         release_controller(ctrl)

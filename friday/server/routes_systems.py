@@ -170,3 +170,32 @@ def _apply_side_effects(patch: dict[str, Any]) -> None:
             get_model_manager().on_prefs_model_change()
         except Exception:  # noqa: BLE001
             pass
+    if any(k in patch for k in ("telegram_enabled", "telegram_bot_token", "telegram_allowed_chat_ids")):
+        try:
+            from friday.channels.telegram import sync_from_prefs
+
+            sync_from_prefs()
+        except Exception:  # noqa: BLE001
+            pass
+    if "cua_enabled" in patch:
+        try:
+            from friday.mcp_client import get_mcp_manager
+
+            mgr = get_mcp_manager()
+            from friday.runtime.prefs import get as pref_get
+
+            if pref_get("cua_enabled"):
+                mgr.start("cua")
+            else:
+                mgr.stop("cua")
+        except Exception:  # noqa: BLE001
+            pass
+    if "skill_proposals" in patch:
+        try:
+            import os
+
+            from friday.runtime.prefs import get as pref_get
+
+            os.environ["SKILL_PROPOSALS"] = "true" if pref_get("skill_proposals") else "false"
+        except Exception:  # noqa: BLE001
+            pass
