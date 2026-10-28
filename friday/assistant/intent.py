@@ -367,6 +367,11 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
             source="policy",
         )
 
+    # "That was thinking — give me the answer" after an optics dump → look again.
+    retry_look = _resolve_observe_answer_retry(msg, history)
+    if retry_look is not None:
+        return retry_look
+
     # Short greets / pure chat without tools (includes "Hey Friday").
     from friday.assistant.reflexes import _is_greeting_only
 
@@ -457,9 +462,11 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     # Also catch short solids ("make a cube") — otherwise chat invents .FCStd / desktop saves.
     if (
         re.search(
-            r"\b(freecad|free\s*cad|taiga(?:-s1)?|biome-s1|\.?fcstd)\b|"
+            # ASR: "free CID" / "free cad" → FreeCAD
+            r"\b(freecad|free\s*c(?:ad|id)|free\s*cad|freecid|taiga(?:-s1)?|biome-s1|\.?fcstd)\b|"
             r"\b(?:set\s*up|setup|enable|disable|launch|start)\b.{0,40}\b(?:cad|freecad|taiga)\b|"
-            r"\b(?:cad|freecad|taiga)\b.{0,40}\b(?:set\s*up|setup|status|enable|disable|launch)\b|"
+            r"\b(?:cad|freecad|taiga|free\s*c(?:ad|id))\b.{0,40}\b"
+            r"(?:set\s*up|setup|status|enable|disable|launch|open(?:ed)?|server)\b|"
             r"\b(?:3\s*-?\s*d|3d|cad)\s*(?:model|part|solid|object|file)\b|"
             r"\b(?:make|build|model|design|sketch|create|save)\b.{0,40}\b(?:a\s+)?(?:3\s*-?\s*d|3d)\s*(?:model|part|file)?\b|"
             r"\b(?:how about|let'?s|can we|could we|we (?:should|could)|i want)\b.{0,80}\b"
@@ -982,6 +989,59 @@ def _resolve_show_research_findings(
             source="policy",
         )
     return None
+
+
+def _last_assistant_was_optics_dump(history: list[dict[str, str]] | None) -> bool:
+    if not history:
+        return False
+    for turn in reversed(history):
+        if turn.get("role") != "assistant":
+            continue
+        text = (turn.get("content") or "").strip()
+        if not text:
+            continue
+        try:
+            from friday.assistant.reply_guard import looks_like_prompt_dump
+            from friday.models.local import _looks_like_optics_dump
+
+            return bool(looks_like_prompt_dump(text) or _looks_like_optics_dump(text))
+        except Exception:  # noqa: BLE001
+            return bool(
+                re.search(
+                    r"(?i)\b(here'?s a thinking process|analyze the request|"
+                    r"the user\s*\(\s*boss\s*\)\s*says)\b",
+                    text,
+                )
+            )
+    return False
+
+
+def _resolve_observe_answer_retry(
+    msg: str, history: list[dict[str, str]] | None
+) -> Intent | None:
+    """After a screen-look dump, 'what's your answer' means look again — not chat clarify."""
+    if not _last_assistant_was_optics_dump(history):
+        return None
+    if not re.search(
+        r"(?i)\b("
+        r"what('?s| is) (your |the )?answer|"
+        r"tell me (your |the )?answer|"
+        r"(that|this) was thinking|"
+        r"now tell me|"
+        r"what do you (actually )?see|"
+        r"try again|look again"
+        r")\b",
+        msg,
+    ):
+        return None
+    return Intent(
+        mode="look",
+        skill_id="observe",
+        confidence=0.95,
+        objective="What is on my screen right now?",
+        reason="deterministic: retry observe after dump",
+        source="policy",
+    )
 
 
 def _last_substantive_user(history: list[dict[str, str]] | None) -> str:

@@ -36,6 +36,12 @@ or <http://www.apache.org/licenses/LICENSE-2.0>.
 - **License:** MIT (Cua Driver)
 - **Use in Friday:** Optional MCP server `cua` in `config/mcp_servers.yaml`, gated by Systems pref `cua_enabled`. Friday does not vendor Cua source; the owner installs `cua-driver` separately.
 
+## Google Artemis (Apache-2.0) — wrapped MCP
+
+- **Project:** [google/artemis](https://github.com/google/artemis)
+- **License:** Apache License 2.0 (includes third_party notices upstream)
+- **Use in Friday:** Optional MCP server `artemis` in `config/mcp_servers.yaml`, gated by Systems pref `artemis_enabled`. Friday clones into `data/vendor/artemis` on enable (not checked into this repo). Needs ADB + Android device/emulator and a multimodal API key (`GOOGLE_API_KEY` / `GEMINI_API_KEY`). Launcher: `scripts/artemis_mcp.py`.
+
 ## OpenClaw / ClawHub / Hermes Agent — skill format (MIT / check per-skill)
 
 - **Projects:** [openclaw/openclaw](https://github.com/openclaw/openclaw), [clawhub.ai](https://clawhub.ai), [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)

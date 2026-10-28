@@ -29,6 +29,13 @@ _DUMP_PATTERNS = (
     r"(?i)\brole\s*:\s*",
     r"(?i)\bthe user is (asking|describing)\b",
     r"(?i)\bthe user wants me to\b",
+    r"(?i)\bthe user\s*\(\s*boss\s*\)\s*says\b",
+    r"(?i)\bthe user\s*\(\s*boss\s*\)\b",
+    r"(?i)\blikely means\b",
+    r"(?i)\bimplies (the |that )?(application|app|process|server)\b",
+    r"(?i)\bhere'?s a thinking process\b",
+    r"(?i)\bthinking process that leads\b",
+    r"(?i)\banalyze the request\b",
     r"(?i)\bwhile providing an image\b",
     r"(?i)\bfrom the provided image\b",
     r"(?i)\bidentify the main (application|open)\b",
@@ -48,6 +55,7 @@ _DUMP_PATTERNS = (
     r"(?i)\busing wsl/docker\b",
     # Numbered analysis outline instead of a spoken answer.
     r"(?i)^\s*1\.\s*identify\b",
+    r"(?i)^\s*1\.\s*analyze\b",
 )
 
 # Whole-reply scaffolds models emit instead of answering (even one line).
@@ -68,6 +76,17 @@ def looks_like_prompt_dump(reply: str) -> bool:
         return False
     if _SOLO_DUMP.match(t):
         return True
+    # Strong single-hit theater — never wait for a second pattern.
+    if re.search(
+        r"(?i)\b("
+        r"the user\s*\(\s*boss\s*\)\s*says|"
+        r"here'?s a thinking process|"
+        r"thinking process that leads|"
+        r"analyze the request"
+        r")\b",
+        t,
+    ):
+        return True
     hits = sum(1 for pat in _DUMP_PATTERNS if re.search(pat, t))
     if hits >= 2:
         return True
@@ -75,7 +94,8 @@ def looks_like_prompt_dump(reply: str) -> bool:
         r"(?i)\b("
         r"agenda|previous focus|context:|identity|tone|doctrine|role\s*:|"
         r"persona\s*:|constraints?\s*:|user'?s\s+input|"
-        r"the user wants|identify the main|from the provided image|the image shows"
+        r"the user wants|the user\s*\(\s*boss\s*\)|likely means|"
+        r"identify the main|from the provided image|the image shows"
         r")\b",
         t,
     ):

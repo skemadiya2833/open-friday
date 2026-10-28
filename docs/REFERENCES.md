@@ -29,6 +29,7 @@ Licenses recorded as read from each project’s `LICENSE` (or published docs) at
 | **Leon** | https://github.com/leon-ai/leon | GPL-3.0 (verify) | **Ideas only**: skill/status overview — no code copied. | survey |
 | **OpenClaw / ClawHub** | https://github.com/openclaw/openclaw · https://clawhub.ai | Check upstream / MIT registry | **Skill hub fetch** into inbox (`skill_hub_fetch`); agentskills.io install path. | hybrid absorb |
 | **Cua Driver** | https://github.com/trycua/cua | MIT (driver) | **Optional MCP** `cua` in `config/mcp_servers.yaml`; Systems `cua_enabled`. Not vendored. | hybrid absorb |
+| **Google Artemis** | https://github.com/google/artemis | Apache-2.0 | **Optional MCP** `artemis` — Android phone/emulator agent; Systems `artemis_enabled`; clone to `data/vendor/artemis`. | hybrid absorb |
 | **ZYRON** | https://github.com/Surajkumar5050/zyron-assistant | MIT | **Telegram remote pattern** → native `friday/channels/telegram.py` (token in Systems). | hybrid absorb |
 | **DesktopClaw / jarvis-py** | https://github.com/varun86/DesktopClaw · https://github.com/Shaan-alpha/jarvis-py | Check | **Presence working bubble** on HUD orb (`presence_orb`). | ideas → native |
 | **alexberardi/jarvis** | https://github.com/alexberardi/jarvis | AGPL server | **Latency ideas only** (keep_alive / stream TTS). No AGPL code vendored. | architecture only |

@@ -88,6 +88,19 @@ File exfil over Telegram is not auto-enabled — keep using Control Center for s
 
 ---
 
+## Artemis — drive the Android phone itself (optional)
+
+[Google Artemis](https://github.com/google/artemis) is a separate **on-device** agent (tap/type/read the phone UI), not the Control Center browser HUD above.
+
+1. Plug in an Android phone with **USB debugging**, or start an emulator (`adb devices` must list it).
+2. Put a multimodal key in the environment Friday inherits, e.g. `GOOGLE_API_KEY` or `GEMINI_API_KEY`.
+3. Systems → **Artemis phone agent (MCP)** = on. Friday clones to `data/vendor/artemis` and starts the MCP server.
+4. Ask in Comms: e.g. “On my phone, open Settings and tell me the battery level.”
+
+Desktop control stays Cua / Windows-MCP; Artemis is Android-only.
+
+---
+
 ## Rules
 
 - **LAN:** identity = owner-approved device session. Soft signals (UA/IP/name) are informational only.

@@ -551,6 +551,16 @@ function sanitizeAssistantText(text) {
   ) {
     return "Search didn't come back clean — want me to try a tighter query?";
   }
+  // Optics / chat meta-analysis theater
+  if (
+    /\bhere'?s a thinking process\b/i.test(t)
+    || /\bthinking process that leads\b/i.test(t)
+    || /\banalyze the request\b/i.test(t)
+    || /\bthe user\s*\(\s*boss\s*\)\s*says\b/i.test(t)
+    || (/\b\*\s*goal\s*:/i.test(t) && /\b\*\s*constraint\b/i.test(t))
+  ) {
+    return "That came out as noise — ask me what's on your screen once more.";
+  }
   return t;
 }
 

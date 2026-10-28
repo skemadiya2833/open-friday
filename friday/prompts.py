@@ -127,13 +127,14 @@ VOICE = (
 OBSERVE = (
     "You are Friday looking at {owner}'s Windows desktop screenshot.\n"
     "Reply in plain speech: name the main open app or window and what is on it.\n"
-    "Describe only what is visible. Do not click."
+    "Describe only what is visible. Do not click.\n"
+    "Never narrate goals, constraints, tasks, or a thinking process — answer only."
 )
 
 OBSERVE_VOICE = (
     "You are Friday looking at {owner}'s Windows desktop screenshot.\n"
-    "Answer in one or two short spoken sentences: the main app open and what is visible.\n"
-    "Describe only what you can see."
+    "Answer briefly: the main app open and what is visible.\n"
+    "Describe only what you can see. Never narrate goals, constraints, or thinking."
 )
 
 AGENT = (
@@ -287,8 +288,9 @@ def observe_hard_retry(question: str) -> str:
     q = (question or "").strip() or "What is on my screen right now?"
     return (
         f"Question: {q}\n"
-        "Say which app is frontmost and what is visible, in one or two short sentences. "
-        "Example shape: 'Cursor is open on styles.css, with a terminal below.'"
+        "Answer only with what you see. Name the frontmost app and what is on it. "
+        "Example: 'Cursor is open on styles.css, with a terminal below.' "
+        "Do not write Goal, Constraint, Task, Analysis, or a thinking process."
     )
 
 

@@ -262,12 +262,14 @@ def _check_channels() -> Check:
         allow = str(pref_get("telegram_allowed_chat_ids") or "").strip()
         hub = bool(pref_get("skill_hub_fetch"))
         cua = bool(pref_get("cua_enabled"))
+        artemis = bool(pref_get("artemis_enabled"))
         detail = {
             "telegram_enabled": tg_on,
             "telegram_token_set": bool(token),
             "telegram_allowlist_set": bool(allow),
             "skill_hub_fetch": hub,
             "cua_enabled": cua,
+            "artemis_enabled": artemis,
         }
         if tg_on and not token:
             return Check("channels", "warn", "Telegram enabled but bot token not set (Systems)", detail)
@@ -285,6 +287,8 @@ def _check_channels() -> Check:
             bits.append("skill fetch on")
         if cua:
             bits.append("cua on")
+        if artemis:
+            bits.append("artemis on")
         msg = "Channels: " + (", ".join(bits) if bits else "all optional remotes off (safe)")
         return Check("channels", "pass", msg, detail)
     except Exception as exc:  # noqa: BLE001
@@ -315,6 +319,52 @@ def _check_cua_binary() -> Check:
     if found:
         return Check("cua", "pass", f"cua-driver found ({found})", detail)
     return Check("cua", "pass", "Cua Driver not required (pref off)", detail)
+
+
+def _check_artemis() -> Check:
+    try:
+        from friday.runtime.bootstrap_integrations import artemis_dir, artemis_ready
+        from friday.runtime.prefs import get as pref_get
+
+        want = bool(pref_get("artemis_enabled"))
+        ready = artemis_ready()
+        root = str(artemis_dir())
+    except Exception as exc:  # noqa: BLE001
+        return Check("artemis", "skip", f"artemis probe failed: {exc}")
+    adb = bool(shutil.which("adb"))
+    has_key = bool(
+        (os.environ.get("GOOGLE_API_KEY") or "").strip()
+        or (os.environ.get("GEMINI_API_KEY") or "").strip()
+    )
+    detail = {
+        "artemis_enabled": want,
+        "vendor_ready": ready,
+        "path": root,
+        "adb_on_path": adb,
+        "cloud_vlm_key_set": has_key,
+    }
+    if not want:
+        return Check("artemis", "pass", "Artemis phone agent not required (pref off)", detail)
+    if not ready:
+        return Check(
+            "artemis",
+            "warn",
+            "Artemis enabled — vendor install missing; Friday will clone on next start",
+            detail,
+        )
+    warns = []
+    if not adb:
+        warns.append("adb missing")
+    if not has_key:
+        warns.append("no GOOGLE_API_KEY/GEMINI_API_KEY")
+    if warns:
+        return Check(
+            "artemis",
+            "warn",
+            "Artemis installed but " + ", ".join(warns) + " — phone tasks will fail until fixed",
+            detail,
+        )
+    return Check("artemis", "pass", f"Artemis ready ({root})", detail)
 
 
 def _check_camera() -> Check:
@@ -501,6 +551,7 @@ def run_doctor(*, probe_hardware: bool = True) -> dict[str, Any]:
     checks.append(_check_camera())
     checks.append(_check_channels())
     checks.append(_check_cua_binary())
+    checks.append(_check_artemis())
 
     next_steps = _build_next_steps(checks, required, missing if up else dict(required))
 

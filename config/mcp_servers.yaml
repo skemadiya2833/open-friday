@@ -24,6 +24,15 @@ inherit_env:
   - TMP
   - USERNAME
   - COMPUTERNAME
+  # Artemis / other MCP agents that call cloud VLMs
+  - GOOGLE_API_KEY
+  - GEMINI_API_KEY
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+  - ANDROID_HOME
+  - ANDROID_SDK_ROOT
+  - FRIDAY_ARTEMIS_DIR
+  - FRIDAY_DATA_DIR
 
 servers:
   windows:
@@ -77,4 +86,25 @@ servers:
       default: confirm
       safe: [screenshot, Screenshot, snapshot, Snapshot, status, Status, doctor, Doctor]
       confirm: [click, Click, type, Type, scroll, Scroll, key, Key, move, Move]
+      dangerous: []
+
+  artemis:
+    description: >-
+      Google Artemis (Apache-2.0) — drive a real Android phone / emulator from natural language.
+      Enable via Systems → Artemis. Friday clones to data/vendor/artemis (not vendored in git).
+      Needs ADB + a device/emulator and a multimodal API key (GOOGLE_API_KEY / GEMINI_API_KEY).
+    enabled: false
+    command: python
+    args:
+      - scripts/artemis_mcp.py
+    env:
+      PYTHONUNBUFFERED: "1"
+    startup_timeout_seconds: 180
+    call_timeout_seconds: 300
+    exclude_tools: []
+    trust_annotations: false
+    risk:
+      default: confirm
+      safe: [mobile_get_device_state, mobile_inspect_trace, mobile_diagnose, mobile_manage_task]
+      confirm: [mobile_run_task]
       dangerous: []

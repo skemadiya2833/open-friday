@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -188,6 +189,24 @@ def _apply_side_effects(patch: dict[str, Any]) -> None:
                 mgr.start("cua")
             else:
                 mgr.stop("cua")
+        except Exception:  # noqa: BLE001
+            pass
+    if "artemis_enabled" in patch:
+        try:
+            from friday.mcp_client import get_mcp_manager
+            from friday.runtime.bootstrap_integrations import ensure_artemis
+            from friday.runtime.prefs import get as pref_get
+
+            mgr = get_mcp_manager()
+            if pref_get("artemis_enabled"):
+                # Clone/venv off the request thread; MCP start retries once ready.
+                threading.Thread(
+                    target=lambda: (ensure_artemis(force=True), mgr.start("artemis")),
+                    name="friday-artemis-boot",
+                    daemon=True,
+                ).start()
+            else:
+                mgr.stop("artemis")
         except Exception:  # noqa: BLE001
             pass
     if "skill_proposals" in patch:

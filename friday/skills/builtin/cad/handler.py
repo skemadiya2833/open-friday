@@ -9,23 +9,27 @@ from pathlib import Path
 
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
+_FC = r"(?:freecad|free\s*c(?:ad|id)|free\s*cad|freecid|taiga|cad)"
 _STATUS = re.compile(
-    r"\b(cad|freecad|taiga)\b.{0,40}\b(status|ready|setup|installed)\b|"
-    r"\b(is|are)\b.{0,20}\b(freecad|taiga|cad)\b.{0,30}\b(ready|working|set ?up)\b|"
-    r"\b(setup|set up|enable|install|bootstrap)\b.{0,40}\b(freecad|taiga|cad)\b|"
-    r"^\s*(cad|freecad|taiga)(\s+status)?\s*$",
+    rf"\b{_FC}\b.{{0,40}}\b(status|ready|setup|installed)\b|"
+    rf"\b(is|are)\b.{{0,20}}\b{_FC}\b.{{0,30}}\b(ready|working|set ?up)\b|"
+    rf"\b(setup|set up|enable|install|bootstrap)\b.{{0,40}}\b{_FC}\b|"
+    rf"^\s*(cad|freecad|taiga|free\s*c(?:ad|id))(\s+status)?\s*$",
     re.I,
 )
 _SETUP = re.compile(
-    r"\b(set\s*up|setup|install|bootstrap|enable)\b.{0,40}\b(cad|freecad|taiga)\b|"
-    r"\b(cad|freecad|taiga)\b.{0,40}\b(set\s*up|setup|install|bootstrap|enable)\b|"
+    rf"\b(set\s*up|setup|install|bootstrap|enable)\b.{{0,40}}\b{_FC}\b|"
+    rf"\b{_FC}\b.{{0,40}}\b(set\s*up|setup|install|bootstrap|enable)\b|"
     r"\byes\b.{0,20}\b(set\s*up|setup|enable|do it|install)\b|"
     r"^\s*(set\s*it\s*up|do\s*the\s*setup|enable\s*cad)\s*$",
     re.I,
 )
 _LAUNCH = re.compile(
-    r"\b(launch|start|open)\b.{0,40}\b(freecad|taiga\s*server|cad\s*server)\b|"
-    r"\b(freecad|taiga)\b.{0,20}\b(launch|start|open)\b",
+    rf"\b(launch|start|open)\b.{{0,40}}\b({_FC}|taiga\s*server|cad\s*server)\b|"
+    rf"\b{_FC}\b.{{0,20}}\b(launch|start|open)\b|"
+    # "FreeCAD is opened… server should be [ready]" → bring Taiga socket up
+    rf"\b{_FC}\b.{{0,80}}\b(open(?:ed)?|running|on (my |the )?desktop)\b|"
+    r"\b(server|taiga)\b.{0,40}\b(should be|ready|running|listening|up)\b",
     re.I,
 )
 _PLAN_ONLY = re.compile(
@@ -149,13 +153,32 @@ class SkillHandler(Skill):
 
     def _run_launch(self, ctx: SkillContext, owner: str) -> SkillResult:
         from friday.cad.launch import ensure_gui_server
+        from friday.cad.status import probe_status
 
-        ctx.emit("activity", {"step": "cad_launch", "message": "Launching FreeCAD…"})
+        before = probe_status()
+        step = (
+            "FreeCAD is open — bringing the Taiga server up…"
+            if not before.socket_ok
+            else "Checking FreeCAD Taiga…"
+        )
+        ctx.emit("activity", {"step": "cad_launch", "message": step})
         ctx.emit("status", {"status": "acting"})
         result = ensure_gui_server(wait_s=90.0)
         ctx.emit("status", {"status": "idle"})
+        if result.ok:
+            reply = result.message
+            if not before.socket_ok and result.already_running is False:
+                reply = f"FreeCAD was open but Taiga wasn't on {result.port} — {result.message}"
+            return SkillResult(
+                reply=reply,
+                skill_id="cad",
+                metadata={"launch": result.as_dict()},
+            )
         return SkillResult(
-            reply=result.message if result.ok else f"Couldn't start FreeCAD, {owner}: {result.message}",
+            reply=(
+                f"FreeCAD looks open on the desktop, {owner}, but the Taiga socket on "
+                f"{result.port} still isn't listening. {result.message}"
+            ),
             skill_id="cad",
             metadata={"launch": result.as_dict()},
         )

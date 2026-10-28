@@ -287,6 +287,18 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Cua Driver (MCP)",
         "help": "Start trycua Cua Driver as an MCP server when installed (background computer-use). Off by default.",
     },
+    "artemis_enabled": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_ARTEMIS",
+        "group": "channels",
+        "label": "Artemis phone agent (MCP)",
+        "help": (
+            "Google Artemis — drive a USB/emulator Android phone from chat via MCP. "
+            "Clones to data/vendor/artemis on enable. Needs ADB + device and GOOGLE_API_KEY "
+            "(or GEMINI_API_KEY) in the environment. Off by default."
+        ),
+    },
     "skill_hub_fetch": {
         "kind": "bool",
         "default": False,

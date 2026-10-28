@@ -80,6 +80,26 @@ def test_detects_analysis_outline_dump():
     assert _looks_like_optics_dump(dump)
 
 
+def test_detects_boss_says_meta_dump():
+    dump = (
+        'The user (boss) says "See that again The free CID is opened in my desktop '
+        'and I think the server should be". * "free CID" likely means FreeCAD. '
+        '* "opened in my desktop" implies the application is running.'
+    )
+    assert looks_like_prompt_dump(dump)
+
+
+def test_detects_thinking_process_dump():
+    dump = (
+        "Here's a thinking process that leads to the answer: 1. Analyze the Request: "
+        "* Goal: Identify the frontmost app and what is visible in it."
+    )
+    assert looks_like_prompt_dump(dump)
+    from friday.models.local import _looks_like_optics_dump
+
+    assert _looks_like_optics_dump(dump)
+
+
 def test_detects_previous_focus_dump():
     dump = (
         'Previous focus\n'

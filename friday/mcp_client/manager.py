@@ -169,6 +169,8 @@ class McpManager:
 
             if pref_get("cua_enabled"):
                 pref_on.add("cua")
+            if pref_get("artemis_enabled"):
+                pref_on.add("artemis")
         except Exception:  # noqa: BLE001
             pass
         started = []
@@ -235,8 +237,25 @@ class McpManager:
         inherit = self._config.inherit_env if self._config else []
         env = {k: os.environ[k] for k in inherit if k in os.environ}
         env.update(cfg.env)   # explicit config last (telemetry flags etc.)
+        command = cfg.command
+        args = list(cfg.args)
+        cwd = cfg.cwd
+        # Friday-root relative launchers (e.g. scripts/artemis_mcp.py) — pin absolute paths.
+        if args and str(args[0]).replace("\\", "/").endswith("scripts/artemis_mcp.py"):
+            from friday.config import DATA_DIR
+
+            repo = Path(__file__).resolve().parents[2]
+            script = repo / "scripts" / "artemis_mcp.py"
+            command = sys.executable
+            args = [str(script)]
+            cwd = str(repo)
+            env.setdefault("FRIDAY_DATA_DIR", str(DATA_DIR))
+            env.setdefault(
+                "FRIDAY_ARTEMIS_DIR",
+                str(Path(DATA_DIR) / "vendor" / "artemis"),
+            )
         return StdioServerParameters(
-            command=resolve_command(cfg.command), args=list(cfg.args), env=env, cwd=cfg.cwd,
+            command=resolve_command(command), args=args, env=env, cwd=cwd,
         )
 
     async def _run_server(self, st: ServerState) -> None:

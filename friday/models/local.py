@@ -387,6 +387,10 @@ def _looks_like_optics_dump(reply: str) -> bool:
         r"identity\s*:|tone\s*:|doctrine\s*:|"
         r"the user is asking|"
         r"the user wants me to|"
+        r"the user\s*\(\s*boss\s*\)|"
+        r"here'?s a thinking process|"
+        r"thinking process that leads|"
+        r"analyze the request|"
         r"while providing an image|"
         r"from the provided image|"
         r"identify the main (application|open)|"
@@ -400,8 +404,8 @@ def _looks_like_optics_dump(reply: str) -> bool:
     # Caption theater: "Image: A screenshot of a Windows desktop…"
     if re.match(r"(?i)^\s*image\s*:", t):
         return True
-    # Numbered analysis: "1. Identify the main application: The image shows…"
-    if re.search(r"(?i)^\s*1\.\s*identify\b", t) or (
+    # Numbered analysis: "1. Identify / Analyze…"
+    if re.search(r"(?i)^\s*1\.\s*(identify|analyze)\b", t) or (
         re.search(r"(?i)\bthe image shows\b", t)
         and re.search(r"(?i)^\s*\d+\.\s+", t, re.M)
     ):
@@ -448,7 +452,8 @@ def describe_screen(
     # Local alias so we can drop the caller's blob from this scope after use.
     image = frame_b64
 
-    def _ask(prompt: str, *, tokens: int, img: str, stream: bool) -> str:
+    def _ask(prompt: str, *, tokens: int, img: str) -> str:
+        # Never stream optics live — dump theater must not hit the HUD before the guard.
         messages = [{"role": "user", "content": prompt, "images": [img]}]
         accumulated, _ = _stream_chat(
             messages,
@@ -457,25 +462,30 @@ def describe_screen(
             model=vision_tag,
             num_predict=tokens,
             num_ctx=min(4096, CHAT_NUM_CTX),
-            on_token=on_token if stream else None,
+            on_token=None,
         )
         # Drop image refs from the request payload ASAP (text reply is all we keep).
         messages[0].pop("images", None)
         return (accumulated or "").strip()
 
+    def _emit(text: str) -> str:
+        if on_token and text:
+            on_token(text)
+        return text
+
     try:
         prompt = observe_user_prompt(q, kind=kind)
-        reply = _ask(prompt, tokens=predict, img=image, stream=True)
+        reply = _ask(prompt, tokens=predict, img=image)
         if _looks_like_optics_dump(reply):
-            # One hard retry with zero persona ballast; don't stream the second pass.
+            # One hard retry with zero persona ballast.
             hard = observe_hard_retry(q)
-            reply = _ask(hard, tokens=min(160, predict + 32), img=image, stream=False)
+            reply = _ask(hard, tokens=min(160, predict + 32), img=image)
         if not reply or _looks_like_optics_dump(reply):
-            return (
+            return _emit(
                 f"I have the screenshot, {owner_name()}, but the vision model gave me noise. "
                 "Try 'what's on my screen' once more."
             )
-        return reply
+        return _emit(reply)
     except RuntimeError as exc:
         err = str(exc)
         if "500" in err or "Internal Server Error" in err:
