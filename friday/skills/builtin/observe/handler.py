@@ -20,12 +20,12 @@ class SkillHandler(Skill):
         from friday.ui.look_rim import looking
         from friday.vision.feed import LiveScreenFeed
 
-        get_model_manager().ensure_loaded("vision")
         ctx.emit("status", {"status": "thinking"})
         ctx.emit("activity", {"step": "capture", "message": "Capturing desktop screenshot…"})
         ctx.emit("screen_looking", {"on": True})
         try:
             with looking():
+                # Capture first so the HUD moves before vision model load.
                 feed = LiveScreenFeed(mask_overlay=False)
                 vision = feed.capture_oneshot()
                 if vision is None or not vision.frame_b64:
@@ -48,6 +48,7 @@ class SkillHandler(Skill):
                     vision.frame_b64_list.clear()
                 except Exception:  # noqa: BLE001
                     pass
+                get_model_manager().ensure_loaded("vision")
                 reply = describe_screen(
                     ctx.message,
                     frame_b64=frame,

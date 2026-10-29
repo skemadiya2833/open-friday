@@ -6,12 +6,6 @@ import re
 
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
-_LOOK_ONLY = re.compile(
-    r"^\s*(can you see|do you see|what (do you )?see|what('?s| is) (going )?on|"
-    r"what('?s| is) on (my |the )?(screen|desktop)|describe (my |the )?(screen|desktop))\b",
-    re.I,
-)
-
 # Overlay/Tk-only traffic — never forward into the web SSE stream.
 _SKIP_EVENTS = frozenset({"live_frame", "thinking_token", "thinking_clear"})
 
@@ -26,9 +20,10 @@ class SkillHandler(Skill):
 
     def run(self, ctx: SkillContext) -> SkillResult:
         # Last-line architectural guard: never seize the mouse for look-questions.
-        if _LOOK_ONLY.search(ctx.message.strip()):
-            from friday.skills.registry import get_registry
+        from friday.assistant.intent import is_screen_look_utterance
+        from friday.skills.registry import get_registry
 
+        if is_screen_look_utterance(ctx.message):
             observe = get_registry().get("observe")
             if observe is not None:
                 return observe.run(ctx)

@@ -599,8 +599,11 @@ function sanitizeAssistantText(text) {
     || /\bthinking process that leads\b/i.test(t)
     || /\banalyze the request\b/i.test(t)
     || /\bthe user\s*\(\s*boss\s*\)\s*says\b/i.test(t)
-    || /\bthe user is (asking|questioning|describing)\b/i.test(t)
+    || /\bthe user is (asking|questioning|describing|challenging)\b/i.test(t)
     || /\bquestioning my identity\b/i.test(t)
+    || /\bdidn'?t automatically capture\b/i.test(t)
+    || /\*\s*friday\s*:\s*calm/i.test(t)
+    || /\bcalm,\s*precise,\s*a step ahead\b/i.test(t)
     || /\bsystem instructions?\b/i.test(t)
     || (/\b\*\s*goal\s*:/i.test(t) && /\b\*\s*constraint\b/i.test(t))
   ) {
@@ -1154,7 +1157,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     if (epoch !== turnEpoch) return;
     const textOut = sanitizeAssistantText((finalReply || streamed || "").trim())
       || (useVoice
-        ? "I blanked on that reply — give me a second and say it again."
+        // Never ask them to resend — that loop is worse than a short stand-by.
+        ? "That turn came back empty on my side. Standing by — what's next?"
         : "No reply came back from the model.");
     fridayReply = textOut;
     liveBody.textContent = textOut;
@@ -2117,7 +2121,7 @@ async function speak(text) {
       try {
         url = await Promise.race([
           Promise.resolve(urlP).catch(() => null),
-          new Promise((r) => setTimeout(() => r(null), i === 0 ? 350 : 12000)),
+          new Promise((r) => setTimeout(() => r(null), 4500)),
         ]);
       } catch (_) { url = null; }
       if (url) {

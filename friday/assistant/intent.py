@@ -31,17 +31,37 @@ _MODE_TO_SKILL = {
 }
 
 # Deterministic vetoes — these override a confused model.
-# Optional leading address so "Okay Friday what's on my screen" still looks.
-_ADDR = r"(?:(?:hey|hi|hello|okay|ok)\s+)?(?:friday\s*[,:]?\s*)?"
+# Optional leading filler/address so "uh Friday what's on my screen" still looks.
+_ADDR = (
+    r"(?:(?:hey|hi|hello|okay|ok|uh|um|erm|so|well|please|listen)\s+)*"
+    r"(?:friday\s*[,:]?\s*)?"
+)
+_SCREEN_WORD = r"(?:screen|desktop|monitor|display)"
+# Anchored look-only (classic phrasing).
 _LOOK_ONLY = re.compile(
     rf"^\s*{_ADDR}("
     r"can you see|do you see|what (do you )?see|"
-    r"what('?s| is) going on( here| on (my |the )?(screen|desktop|monitor|display))?|"
-    r"what('?s| is) on (my |the )?(screen|desktop|monitor|display)|"
-    r"describe (my |the )?(screen|desktop|display)|look at (my )?(screen|desktop)|"
-    r"tell me what you see|is (my )?(screen|desktop)"
+    r"(?:are you|you)\s+able\s+to\s+see|"
+    r"what('?s| is) going on( here| on (my |the )?{_SCREEN_WORD})?|"
+    r"what('?s| is) on (my |the )?{_SCREEN_WORD}|"
+    r"describe (my |the )?{_SCREEN_WORD}|look at (my )?{_SCREEN_WORD}|"
+    r"tell me what you see|is (my )?{_SCREEN_WORD}|"
+    rf"see (?:my |the )?{_SCREEN_WORD}|check (?:my |the )?{_SCREEN_WORD}|"
+    rf"(?:take a |grab a )?screenshot|capture (?:my |the )?{_SCREEN_WORD}"
     r")\b",
     re.IGNORECASE,
+)
+# Loose screen-look — catches ASR filler / mid-sentence ("are you able to see my screen").
+# Prefer this over chat/LLM classify so we never burn tokens deciding to look.
+_SCREEN_LOOK = re.compile(
+    rf"(?i)(?:"
+    rf"\b(?:can|could|do|would|are)\s+you\s+(?:able\s+to\s+)?(?:see|look(?:\s+at)?)\b.{{0,48}}\b{_SCREEN_WORD}\b|"
+    rf"\b(?:see|look\s+at|describe|check|watch)\s+(?:what(?:'s| is|s)?\s+on\s+)?(?:my\s+|the\s+)?{_SCREEN_WORD}\b|"
+    rf"\bwhat(?:'s| is|s)\s+(?:going\s+on\s+)?(?:on\s+)?(?:my\s+|the\s+)?{_SCREEN_WORD}\b|"
+    rf"\b(?:take|grab|do)\s+(?:a\s+)?screenshot\b|"
+    rf"\bcapture\s+(?:my\s+|the\s+)?{_SCREEN_WORD}\b|"
+    rf"\bshow\s+me\s+(?:what(?:'s| is)\s+on\s+)?(?:my\s+|the\s+)?{_SCREEN_WORD}\b"
+    rf")"
 )
 # Sitrep / "what's going on" with no screen words → chat (agenda/time), not desktop act.
 _SITUATION_ASK = re.compile(
@@ -53,20 +73,61 @@ _SITUATION_ASK = re.compile(
     r"how('?s| is) (it|everything) (looking|going)"
     r")\s*[?.!]?\s*$"
 )
-# Webcam / desk camera (not screen). Checked before observe.
+# "webcam" ≠ optional "web" + "camera" (webcam is web+cam). Match both.
+_CAM = r"(?:web\s?cams?|cameras?)"
+# Webcam / desk camera (not screen).
 _CAMERA_LOOK = re.compile(
-    r"(?:"
-    r"^\s*(?:what am i looking at|what('?s| is) on my desk|what('?s| is) in front of me|"
-    r"look at (my )?desk|look at me|use the (web)?camera|through the (web)?camera|"
-    r"(web)?camera\b.*\?|(can you|could you) (see|look) (at )?(me|my desk|in front))"
-    r"|(?:show|open|display)\b.{0,80}\b(?:(?:web)?camera|what (?:you'?re|you are|it'?s) (?:seeing|looking at))"
-    r"|\b(?:what|what'?s|whats)\b.{0,60}\b(?:(?:web)?camera|seeing through)\b"
-    r"|\blook through\b.{0,40}\b(?:web)?camera\b"
-    r"|\b(?:can|could|do)\s+you\b.{0,48}\b(?:access|use|see|open|reach)\b.{0,40}\b(?:web)?camera\b"
-    r"|\b(?:access|use)\b.{0,24}\b(?:my |the )?(?:web)?camera\b"
-    r"|\bis\s+(?:my |the )?(?:web)?camera\b.{0,36}\b(?:on|ready|working|available|armed)\b"
-    r")",
+    rf"(?:"
+    rf"^\s*(?:what am i looking at|what('?s| is) on my desk|what('?s| is) in front of me|"
+    rf"what am i doing(?: right now)?|what('?s| is) (?:he|she|this person) doing|"
+    rf"look at (my )?desk|look at me|use the {_CAM}|through the {_CAM}|"
+    rf"{_CAM}\b.*\?|(can you|could you) (see|look) (at )?(me|my desk|in front))"
+    rf"|(?:show|open|display)\b.{{0,80}}\b(?:{_CAM}|what (?:you'?re|you are|it'?s) (?:seeing|looking at))"
+    rf"|\b(?:what|what'?s|whats)\b.{{0,60}}\b(?:{_CAM}|seeing through)\b"
+    rf"|\blook through\b.{{0,40}}\b{_CAM}\b"
+    rf"|\b(?:can|could|do)\s+you\b.{{0,48}}\b(?:access|use|see|open|reach)\b.{{0,40}}\b{_CAM}\b"
+    rf"|\b(?:can|could|do)\s+you\s+see\s+me\b"
+    rf"|\bsee\s+me\s+on\s+(?:the\s+)?{_CAM}\b"
+    rf"|\bam\s+i\s+(?:visible|on\s+(?:the\s+)?{_CAM}|in\s+(?:the\s+)?(?:web\s?)?cam)\b"
+    rf"|\b(?:access|use)\b.{{0,24}}\b(?:my |the )?{_CAM}\b"
+    rf"|\bis\s+(?:my |the )?{_CAM}\b.{{0,36}}\b(?:on|ready|working|available|armed)\b"
+    rf")",
     re.IGNORECASE,
+)
+# Memory recall / store — beats CAD when the ask is about notes, not modeling.
+_MEMORY_RECALL = re.compile(
+    r"(?i)\b("
+    r"(?:search|check|scan|look(?:\s+in)?|dig|query)\b.{0,48}\b(?:your\s+|my\s+|the\s+)?(?:memory|memories|notes)\b|"
+    r"what\s+do\s+you\s+(?:remember|know|have)\b|"
+    r"do\s+you\s+remember\b|"
+    r"did\s+i\s+(?:ever\s+)?(?:tell|mention)\b|"
+    r"what\s+did\s+i\s+(?:tell|say)\s+(?:you\s+)?(?:about\s+)?|"
+    r"(?:from|in)\s+(?:your\s+)?(?:memory|notes)\b|"
+    r"recall\s+(?:what|anything|my|the)\b"
+    r")"
+)
+_MEMORY_STORE = re.compile(
+    r"(?i)\b("
+    r"remember\s+that\b|"
+    r"remember\s+this\b|"
+    r"don'?t\s+forget\s+(?:that|this)\b|"
+    r"(?:store|save|note)\s+(?:this\s+|that\s+)?(?:in\s+)?(?:your\s+)?(?:memory|notes)\b|"
+    r"(?:add|put)\s+(?:this\s+|that\s+)?(?:to|in)\s+(?:your\s+)?(?:memory|notes)\b|"
+    r"make\s+a\s+note\s+(?:that|of)\b"
+    r")"
+)
+_TASKS_FAST = re.compile(
+    r"(?i)\b("
+    r"remind\s+me\b|"
+    r"remember\s+to\b|"
+    r"set\s+(?:a\s+)?(?:reminder|alarm|timer)\b|"
+    r"(?:what|whats|what'?s|show|list)\b.{0,40}\b(?:reminders?|alarms?|agenda|schedule|plan)\b|"
+    r"(?:add|put|lock)\b.{0,48}\b(?:to\s+)?(?:my\s+|the\s+)?(?:plan|agenda|list)\b|"
+    r"(?:plan|organise|organize)\s+(?:my\s+|the\s+)?(?:day|today|agenda)\b|"
+    r"today'?s\s+(?:plan|agenda|tasks|schedule)\b|"
+    r"on\s+(?:my\s+|the\s+)?(?:schedule|agenda|plan)\b|"
+    r"we(?:'ll| will)\s+be\s+doing\b"
+    r")"
 )
 _QUESTION = re.compile(
     r"^\s*(who|what|when|where|why|how|can you|could you|would you|is there|"
@@ -159,12 +220,13 @@ def _llm_classify(
         hist=hist,
         skill_catalog=_skill_catalog(),
     )
+    # Tiny JSON-only classify — never a spoken reply. Keep tokens low.
     result = query_model_text(
         prompt,
-        format_json=False,
+        format_json=True,
         reasoning_mode=False,
-        num_predict=180,
-        num_ctx=min(2048, CHAT_NUM_CTX),
+        num_predict=64,
+        num_ctx=min(1536, CHAT_NUM_CTX),
     )
     raw = (result.get("message") or result.get("raw") or "").strip()
     return _parse_intent_json(raw)
@@ -183,7 +245,7 @@ def _normalize_proposed(data: dict[str, Any], message: str) -> Intent:
         skill = "computer_use"
     if mode == "cad" and skill != "cad":
         skill = "cad"
-    if mode == "look" and skill != "observe":
+    if mode == "look" and skill not in {"observe", "camera"}:
         skill = "observe"
     try:
         conf = float(data.get("confidence") or 0.5)
@@ -205,6 +267,142 @@ def _normalize_proposed(data: dict[str, Any], message: str) -> Intent:
     )
 
 
+# Real desktop *actions* — not "show/display me the screen" (those are looks).
+_ACT_NOT_LOOK = re.compile(
+    r"(?i)\b("
+    r"open|launch|start|click|type|write|save|close|delete|install|download|"
+    r"create|rename|move|copy|paste|run|execute|press|drag|scroll|"
+    r"put|bring up|pull up"
+    r")\b"
+)
+
+
+def is_screen_look_utterance(message: str) -> bool:
+    """True when the ask is desktop optics — capture screen, skip chat tokens."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    screenshot = bool(
+        re.search(
+            rf"(?i)\b(?:take|grab|do)\s+(?:a\s+)?screenshot\b|"
+            rf"\bcapture\s+(?:my\s+|the\s+)?{_SCREEN_WORD}\b",
+            msg,
+        )
+    )
+    if _ACT_NOT_LOOK.search(msg) and not screenshot:
+        return False
+    has_screen = bool(re.search(rf"(?i)\b{_SCREEN_WORD}\b", msg))
+    has_cam_hw = bool(
+        re.search(r"(?i)\b(?:web\s?cam(?:era)?|camera|my desk)\b", msg)
+    )
+    # "see me on the screen" → person/webcam, not desktop contents.
+    if (
+        re.search(r"(?i)\bsee\s+me\b", msg)
+        and has_screen
+        and not re.search(
+            rf"(?i)\b(?:see|look(?:\s+at)?|describe|check)\s+(?:my\s+|the\s+)?{_SCREEN_WORD}\b",
+            msg,
+        )
+    ):
+        return False
+    if has_screen and not has_cam_hw and (
+        _SCREEN_LOOK.search(msg) or _LOOK_ONLY.search(msg)
+    ):
+        return True
+    # "can you see" / "what do you see" with no camera cue → desktop.
+    if (
+        not has_cam_hw
+        and not _CAMERA_LOOK.search(msg)
+        and _LOOK_ONLY.search(msg)
+    ):
+        return True
+    return bool(_SCREEN_LOOK.search(msg) and not has_cam_hw)
+
+
+def is_camera_look_utterance(message: str) -> bool:
+    """True when the ask is webcam/desk — never steal desktop screen looks."""
+    msg = (message or "").strip()
+    if not msg or is_screen_look_utterance(msg):
+        return False
+    return bool(_CAMERA_LOOK.search(msg))
+
+
+def is_memory_utterance(message: str) -> bool:
+    """True when the ask is local notes/memory — skip chat, run memory skill."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    # "remember to …" is a reminder, not a memory store.
+    if re.search(r"(?i)\bremember\s+to\b", msg):
+        return False
+    return bool(_MEMORY_STORE.search(msg) or _MEMORY_RECALL.search(msg))
+
+
+def is_tasks_utterance(message: str) -> bool:
+    """True when the ask is agenda / reminder — skip chat, run tasks skill."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    if _TASKS_FAST.search(msg):
+        return True
+    try:
+        from friday.tasks import reminders as _RM
+
+        return bool(_RM.is_reminder_request(msg) or _RM.is_agenda_briefing(msg))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def match_tool_fastpath(message: str) -> Intent | None:
+    """
+    Map a clear tool ask → skill with zero chat tokens.
+    Used by deterministic classify and as a chat safety-net reroute.
+    """
+    msg = (message or "").strip()
+    if not msg:
+        return None
+
+    if is_screen_look_utterance(msg):
+        return Intent(
+            mode="look",
+            skill_id="observe",
+            confidence=0.98,
+            objective=msg,
+            reason="fastpath: screen-look",
+            source="policy",
+        )
+    if is_camera_look_utterance(msg):
+        return Intent(
+            mode="look",
+            skill_id="camera",
+            confidence=0.97,
+            objective=msg,
+            reason="fastpath: camera-look",
+            source="policy",
+        )
+    if is_memory_utterance(msg):
+        return Intent(
+            mode="remember",
+            skill_id="memory",
+            confidence=0.96,
+            objective=msg,
+            reason="fastpath: memory",
+            source="policy",
+        )
+    if is_tasks_utterance(msg):
+        return Intent(
+            mode="schedule",
+            skill_id="tasks",
+            confidence=0.96,
+            objective=msg,
+            reason="fastpath: tasks",
+            source="policy",
+        )
+    # Research stays in the fuller deterministic path (topic / clarify / confirm
+    # follow-ups). Fastpath here is only for skills that should never chat first.
+    return None
+
+
 def apply_policy(intent: Intent, message: str) -> Intent:
     """
     Deterministic safety rail. The model proposes; policy may veto Act.
@@ -212,15 +410,17 @@ def apply_policy(intent: Intent, message: str) -> Intent:
     """
     msg = message.strip()
 
-    # 1) Webcam look-questions → camera skill (never Act).
-    # show/open/display with camera still = look, not desktop Act.
-    if _CAMERA_LOOK.search(msg):
+    # 1) Clear tool asks beat whatever the model proposed (observe/camera/memory/tasks).
+    fast = match_tool_fastpath(msg)
+    if fast is not None and (
+        intent.skill_id != fast.skill_id or intent.mode != fast.mode
+    ):
         return Intent(
-            mode="look",
-            skill_id="camera",
-            confidence=max(intent.confidence, 0.9),
+            mode=fast.mode,
+            skill_id=fast.skill_id,
+            confidence=max(intent.confidence, fast.confidence),
             objective=msg,
-            reason=f"policy: camera-look utterance (was {intent.mode}/{intent.skill_id})",
+            reason=f"policy: {fast.reason} (was {intent.mode}/{intent.skill_id})",
             needs_confirmation=False,
             source="policy",
             raw=intent.raw,
@@ -228,7 +428,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
 
     # 2) Sitrep without screen words can never become Act / observe.
     if _SITUATION_ASK.match(msg) and not re.search(
-        r"\b(screen|desktop|monitor|display)\b", msg, re.IGNORECASE
+        rf"\b{_SCREEN_WORD}\b", msg, re.IGNORECASE
     ):
         return Intent(
             mode="talk",
@@ -236,19 +436,6 @@ def apply_policy(intent: Intent, message: str) -> Intent:
             confidence=max(intent.confidence, 0.9),
             objective=msg,
             reason=f"policy: situation ask (was {intent.mode}/{intent.skill_id})",
-            needs_confirmation=False,
-            source="policy",
-            raw=intent.raw,
-        )
-
-    # 3) Pure screen look-questions can never become Act.
-    if _LOOK_ONLY.search(msg) and not _IMPERATIVE.search(msg):
-        return Intent(
-            mode="look",
-            skill_id="observe",
-            confidence=max(intent.confidence, 0.9),
-            objective=msg,
-            reason=f"policy: look-only utterance (was {intent.mode}/{intent.skill_id})",
             needs_confirmation=False,
             source="policy",
             raw=intent.raw,
@@ -348,26 +535,26 @@ def _deterministic_intent(
             source="policy",
         )
 
-    # Presence: skin / model / camera-presence switches (before camera look & chat).
+    # Tool fastpath first — zero chat/LLM tokens for clear observe/camera/memory/tasks.
+    fast = match_tool_fastpath(msg)
+    if fast is not None:
+        return Intent(
+            mode=fast.mode,
+            skill_id=fast.skill_id,
+            confidence=fast.confidence,
+            objective=msg,
+            reason=f"deterministic: {fast.reason}",
+            source="policy",
+        )
+
+    # Skin / model / explicit camera-presence switches.
     presence_hit = _resolve_presence_intent(msg)
     if presence_hit is not None:
         return presence_hit
 
-    # Webcam / desk camera before screen observe.
-    # "show/open the camera" still counts as look (imperative words are OK here).
-    if _CAMERA_LOOK.search(msg):
-        return Intent(
-            mode="look",
-            skill_id="camera",
-            confidence=0.95,
-            objective=msg,
-            reason="deterministic: camera-look",
-            source="policy",
-        )
-
     # Sitrep / "what's going on" (no screen) → talk — never computer_use.
     if _SITUATION_ASK.match(msg) and not re.search(
-        r"\b(screen|desktop|monitor|display)\b", msg, re.IGNORECASE
+        rf"\b{_SCREEN_WORD}\b", msg, re.IGNORECASE
     ):
         return Intent(
             mode="talk",
@@ -375,17 +562,6 @@ def _deterministic_intent(
             confidence=0.95,
             objective=msg,
             reason="deterministic: situation",
-            source="policy",
-        )
-
-    # Look-only questions → observe. No LLM vote.
-    if _LOOK_ONLY.search(msg) and not _IMPERATIVE.search(msg):
-        return Intent(
-            mode="look",
-            skill_id="observe",
-            confidence=0.95,
-            objective=msg,
-            reason="deterministic: look-only",
             source="policy",
         )
 
@@ -438,22 +614,9 @@ def _deterministic_intent(
             source="policy",
         )
 
-    # Reminders / timers — explicit verbs only (not bare "every day" inside planning talk).
+    # Reminder follow-up after Friday asked "when should I remind…"
     from friday.tasks import reminders as _RM
 
-    if _RM.is_reminder_request(msg) or re.search(
-        r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b",
-        msg,
-        re.IGNORECASE,
-    ):
-        return Intent(
-            mode="schedule",
-            skill_id="tasks",
-            confidence=0.95,
-            objective=msg,
-            reason="deterministic: reminder",
-            source="policy",
-        )
     if history:
         last_a = next(
             (
@@ -468,7 +631,6 @@ def _deterministic_intent(
             last_a,
             re.IGNORECASE,
         ):
-            # Mic often re-hears Friday's own ask; only continue if the user gave a time.
             echo = bool(
                 re.search(
                     r"when should I remind|say something like|sure,? (?:boss|chief)",
@@ -485,27 +647,6 @@ def _deterministic_intent(
                     reason="deterministic: reminder follow-up",
                     source="policy",
                 )
-
-    # Plan / organise my day (meta) + concrete agenda phrases → tasks skill.
-    if _RM.is_agenda_briefing(msg) or re.search(
-        r"\b((help (me )?)?(plan|organise|organize|schedule)\s+(my |the |a )?(day|today|agenda)"
-        r"|plan my day|make (me )?(a )?(day )?plan|"
-        r"we('?ll| will) be doing|for today|today'?s (plan|agenda|tasks)|"
-        r"(note|write|jot|take)\s*(down)?\s+(my\s+)?(tasks?|to-?dos?|agenda)|"
-        r"add .{0,40}\b(to )?(my )?(plan|agenda)|what('?s| is) (on )?my (plan|agenda)|"
-        r"what('?s| is) (up for )?today|what('?s| is) the plan( for today)?|"
-        r"(tell me |read )?(the |my )?plan for today|agenda for today)\b",
-        msg,
-        re.IGNORECASE,
-    ):
-        return Intent(
-            mode="schedule",
-            skill_id="tasks",
-            confidence=0.92,
-            objective=msg,
-            reason="deterministic: today agenda",
-            source="policy",
-        )
 
     # Conversational CAD: "make a 3d model…", plates/brackets with sizes, FreeCAD/Taiga.
     # Before HTML "build a page" / research. Skip filament / slicer shopping.
@@ -631,9 +772,15 @@ def _deterministic_intent(
     # Web lookup (news, google, "what's the weather") is research — not desktop control.
     # Do not treat "open google calendar/maps/…" as a search.
     # Bare "search" alone is NOT enough (that caught "search your memory").
+    # Never web-research local model / Ollama talk (qwen3.8, saluki lore, etc.).
+    try:
+        from friday.presence.modelswitch import looks_like_model_talk as _model_talk
+    except Exception:  # noqa: BLE001
+        _model_talk = lambda _m: False  # noqa: E731
     if (
         (_RESEARCH.search(msg) or _SEARCH_VERB.search(msg))
         and not _DESKTOP_TARGET.search(msg)
+        and not _model_talk(msg)
         and not re.search(
             r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b",
             msg,
@@ -835,6 +982,8 @@ _ASKED_RESEARCH_TOPIC = re.compile(
 
 def _research_topic_residue(msg: str) -> str:
     """Strip search scaffolding; leftover is the real topic (empty → ask)."""
+    if _NOT_A_SEARCH_TOPIC.match(msg or ""):
+        return ""
     t = re.sub(
         r"(?i)\b("
         r"please|hey|hi|ok|okay|friday|boss|"
@@ -843,14 +992,15 @@ def _research_topic_residue(msg: str) -> str:
         r"search(?:es|ing)?(?: the web| google| online| for me)?|"
         r"look(?:ing)?\s*ups?|research(?:ing|es)?|google|find out|"
         r"for me|real quick|quickly|something|stuff|things?|a bit|a little|"
-        r"the web|online|internet|about|regarding|concerning"
+        r"the web|online|internet|about|regarding|concerning|"
+        r"by yourself|yourself|on your own"
         r")\b",
         " ",
         msg or "",
     )
     t = re.sub(r"(?i)^\s*(for|on|of|to)\s+", "", t)
     t = re.sub(r"\s+", " ", t).strip(" .?!,;:\"'")
-    # Need a real noun/phrase — not just "it" / "that".
+    # Need a real noun/phrase — not just "it" / "that" / meta fluff.
     if len(t) < 3 or t.lower() in {
         "it",
         "that",
@@ -859,6 +1009,9 @@ def _research_topic_residue(msg: str) -> str:
         "those",
         "one",
         "about",
+        "yourself",
+        "by yourself",
+        "on your own",
     }:
         return ""
     return t
@@ -893,20 +1046,47 @@ def _resolve_research_topic_reply(
     )
     if not _ASKED_RESEARCH_TOPIC.search(last_a):
         return None
-    if _LOOK_ONLY.search(msg) or _CAMERA_LOOK.search(msg):
+    if is_screen_look_utterance(msg) or is_camera_look_utterance(msg):
         return None
-    if re.search(r"(?i)\b(never ?mind|cancel|forget it|stop)\b", msg):
+    try:
+        from friday.presence.modelswitch import looks_like_model_talk
+    except Exception:  # noqa: BLE001
+        looks_like_model_talk = lambda _m: False  # noqa: E731
+    if looks_like_model_talk(msg):
+        return Intent(
+            mode="talk",
+            skill_id="presence",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: research topic was model talk → presence",
+            source="policy",
+        )
+    # Pushback / ASR junk ("by yourself") is not a topic — cancel or look-retry.
+    if _NOT_A_SEARCH_TOPIC.match(msg) or re.search(
+        r"(?i)\b(never ?mind|cancel|forget it|stop)\b", msg
+    ):
+        look = _resolve_observe_answer_retry(msg, history)
+        if look is not None:
+            return look
         return Intent(
             mode="talk",
             skill_id="chat",
             confidence=0.9,
             objective=msg,
-            reason="deterministic: research topic cancelled",
+            reason="deterministic: research topic cancelled (not a topic)",
             source="policy",
         )
-    topic = _research_topic_residue(msg) or msg.strip()
+    topic = _research_topic_residue(msg)
     if len(topic) < 2:
-        return None
+        # Don't fall back to raw msg — that is how "by yourself" became a web query.
+        return Intent(
+            mode="clarify",
+            skill_id="chat",
+            confidence=0.9,
+            objective="What should I search for — give me a real topic or question.",
+            reason="deterministic: research topic empty/junk",
+            source="policy",
+        )
     return Intent(
         mode="research",
         skill_id="research",
@@ -1088,12 +1268,26 @@ def _resolve_presence_intent(msg: str) -> Intent | None:
             reason="deterministic: presence skin switch",
             source="policy",
         )
-    if re.search(
-        r"(?i)\b(?:switch|change|use|load|set)\b.{0,28}\b(?:to\s+)?(?:model\s+)?"
-        r"(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*\b|"
-        r"\b(?:switch|change)\b.{0,16}\bmodel\b|"
-        r"\bwhat\s+model\b|\bwhich\s+model\b|\b(?:current|active)\s+model\b",
-        msg,
+    try:
+        from friday.presence.modelswitch import (
+            looks_like_model_switch,
+            looks_like_model_talk,
+        )
+    except Exception:  # noqa: BLE001
+        looks_like_model_switch = lambda _m: False  # noqa: E731
+        looks_like_model_talk = lambda _m: False  # noqa: E731
+    if (
+        looks_like_model_talk(msg)
+        or looks_like_model_switch(msg)
+        or re.search(
+            r"(?i)\b(?:switch|change|use|load|set|install|pull)\b.{0,48}\b(?:to\s+)?(?:model\s+)?"
+            r"(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*\b|"
+            r"\b(?:switch|change)\b.{0,24}\bmodel\b|"
+            r"\bwhat\s+model\b|\bwhich\s+model\b|\b(?:current|active)\s+model\b|"
+            r"\b(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*\d[\w.:-]*\b|"
+            r"\bq\s+w\s+e\s+n\b|\bg\s+e\s+m\s+m\s+a\b",
+            msg,
+        )
     ):
         return Intent(
             mode="talk",
@@ -1103,11 +1297,13 @@ def _resolve_presence_intent(msg: str) -> Intent | None:
             reason="deterministic: presence model switch",
             source="policy",
         )
+    # Explicit preference only — "can you see me" / "look at me" are camera looks.
     if re.search(
         r"(?i)\b(?:turn\s+on|enable|start|activate|turn\s+off|disable|stop)\b.{0,30}"
         r"\b(?:camera\s+)?presence\b|"
         r"\bcamera\s+presence\s+(?:on|off)\b|"
-        r"\b(?:see\s+me|look\s+at\s+me|watch\s+me|stop\s+looking\s+at\s+me)\b|"
+        r"\b(?:stop\s+looking\s+at\s+me|stop\s+watching\s+me)\b|"
+        r"\b(?:watch\s+me\s+while|keep\s+(?:an\s+)?eye\s+on\s+me)\b|"
         r"\bpresence\s+mode\s+(?:on|off)\b",
         msg,
     ):
@@ -1120,8 +1316,8 @@ def _resolve_presence_intent(msg: str) -> Intent | None:
             source="policy",
         )
     # Unknown callsign ("switch to Quinn", "become Quinn") — list skins; never invent.
-    # Avoid "be quiet" / "dark mode" / "set a reminder".
-    if re.search(
+    # Skip when the utterance is clearly a model switch (qwen/gemma ASR junk).
+    if not looks_like_model_switch(msg) and re.search(
         r"(?i)\b(?:callsign|persona|skin)\b.{0,24}\b([A-Za-z][\w.-]{1,24})\b|"
         r"\bbecome\s+([A-Za-z][\w.-]{1,24})\b|"
         r"\bbe\s+([A-Za-z][\w.-]{1,24})\s+(?:mode|callsign|persona|skin)\b|"
@@ -1137,6 +1333,48 @@ def _resolve_presence_intent(msg: str) -> Intent | None:
             source="policy",
         )
     return None
+
+
+_LOOK_PUSHBACK = re.compile(
+    r"(?i)\b("
+    r"smart enough|"
+    r"(?:just |already )?do (?:that|it) already|"
+    r"do that already|"
+    r"just (?:do|look|capture|see)\b|"
+    r"you should (?:have|be|already)|"
+    r"why (?:didn'?t|aren'?t|won'?t|can'?t) you|"
+    r"take the (?:shot|frame|screenshot|picture)|"
+    r"capture (?:it|already|now)|"
+    r"look already|"
+    r"see (?:it|me|the screen) already|"
+    r"come on|"
+    r"try again|look again|"
+    r"what('?s| is) (your |the )?answer|"
+    r"tell me (your |the )?answer|"
+    r"(that|this) was thinking|"
+    r"now tell me|"
+    r"what do you (actually )?see|"
+    r"you (?:didn'?t|never) (?:look|see|capture)|"
+    # "do it by yourself" / ASR after a missed look — not a web topic.
+    r"by yourself|on your own|figure it out"
+    r")\b"
+)
+# Not real search topics (ASR junk, pushback, meta) — never web-research these.
+_NOT_A_SEARCH_TOPIC = re.compile(
+    r"(?i)^\s*(?:(?:hey|hi|okay|ok|uh|um)\s+)*(?:friday\s*[,:]?\s*)?"
+    r"("
+    r"by yourself|yourself|on your own|"
+    r"(?:just )?do (?:it|that)(?:\s+by yourself|\s+yourself)?|"
+    r"figure it out(?:\s+(?:by yourself|yourself))?|"
+    r"you (?:decide|choose|pick|figure(?:\s+it\s+out)?)|"
+    r"i don'?t know|idk|whatever|anything|something|"
+    r"never ?mind|cancel|forget it|stop|no|"
+    r"smart enough|come on|try again|"
+    r"look(?:\s+at)?(?:\s+me|\s+my\s+screen)?|"
+    r"see(?:\s+me|\s+my\s+screen)?"
+    r")"
+    r"\s*[.?!]*\s*$"
+)
 
 
 def _last_assistant_was_optics_dump(history: list[dict[str, str]] | None) -> bool:
@@ -1157,37 +1395,106 @@ def _last_assistant_was_optics_dump(history: list[dict[str, str]] | None) -> boo
             return bool(
                 re.search(
                     r"(?i)\b(here'?s a thinking process|analyze the request|"
-                    r"the user\s*\(\s*boss\s*\)\s*says)\b",
+                    r"the user\s*\(\s*boss\s*\)\s*says|"
+                    r"the user is challenging)\b",
                     text,
                 )
             )
     return False
 
 
+def _last_assistant_missed_look(history: list[dict[str, str]] | None) -> bool:
+    """True when the last reply dodged a look (stand-by, muddy, dump, no capture)."""
+    if _last_assistant_was_optics_dump(history):
+        return True
+    if not history:
+        return False
+    for turn in reversed(history):
+        if turn.get("role") != "assistant":
+            continue
+        text = (turn.get("content") or "").strip()
+        if not text:
+            continue
+        return bool(
+            re.search(
+                r"(?i)\b("
+                r"i'?m with you|"
+                r"what do you need|"
+                r"standing by|"
+                r"vision pass came back muddy|"
+                r"couldn'?t (?:capture|read|see)|"
+                r"say (?:look at me|what'?s on my (?:screen|desk))|"
+                r"ask what'?s on my screen|"
+                r"camera sensing is off|"
+                r"couldn'?t arm the camera|"
+                r"the user is challenging|"
+                r"didn'?t automatically capture"
+                r")\b",
+                text,
+            )
+        )
+    return False
+
+
+def _last_user_look_skill(history: list[dict[str, str]] | None) -> str | None:
+    """Most recent user look ask → observe | camera."""
+    if not history:
+        return None
+    for turn in reversed(history):
+        if turn.get("role") != "user":
+            continue
+        text = (turn.get("content") or "").strip()
+        if not text:
+            continue
+        if is_screen_look_utterance(text):
+            return "observe"
+        if is_camera_look_utterance(text):
+            return "camera"
+        # Skip pushback / tiny lines when scanning further back.
+        if _LOOK_PUSHBACK.search(text) or len(text) < 4:
+            continue
+        break
+    return None
+
+
 def _resolve_observe_answer_retry(
     msg: str, history: list[dict[str, str]] | None
 ) -> Intent | None:
-    """After a screen-look dump, 'what's your answer' means look again — not chat clarify."""
-    if not _last_assistant_was_optics_dump(history):
+    """After a look ask, pushback / dump-retry means capture again — not a chat essay."""
+    skill = _last_user_look_skill(history)
+    if skill is None:
         return None
-    if not re.search(
-        r"(?i)\b("
-        r"what('?s| is) (your |the )?answer|"
-        r"tell me (your |the )?answer|"
-        r"(that|this) was thinking|"
-        r"now tell me|"
-        r"what do you (actually )?see|"
-        r"try again|look again"
-        r")\b",
-        msg,
+
+    pushback = bool(_LOOK_PUSHBACK.search(msg))
+    classic_retry = bool(
+        re.search(
+            r"(?i)\b("
+            r"what('?s| is) (your |the )?answer|"
+            r"tell me (your |the )?answer|"
+            r"(that|this) was thinking|"
+            r"now tell me|"
+            r"what do you (actually )?see|"
+            r"try again|look again"
+            r")\b",
+            msg,
+        )
+    )
+    if not pushback and not (
+        classic_retry and _last_assistant_missed_look(history)
     ):
         return None
+
+    objective = (
+        "What do you see in front of the camera?"
+        if skill == "camera"
+        else "What is on my screen right now?"
+    )
     return Intent(
         mode="look",
-        skill_id="observe",
-        confidence=0.95,
-        objective="What is on my screen right now?",
-        reason="deterministic: retry observe after dump",
+        skill_id=skill,
+        confidence=0.96,
+        objective=objective,
+        reason=f"deterministic: retry {skill} after pushback/miss",
         source="policy",
     )
 

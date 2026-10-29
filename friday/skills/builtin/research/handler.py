@@ -244,6 +244,21 @@ class SkillHandler(Skill):
 
     def run(self, ctx: SkillContext) -> SkillResult:
         msg = ctx.message or ""
+        # Local model / Ollama talk is presence — never invent web lore (Saluki etc.).
+        try:
+            from friday.presence.modelswitch import looks_like_model_talk
+            from friday.skills.registry import get_registry
+
+            if looks_like_model_talk(msg):
+                presence = get_registry().get("presence")
+                if presence is not None:
+                    ctx.emit(
+                        "activity",
+                        {"step": "reroute", "message": "Switching local model…"},
+                    )
+                    return presence.run(ctx)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Research] model-talk reroute skipped: {exc}")
         try:
             from friday.assistant.reflexes import _is_greeting_only, try_reflex
             from friday.persona import owner_name

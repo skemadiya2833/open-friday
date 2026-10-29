@@ -20,7 +20,11 @@ Vote = Literal["up", "down", "good", "bad"]
 _lock = threading.Lock()
 
 _GLITCH = re.compile(
-    r"(?i)\b(i glitched|say it once more|blanked on that|no reply came back)\b"
+    r"(?i)\b("
+    r"i glitched|say it once more|blanked on that|no reply came back|"
+    r"give me a second and say it again|that turn came back empty|"
+    r"i'?m with you,\s+\w+\.\s+what do you need"
+    r")\b"
 )
 
 

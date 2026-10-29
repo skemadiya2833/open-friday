@@ -155,3 +155,14 @@ def test_detects_identity_questioning_dump():
         'I am "Friday", a local assistant on the Windows PC. "Electron" might be another persona.'
     )
     assert looks_like_prompt_dump(dump)
+
+
+def test_detects_webcam_visibility_analysis_dump():
+    dump = (
+        "(Using camera dshow:2) The user wants to know if they are visible in the "
+        "webcam image provided. 1. Analyze the image: The image shows a man sitting in a chair."
+    )
+    assert looks_like_prompt_dump(dump)
+    from friday.models.local import _looks_like_optics_dump
+
+    assert _looks_like_optics_dump(dump)

@@ -95,30 +95,106 @@ class SkillHandler(Skill):
                 metadata=m,
             )
 
-        skin_m = _SKIN_SWITCH.search(msg) or _SKIN_SWITCH_ANY.search(msg)
-        if skin_m:
+        # Known callsigns first — then models (before unknown-skin "coin" traps).
+        skin_known = _SKIN_SWITCH.search(msg)
+        if skin_known:
             from friday.presence.registry import apply_skin
             from friday.presence.skins import resolve_skin_id
 
-            raw = next((g for g in skin_m.groups() if g), "")
+            raw = next((g for g in skin_known.groups() if g), "")
+            sid = resolve_skin_id(raw) or resolve_skin_id(msg)
+            if sid:
+                snap = apply_skin(sid, emit=ctx.emit)
+                skin = snap["skin"]
+                return SkillResult(
+                    reply=(
+                        f"{skin['display_name']} mode, {owner} — same tools, different attitude. "
+                        "Theatrical only; I won't touch anything unsafe."
+                    ),
+                    skill_id="presence",
+                    metadata={"presence": snap},
+                )
+
+        from friday.presence.modelswitch import looks_like_model_switch
+
+        if (
+            _MODEL_SWITCH.search(msg)
+            or looks_like_model_switch(msg)
+            or re.search(r"(?i)\bswitch\b.{0,40}\b(qwen|gemma|q\s+w\s+e\s+n)\b", msg)
+        ):
+            from friday.presence.modelswitch import (
+                apply_chat_model,
+                list_installed_tags,
+                normalize_model_utterance,
+                parse_switch_model_utterance,
+                resolve_model_alias,
+            )
+
+            token = parse_switch_model_utterance(msg)
+            if not token:
+                norm = normalize_model_utterance(msg)
+                m2 = re.search(
+                    r"(?i)\b((?:qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*)\b",
+                    norm,
+                )
+                token = m2.group(1) if m2 else None
+            if not token:
+                return SkillResult(
+                    reply=f"Say which model, {owner} — for example: switch to qwen, or switch to gemma.",
+                    skill_id="presence",
+                )
+            tags = list_installed_tags()
+            resolved = resolve_model_alias(token, tags=tags) or resolve_model_alias(
+                msg, tags=tags
+            )
+            if not resolved:
+                sample = ", ".join(tags[:8]) if tags else "none listed"
+                return SkillResult(
+                    reply=(
+                        f"No installed Ollama tag matches '{token}', {owner}. "
+                        f"Local tags: {sample}. "
+                        f"I won't invent web lore about it — pull it with ollama if you want it here."
+                    ),
+                    skill_id="presence",
+                    metadata={"ok": False, "requested": token, "tags": tags},
+                )
+            result = apply_chat_model(resolved, emit=ctx.emit)
+            vision_note = ""
+            try:
+                from friday.config import _name_looks_vision
+
+                if _name_looks_vision(result["chat_model"]):
+                    vision_note = " Vision follows that tag too."
+                elif result.get("vision_model"):
+                    vision_note = f" Vision stays on {result['vision_model']}."
+            except Exception:  # noqa: BLE001
+                pass
+            return SkillResult(
+                reply=f"Switched chat to {result['chat_model']}, {owner}.{vision_note}",
+                skill_id="presence",
+                metadata=result,
+            )
+
+        skin_any = _SKIN_SWITCH_ANY.search(msg)
+        if skin_any and not looks_like_model_switch(msg):
+            from friday.presence.registry import apply_skin
+            from friday.presence.skins import resolve_skin_id
+
+            raw = next((g for g in skin_any.groups() if g), "")
             sid = resolve_skin_id(raw) or resolve_skin_id(msg)
             token = (raw or "").strip().lower()
             if not sid:
-                # Don't invent Quinn / random personas — list the real callsigns.
-                if (
-                    token
-                    and token not in _KNOWN_SKINS
-                    and token
-                    not in {
-                        "mode",
-                        "callsign",
-                        "persona",
-                        "skin",
-                        "to",
-                        "the",
-                        "my",
-                    }
-                ):
+                if token and token not in _KNOWN_SKINS and token not in {
+                    "mode",
+                    "callsign",
+                    "persona",
+                    "skin",
+                    "to",
+                    "the",
+                    "my",
+                    "coin",
+                    "from",
+                }:
                     return SkillResult(
                         reply=(
                             f"No '{token}' callsign, {owner}. "
@@ -140,44 +216,6 @@ class SkillHandler(Skill):
                 ),
                 skill_id="presence",
                 metadata={"presence": snap},
-            )
-
-        if _MODEL_SWITCH.search(msg) or re.search(
-            r"(?i)\bswitch\b.{0,20}\b(qwen|gemma)\b", msg
-        ):
-            from friday.presence.modelswitch import (
-                apply_chat_model,
-                list_installed_tags,
-                parse_switch_model_utterance,
-                resolve_model_alias,
-            )
-
-            token = parse_switch_model_utterance(msg)
-            if not token:
-                m2 = re.search(r"(?i)\b(qwen[\w.:-]*|gemma[\w.:-]*)\b", msg)
-                token = m2.group(1) if m2 else None
-            if not token:
-                return SkillResult(
-                    reply=f"Say which model, {owner} — for example: switch to qwen, or switch to gemma.",
-                    skill_id="presence",
-                )
-            tags = list_installed_tags()
-            resolved = resolve_model_alias(token, tags=tags)
-            if not resolved:
-                sample = ", ".join(tags[:8]) if tags else "none listed"
-                return SkillResult(
-                    reply=(
-                        f"I couldn't find an installed tag matching '{token}', {owner}. "
-                        f"Ollama has: {sample}."
-                    ),
-                    skill_id="presence",
-                    metadata={"ok": False, "requested": token, "tags": tags},
-                )
-            result = apply_chat_model(resolved, emit=ctx.emit)
-            return SkillResult(
-                reply=f"Switched chat to {result['chat_model']}, {owner}.",
-                skill_id="presence",
-                metadata=result,
             )
 
         if _SKIN_STATUS.search(msg):

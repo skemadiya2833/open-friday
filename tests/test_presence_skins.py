@@ -31,10 +31,10 @@ def test_resolve_skin_aliases():
 
 def test_capability_clamp_in_prompt():
     block = prompt_presence_block(kind="chat")
-    assert "Theatrical persona is performance only" in block
     assert "unauthorized access" in block
+    assert "Theatrical" in block or "callsign only" in block.lower()
     text = system_prompt("chat")
-    assert CAPABILITY_CLAMP.split(".")[0] in text or "Theatrical persona" in text
+    assert "unauthorized access" in text
 
 
 def test_observe_skips_skin_dump():
@@ -45,9 +45,9 @@ def test_ultron_style_is_theatrical_not_hacking():
     ultron = get_skin("ultron")
     low = ultron.style_delta.lower()
     assert "jokes" in low or "theatrical" in low or "inspired" in low
-    assert (
-        "must not" in CAPABILITY_CLAMP.lower() or "cannot" in CAPABILITY_CLAMP.lower()
-    )
+    clamp = CAPABILITY_CLAMP.lower()
+    assert "unauthorized" in clamp
+    assert "takeover" in clamp or "destructive" in clamp
 
 
 def test_humor_banks_have_no_film_quotes():

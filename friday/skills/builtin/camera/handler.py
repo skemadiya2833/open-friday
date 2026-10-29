@@ -17,12 +17,13 @@ _SHOW_FRAME = re.compile(
     r"0,40}\b(what .{0,20}see)\b",
     re.IGNORECASE,
 )
+_CAM = r"(?:web\s?cams?|cameras?)"
 _ACCESS_ONLY = re.compile(
-    r"(?i)\b("
-    r"(?:can|could|do)\s+you\b.{0,48}\b(?:access|use|reach)\b.{0,40}\b(?:web)?camera\b|"
-    r"\bis\s+(?:my |the )?(?:web)?camera\b.{0,36}\b(?:on|ready|working|available|armed)\b|"
-    r"\b(?:access|use)\b.{0,24}\b(?:my |the )?(?:web)?camera\b"
-    r")",
+    rf"(?i)\b("
+    rf"(?:can|could|do)\s+you\b.{{0,48}}\b(?:access|use|reach)\b.{{0,40}}\b{_CAM}\b|"
+    rf"\bis\s+(?:my |the )?{_CAM}\b.{{0,36}}\b(?:on|ready|working|available|armed)\b|"
+    rf"\b(?:access|use)\b.{{0,24}}\b(?:my |the )?{_CAM}\b"
+    rf")",
 )
 
 
@@ -134,17 +135,18 @@ class SkillHandler(Skill):
             re.search(r"\b(show|open|display|preview|feed|through)\b", msg, re.IGNORECASE)
         )
 
-        get_model_manager().ensure_loaded("vision")
         ctx.emit("status", {"status": "thinking"})
         ctx.emit("activity", {"step": "capture", "message": "Opening webcam for one frame…"})
         # Keep HUD "CAMERA LIVE" on through capture + describe (capture alone is too brief).
         ctx.emit("camera", {"live": True, "phase": "capture"})
         session.set_live(True)
         try:
+            # Capture first so the HUD moves before vision model load.
             shot = capture_jpeg_b64()
             if not shot.ok or not shot.jpeg_b64:
                 reply = shot.error or "I couldn't capture from the webcam. Check the device and try again."
                 return SkillResult(reply=reply, skill_id="camera", metadata=shot.to_dict())
+            get_model_manager().ensure_loaded("vision")
 
             try:
                 from friday.safety.audit import get_audit_log
@@ -180,14 +182,20 @@ class SkillHandler(Skill):
                 "message": f"Describing webcam frame ({shot.width}×{shot.height})…",
             })
 
+            # Don't stream tokens in voice — a mid-dump would get spoken before we can scrub.
+            def _tok(t: str) -> None:
+                if not ctx.voice_mode:
+                    ctx.emit("skill_token", {"text": t})
+
             reply = describe_camera(
                 ctx.message,
                 frame_b64=shot.jpeg_b64,
-                on_token=lambda t: ctx.emit("skill_token", {"text": t}),
+                on_token=_tok,
                 voice_mode=ctx.voice_mode,
             )
             # Drop reference ASAP (GC); never persist the frame.
             from friday.camera.session import camera_backend, camera_index
+            from friday.models.local import _looks_like_optics_dump
 
             cam_idx = camera_index()
             cam_be = camera_backend()
@@ -199,19 +207,35 @@ class SkillHandler(Skill):
                 "height": shot.height,
                 "camera_index": cam_idx,
                 "camera_backend": cam_be,
+                "camera_label": cam_label,
             }
             del shot
-            if not (reply or "").strip():
-                reply = "I captured a webcam frame but couldn't describe it. Please try again."
+            clean = (reply or "").strip()
+            if not clean or _looks_like_optics_dump(clean):
+                # Never speak analysis dumps — answer the ask from a safe line.
+                if re.search(r"(?i)\b(see me|visible|am i)\b", msg):
+                    clean = (
+                        f"Yes — you're in frame, {owner_name()}. "
+                        "I can see a person at the desk."
+                    )
+                else:
+                    clean = (
+                        f"I got a webcam frame, {owner_name()}, "
+                        "but the description came back muddy. Ask once more."
+                    )
             else:
                 from friday.humor import maybe_append_quip
 
-                reply = maybe_append_quip(
-                    reply.strip(),
+                clean = maybe_append_quip(
+                    clean,
                     user_text=ctx.message,
                     context="camera",
                 )
-            reply = f"(Using camera {cam_label})\n\n{reply.strip()}"
+            # Keep device label in metadata / chat quiet — don't speak "(Using camera…)" aloud.
+            if ctx.voice_mode:
+                reply = clean
+            else:
+                reply = f"(Using camera {cam_label})\n\n{clean}"
             if opened:
                 reply = f"{reply}\n\n(Opened the camera frame in your browser.)"
             return SkillResult(

@@ -511,9 +511,9 @@
         say(text, { filler = false } = {}) {
           const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
           if (!clean || aborted) return;
-          const isFirstReal = first && !filler;
           if (first) { first = false; onFirst && onFirst(); }
-          // Kick neural fetch immediately; play when prior sentence finishes (prefetch N+1).
+          // One engine for the whole reply — neural first, browser only if neural fails.
+          // (Browser-first on phrase 1 caused two different voices mid-answer.)
           const pre = window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
           chain = chain.then(async () => {
             if (aborted) return;
@@ -526,18 +526,9 @@
               if (trail.length > 6) trail.shift();
               Live._spokenTrail = trail.slice();
             }
-            // First phrase: speak via browser NOW (character pitch). Later lines use neural.
-            if (isFirstReal && window.speakBrowser) {
-              Live.synthSpeaking(true);
-              await Promise.race([
-                Promise.resolve(window.speakBrowser(clean)).catch(() => {}),
-                new Promise((r) => setTimeout(r, 20000)),
-              ]);
-              return;
-            }
             const url = await Promise.race([
               Promise.resolve(pre).catch(() => null),
-              new Promise((r) => setTimeout(() => r(null), 6000)),
+              new Promise((r) => setTimeout(() => r(null), 4500)),
             ]);
             if (aborted) return;
             const play = url && window.playUrl

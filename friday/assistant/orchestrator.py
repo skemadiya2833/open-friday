@@ -104,10 +104,17 @@ def handle_message(
         except Exception as exc:  # noqa: BLE001
             print(f"[Reflex] skipped: {exc}")
 
-    # --- Architectural gate: LLM classify + deterministic policy ---
+    # --- Architectural gate: deterministic tool fastpath / LLM classify + policy ---
     emit("status", {"status": "thinking"})
     # Voice stays quiet — no classify/intent chatter in the live HUD.
-    if not voice_mode:
+    # Tool fastpaths skip the "figuring out" pause — intent is already known.
+    try:
+        from friday.assistant.intent import match_tool_fastpath
+
+        _fast_preview = match_tool_fastpath(message) if not skill_override else None
+    except Exception:  # noqa: BLE001
+        _fast_preview = None
+    if not voice_mode and _fast_preview is None:
         emit("activity", {"step": "classify", "message": "Figuring out what you want…"})
     intent = classify_intent(
         message,

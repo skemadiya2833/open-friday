@@ -9,7 +9,12 @@ from friday.persona import system_prompt
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
 _GLITCH_RE = re.compile(
-    r"(?i)\b(i glitched on that|say it once more|blanked on that)\b"
+    r"(?i)\b("
+    r"i glitched on that|say it once more|blanked on that|"
+    r"give me a second and say it again|"
+    r"that turn came back empty|"
+    r"i'?m with you,\s+\w+\.\s+what do you need"
+    r")\b"
 )
 
 
@@ -40,7 +45,7 @@ def _history_messages(history: list[dict], *, limit: int = 16) -> list[dict]:
 
 
 def _direct_answer(message: str, owner: str) -> str:
-    """Answer from facts when the model dumps — never ask them to resend or 'try once more'."""
+    """Answer from facts when the model dumps — never ask them to resend."""
     m = (message or "").strip()
     low = m.lower()
     try:
@@ -50,28 +55,46 @@ def _direct_answer(message: str, owner: str) -> str:
             return identity_answer(m, owner)
     except Exception:  # noqa: BLE001
         pass
-    if re.search(r"(?i)\b(too dumb|bad reply|useless|glitch)\b", low):
-        return f"Fair, {owner}. I'm still here — what do you need done?"
-    if re.search(r"(?i)\b(?:web)?camera|webcam\b", low):
+    if re.search(r"(?i)\b(too dumb|bad reply|useless|glitch|smart enough|blanked)\b", low):
+        return f"Fair, {owner}. Still here — give me the next concrete ask and I'll act."
+    try:
+        from friday.assistant.intent import (
+            is_camera_look_utterance,
+            is_memory_utterance,
+            is_screen_look_utterance,
+            is_tasks_utterance,
+        )
+
+        if is_screen_look_utterance(m):
+            return f"Screen look belongs on the capture path, {owner}. Ask what's on my screen."
+        if is_camera_look_utterance(m):
+            return f"Camera look belongs on the capture path, {owner}. Ask look at me."
+        if is_memory_utterance(m):
+            return f"I'll check notes when that route runs, {owner}."
+        if is_tasks_utterance(m):
+            return f"Agenda and reminders go through the tasks path, {owner}."
+    except Exception:  # noqa: BLE001
+        pass
+    if re.search(r"(?i)\b(?:web\s?cams?|cameras?)\b", low):
         return (
-            f"I can use the local webcam when it's enabled and armed in Systems, {owner}. "
-            "Say look at me or what's on my desk and I'll take a real frame."
+            f"Webcam is local Systems gear, {owner}. "
+            "When it's on, ask look at me and I'll take a real frame."
         )
     if re.search(
         r"(?i)\b(schedule|agenda|plan for today|on today|what.+today)\b",
         low,
     ):
         return (
-            f"I read today's agenda from the local plan board, {owner}. "
-            "Ask what's on schedule today and I'll list what's locked in — or say what to add."
+            f"Today's agenda lives on the local plan board, {owner}. "
+            "Ask what's on schedule today, or tell me what to add."
         )
     if re.search(r"(?i)\b(pull(ed)? up|research|search|look(ed)? up|findings?)\b", low):
         return (
             f"I don't have that research locked in this turn, {owner}. "
-            "Say what to look up and I'll run search for real."
+            "Name the topic and I'll search for real."
         )
     if re.search(r"(?i)\b(remember|memory|what do you (know|have))\b", low):
-        return f"Ask what I remember about a topic, {owner}, and I'll check notes for real."
+        return f"Name the topic, {owner}, and I'll check notes for real."
     if re.search(
         r"(?i)\b(freecad|\.fcstd|fcstd|\bcad\b|cube|bracket|plate)\b|"
         r"\b3\s*-?\s*d\s*(model|part|file)\b|"
@@ -79,9 +102,11 @@ def _direct_answer(message: str, owner: str) -> str:
         low,
     ):
         return (
-            f"I haven't run FreeCAD or saved anything on this turn, {owner}. "
-            "Say the part clearly (for example: make a 40×30×10 plate in FreeCAD) and I'll use the CAD path."
+            f"I haven't run FreeCAD this turn, {owner}. "
+            "Name the part (for example: make a 40×30×10 plate in FreeCAD) and I'll use CAD."
         )
+    if re.search(r"(?i)\bwhat am i doing\b", low):
+        return f"That needs a webcam frame, {owner}. Ask look at me."
     if re.search(
         r"(?i)\bwhat are you doing\b|"
         r"\bwhat('?s| is) up\b|"
@@ -90,9 +115,9 @@ def _direct_answer(message: str, owner: str) -> str:
         r"^\s*(hey|hi|hello|yo)(,?\s+friday)?[!?.]*\s*$",
         low,
     ):
-        return f"Right here, {owner} — standing by. What do you need?"
-    # Still answer — never tell them the reply was messy or to send it again.
-    return f"I'm with you, {owner}. What do you need done?"
+        return f"Right here, {owner}."
+    # Never "say it again" / never empty brush-off theater.
+    return f"Still here, {owner}. What's the next concrete step?"
 
 
 class SkillHandler(Skill):
@@ -118,6 +143,60 @@ class SkillHandler(Skill):
             chat_memory_hits_block,
             chat_owner_facts_block,
         )
+
+        # Never burn chat tokens on a clear tool ask — run the skill directly.
+        try:
+            from friday.assistant.intent import (
+                match_tool_fastpath,
+                _resolve_observe_answer_retry,
+            )
+            from friday.presence.modelswitch import looks_like_model_talk
+            from friday.skills.registry import get_registry
+
+            fast = match_tool_fastpath(ctx.message) or _resolve_observe_answer_retry(
+                ctx.message, list(ctx.history or [])
+            )
+            if fast is None and looks_like_model_talk(ctx.message):
+                from friday.assistant.intent import Intent as _Intent
+
+                fast = _Intent(
+                    mode="talk",
+                    skill_id="presence",
+                    confidence=0.95,
+                    objective=ctx.message,
+                    reason="chat-reroute: model talk",
+                    source="policy",
+                )
+            if fast is not None and fast.skill_id != "chat":
+                target = get_registry().get(fast.skill_id)
+                if target is not None:
+                    labels = {
+                        "observe": "Looking at your screen…",
+                        "camera": "Looking through the camera…",
+                        "memory": "Checking memory…",
+                        "tasks": "Checking schedule…",
+                        "research": "Researching…",
+                        "cad": "Opening CAD…",
+                        "files": "Working with files…",
+                        "computer_use": "Working on the desktop…",
+                    }
+                    # Skills that key off the objective (look retries) need that text.
+                    if (fast.objective or "").strip() and fast.objective.strip() != (
+                        ctx.message or ""
+                    ).strip():
+                        ctx.message = fast.objective
+                    ctx.emit(
+                        "activity",
+                        {
+                            "step": "reroute",
+                            "message": labels.get(
+                                fast.skill_id, f"Running {fast.skill_id}…"
+                            ),
+                        },
+                    )
+                    return target.run(ctx)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Chat] tool fastpath reroute skipped: {exc}")
 
         kind = "voice" if ctx.voice_mode else "chat"
         system = system_prompt(kind)
