@@ -88,6 +88,53 @@ function setCameraLooking(on, phase) {
 /** Presence working bubble — Systems `presence_orb` (default on). */
 let presenceOrbEnabled = true;
 
+function applyPresenceSnap(snap) {
+  if (!snap || !snap.skin) return;
+  const skin = snap.skin;
+  const themes = ["skin-friday", "skin-jarvis", "skin-ultron", "skin-vision", "skin-karen", "skin-edith"];
+  document.body.classList.remove(...themes);
+  document.body.classList.add(skin.css_theme || "skin-friday");
+  window.__fridayVoiceProfile = skin.voice_profile || "female_us";
+  window.__fridayTtsVoice = skin.tts_voice || "";
+  window.__fridayTtsRate = skin.tts_rate || "+0%";
+  const nameEl = $("#brandName");
+  const tagEl = $("#brandTag");
+  const sysEl = $("#sysId");
+  if (nameEl) nameEl.textContent = skin.callsign || "FRIDAY";
+  if (tagEl) tagEl.textContent = skin.hud_title || "LOCAL PROTOCOL";
+  if (sysEl) sysEl.textContent = `${skin.callsign || "FRIDAY"} // LOCAL HUD`;
+  document.title = `${skin.callsign || "FRIDAY"} — HUD`;
+  const panel = $("#avatarPanel");
+  const still = $("#avatarStill");
+  const video = $("#avatarVideo");
+  if (panel && still) {
+    if (snap.portrait_url) {
+      still.src = `${snap.portrait_url}?t=${Date.now()}`;
+      still.classList.remove("hidden");
+      if (video) {
+        video.classList.add("hidden");
+        video.removeAttribute("src");
+      }
+      panel.classList.remove("hidden");
+      panel.setAttribute("aria-hidden", "false");
+    } else {
+      panel.classList.add("hidden");
+      panel.setAttribute("aria-hidden", "true");
+    }
+  }
+}
+
+async function refreshPresence() {
+  try {
+    const res = await apiFetch("/api/presence");
+    if (!res.ok) return;
+    const snap = await res.json();
+    applyPresenceSnap(snap);
+  } catch (_) {
+    /* keep defaults */
+  }
+}
+
 async function refreshPresenceOrbPref() {
   try {
     const res = await apiFetch("/api/systems/prefs");
@@ -528,38 +575,36 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
 });
 
-/** Strip model theater / raw JSON before it hits the chat bubble or captions. */
+/** Strip model theater / raw JSON before chat bubbles or captions. Never invent "try again" copy. */
 function sanitizeAssistantText(text) {
   let t = String(text || "").trim();
   if (!t) return "";
-  // Raw JSON / tool payload dumps
+  // Raw JSON / tool payload dumps — prefer embedded message if present.
   if (/^\s*[\{\[]/.test(t) && /"ok"\s*:|"tool"\s*:|"message"\s*:/.test(t)) {
     try {
       const obj = JSON.parse(t);
       if (obj && typeof obj.message === "string" && obj.message.trim()) return obj.message.trim();
       if (obj && typeof obj.reply === "string" && obj.reply.trim()) return obj.reply.trim();
     } catch (_) { /* fall through */ }
-    return "I hit a snag formatting that reply — ask me once more.";
+    return "";
   }
-  // Planning / prompt theater the model sometimes speaks aloud
+  // Prompt / identity / optics theater — hide until a clean final reply arrives.
   if (
     /\buser'?s?\s+goal\s*:/i.test(t)
     || /\bconstraint\s*\d+\s*:/i.test(t)
     || /\*{1,2}\s*correction\s*\*{0,2}/i.test(t)
     || /\bthe prompt says\b/i.test(t)
     || /\btell the user you could not reach search\b/i.test(t)
-  ) {
-    return "Search didn't come back clean — want me to try a tighter query?";
-  }
-  // Optics / chat meta-analysis theater
-  if (
-    /\bhere'?s a thinking process\b/i.test(t)
+    || /\bhere'?s a thinking process\b/i.test(t)
     || /\bthinking process that leads\b/i.test(t)
     || /\banalyze the request\b/i.test(t)
     || /\bthe user\s*\(\s*boss\s*\)\s*says\b/i.test(t)
+    || /\bthe user is (asking|questioning|describing)\b/i.test(t)
+    || /\bquestioning my identity\b/i.test(t)
+    || /\bsystem instructions?\b/i.test(t)
     || (/\b\*\s*goal\s*:/i.test(t) && /\b\*\s*constraint\b/i.test(t))
   ) {
-    return "That came out as noise — ask me what's on your screen once more.";
+    return "";
   }
   return t;
 }
@@ -855,7 +900,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
   // live voice: sentence-pipelined speech. Hold = mic muted; Interrupt = barge-in allowed.
   // Typed chat still gets caption/progress fillers when Live HUD is open — audio only with voice TTS.
   const vcfg = window.FridayVoice ? FridayVoice.cfg() : { streamSpeech: true };
-  const speaker = useVoice && speakEnabled() && window.FridayLive
+  // Stream speech whenever TTS is on — don't wait for the full reply (Jarvis-style).
+  const speaker = speakEnabled() && window.FridayLive && (useVoice || vcfg.streamSpeech)
     ? FridayLive.speaker({ onFirst: () => setState("speaking", { force: true }) })
     : null;
   const filler = window.FridayLive
@@ -1031,6 +1077,9 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       }
       if (ev.type === "warning" && ev.message) {
         pushActivity(`⚠ ${ev.message}`, { live: false });
+      }
+      if (ev.type === "presence") {
+        applyPresenceSnap(ev);
       }
       if (ev.type === "done") {
         setCameraLooking(false);
@@ -1871,19 +1920,25 @@ function pickFemaleBrowserVoice() {
   try {
     const voices = window.speechSynthesis?.getVoices?.() || [];
     if (!voices.length) return null;
+    const profile = (window.__fridayVoiceProfile || "female_us").toLowerCase();
+    const wantMale = profile.startsWith("male");
+    const wantGb = profile.endsWith("_gb");
     const rank = (v) => {
       const n = `${v.name} ${v.lang}`.toLowerCase();
       let s = 0;
-      if (/en(-|_)?ie/i.test(v.lang) || /irish|moira/.test(n)) s += 6;
-      if (/en(-|_)?(gb|uk)/i.test(v.lang) || /hazel|susan|sonia|libby/.test(n)) s += 4;
-      if (/en(-|_)?us/i.test(v.lang)) s += 2;
-      if (/zira|hazel|susan|eva|samantha|karen|moira|tessa|fiona|jenny|aria|natasha|linda|female/.test(n)) s += 8;
-      if (/microsoft.*(zira|hazel)/.test(n)) s += 4;
-      if (/male|david|mark|george|james|daniel|ravi|richard|guy|tony|christopher/.test(n)) s -= 12;
+      if (wantGb && (/en(-|_)?(gb|uk)/i.test(v.lang) || /george|ryan|thomas|hazel|susan|sonia|libby/.test(n))) s += 10;
+      if (!wantGb && /en(-|_)?us/i.test(v.lang)) s += 4;
+      if (wantMale) {
+        if (/male|david|mark|george|james|daniel|ravi|richard|guy|tony|christopher|ryan|davis|brian|eric|arthur/.test(n)) s += 12;
+        if (/zira|hazel|susan|eva|samantha|karen|moira|tessa|fiona|jenny|aria|natasha|linda|female|hazel/.test(n)) s -= 14;
+      } else {
+        if (/zira|hazel|susan|eva|samantha|karen|moira|tessa|fiona|jenny|aria|natasha|linda|female/.test(n)) s += 10;
+        if (/microsoft.*(zira|hazel)/.test(n)) s += 4;
+        if (/male|david|mark|george|james|daniel|ravi|richard|guy|tony|christopher/.test(n)) s -= 12;
+      }
       return s;
     };
     const sorted = voices.slice().sort((a, b) => rank(b) - rank(a));
-    // Never fall through to a clearly male top hit — skip those.
     return sorted.find((v) => rank(v) > 0) || sorted[0] || null;
   } catch (_) {
     return null;
@@ -1905,16 +1960,17 @@ function speakBrowser(text) {
     try { window.speechSynthesis.cancel(); } catch (_) {}
     const u = new SpeechSynthesisUtterance(slice);
     const voice = pickFemaleBrowserVoice();
+    const profile = (window.__fridayVoiceProfile || "female_us").toLowerCase();
     if (voice) {
       u.voice = voice;
-      u.lang = voice.lang || "en-US";
+      u.lang = voice.lang || (profile.endsWith("_gb") ? "en-GB" : "en-US");
     } else {
-      u.lang = "en-US";
+      u.lang = profile.endsWith("_gb") ? "en-GB" : "en-US";
     }
     u.rate = window.FridayVoice && FridayVoice.pace() === "fast" ? 1.08
       : window.FridayVoice && FridayVoice.pace() === "slow" ? 0.92
-      : 1.0;
-    u.pitch = 1.0;
+      : (profile.startsWith("male") ? 0.94 : 1.0);
+    u.pitch = profile.startsWith("male") ? 0.85 : 1.0;
     const maxMs = Math.min(45000, 2500 + slice.length * 90);
     let settled = false;
     let safety = 0;
@@ -1963,11 +2019,13 @@ async function ttsFetchUrl(text) {
   // Edge is fast; local SAPI can take a few seconds per sentence.
   const timer = setTimeout(() => ac.abort(), 20000);
   try {
-    const rate = window.FridayVoice && FridayVoice.edgeRate ? FridayVoice.edgeRate() : "+0%";
+    const rate = (window.__fridayTtsRate)
+      || (window.FridayVoice && FridayVoice.edgeRate ? FridayVoice.edgeRate() : "+0%");
+    const voice = window.__fridayTtsVoice || undefined;
     const res = await apiFetch("/api/voice/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: clean.slice(0, 500), rate }),
+      body: JSON.stringify({ text: clean.slice(0, 500), rate, voice }),
       signal: ac.signal,
     });
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
@@ -2049,14 +2107,19 @@ async function speak(text) {
   stopSpeech();
   window.FridayLive && FridayLive.state("speaking");
   try {
-    // Prefetch sentence N+1 while N plays — cuts the gap between Edge fetches.
+    // Prefetch N+1 while N plays. First sentence: fall to browser fast so voice starts now.
     let next = ttsFetchUrl(parts[0]);
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const urlP = next;
       if (i + 1 < parts.length) next = ttsFetchUrl(parts[i + 1]);
       let url = null;
-      try { url = await urlP; } catch (_) { url = null; }
+      try {
+        url = await Promise.race([
+          Promise.resolve(urlP).catch(() => null),
+          new Promise((r) => setTimeout(() => r(null), i === 0 ? 350 : 12000)),
+        ]);
+      } catch (_) { url = null; }
       if (url) {
         await playUrl(url);
         continue;
@@ -2290,6 +2353,7 @@ document.addEventListener("visibilitychange", () => {
   await refreshSkills();
   await refreshSettings();
   await refreshPresenceOrbPref();
+  await refreshPresence();
   await restoreChat();
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission().catch(() => {});

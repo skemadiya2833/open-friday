@@ -35,6 +35,7 @@ _EDGE_FALLBACKS = (
 
 _KOKORO_VOICES = frozenset(
     {
+        # Female US / GB
         "af_heart",
         "af_bella",
         "af_nicole",
@@ -45,9 +46,50 @@ _KOKORO_VOICES = frozenset(
         "bf_isabella",
         "bf_alice",
         "bf_lily",
+        # Male US / GB — callsign skins (Jarvis / Ultron / Vision)
+        "am_adam",
+        "am_michael",
+        "am_echo",
+        "am_eric",
+        "am_fenrir",
+        "am_liam",
+        "am_onyx",
+        "am_puck",
+        "bm_daniel",
+        "bm_fable",
+        "bm_george",
+        "bm_lewis",
     }
 )
 _DEFAULT_KOKORO_VOICE = "af_heart"
+# If a skin asks for a Kokoro id missing from voices.bin, map to a close installed stand-in.
+_KOKORO_ALIASES = {
+    "am_fenrir": "am_adam",
+    "am_onyx": "am_michael",
+    "am_echo": "am_michael",
+    "am_eric": "am_adam",
+    "am_liam": "am_adam",
+    "am_puck": "am_michael",
+    "bm_daniel": "bm_george",
+    "bm_fable": "bm_lewis",
+    "bm_lewis": "bm_george",
+}
+# Edge Neural → Kokoro when Bing 403s / cools down (keep gender + accent family).
+_EDGE_TO_KOKORO = {
+    "en-US-GuyNeural": "am_adam",
+    "en-US-DavisNeural": "am_fenrir",
+    "en-US-ChristopherNeural": "am_adam",
+    "en-US-EricNeural": "am_eric",
+    "en-US-BrianNeural": "am_michael",
+    "en-GB-RyanNeural": "bm_george",
+    "en-GB-ThomasNeural": "bm_fable",
+    "en-US-AvaNeural": "af_heart",
+    "en-US-JennyNeural": "af_sarah",
+    "en-US-AriaNeural": "af_nicole",
+    "en-US-MichelleNeural": "af_bella",
+    "en-GB-SoniaNeural": "bf_emma",
+    "en-GB-LibbyNeural": "bf_lily",
+}
 _DEFAULT_PIPER_VOICE = "en_US-lessac-medium"
 
 # When Bing Edge TTS returns 403, skip Edge for a while (do not thrash voices).
@@ -67,7 +109,9 @@ def _models_root() -> Path:
 
 def _kokoro_ready() -> bool:
     root = _models_root() / "kokoro"
-    return (root / "kokoro-v1.0.onnx").is_file() and (root / "voices-v1.0.bin").is_file()
+    return (root / "kokoro-v1.0.onnx").is_file() and (
+        root / "voices-v1.0.bin"
+    ).is_file()
 
 
 def _piper_ready(voice: str = _DEFAULT_PIPER_VOICE) -> bool:
@@ -76,7 +120,13 @@ def _piper_ready(voice: str = _DEFAULT_PIPER_VOICE) -> bool:
 
 def _resolve_edge_voice(configured: str) -> str:
     v = (configured or "").strip()
-    if not v or v in _KOKORO_VOICES or "en_US" in v or v.endswith("-medium") or v.endswith(".onnx"):
+    if (
+        not v
+        or v in _KOKORO_VOICES
+        or "en_US" in v
+        or v.endswith("-medium")
+        or v.endswith(".onnx")
+    ):
         return DEFAULT_EDGE_VOICE
     if v.startswith("en-") and "Neural" in v:
         return v
@@ -87,7 +137,53 @@ def _resolve_kokoro_voice(configured: str) -> str:
     v = (configured or "").strip()
     if v in _KOKORO_VOICES:
         return v
+    alias = _KOKORO_ALIASES.get(v)
+    if alias and alias in _KOKORO_VOICES:
+        return alias
+    # Edge Neural → gender-matched Kokoro (used when Edge is 403 / cooled down).
+    if v.startswith("en-") and "Neural" in v:
+        mapped = _EDGE_TO_KOKORO.get(v) or _edge_gender_kokoro(v)
+        if mapped:
+            return (
+                _resolve_kokoro_voice(mapped)
+                if mapped not in _KOKORO_VOICES
+                else mapped
+            )
+        return ""
+    if v.startswith(("am_", "bm_")):
+        # Prefer any same-gender Kokoro rather than a female default.
+        for cand in ("am_adam", "am_michael", "bm_george", "bm_lewis"):
+            if cand in _KOKORO_VOICES:
+                return cand
+        return ""
     return _DEFAULT_KOKORO_VOICE
+
+
+def _edge_gender_kokoro(edge_voice: str) -> str:
+    """Best-effort Kokoro stand-in from an Edge Neural id name."""
+    v = (edge_voice or "").lower()
+    male = any(
+        x in v
+        for x in (
+            "guy",
+            "ryan",
+            "davis",
+            "brian",
+            "christopher",
+            "eric",
+            "thomas",
+            "arthur",
+            "roger",
+        )
+    )
+    gb = "en-gb" in v or "en_gb" in v
+    if male and gb:
+        return "bm_george"
+    if male:
+        return "am_adam"
+    if gb:
+        return "bf_emma"
+    return "af_heart"
 
 
 def _tts_engine_pref() -> str:
@@ -136,7 +232,9 @@ def _pcm16_to_wav(pcm: bytes, sr: int) -> bytes:
     return buf.getvalue()
 
 
-def _worker_synth_wav(engine: str, text: str, *, voice: str, speed: float = 1.0) -> bytes | None:
+def _worker_synth_wav(
+    engine: str, text: str, *, voice: str, speed: float = 1.0
+) -> bytes | None:
     """Synthesize via isolated voice_lab worker → WAV bytes."""
     try:
         from friday.voice.speaker import WorkerEngine, default_worker_python
@@ -179,11 +277,17 @@ def _worker_synth_wav(engine: str, text: str, *, voice: str, speed: float = 1.0)
         return None
 
 
-def _kokoro_bytes(text: str, rate: str | None = None, *, voice: str | None = None) -> bytes | None:
+def _kokoro_bytes(
+    text: str, rate: str | None = None, *, voice: str | None = None
+) -> bytes | None:
     if not _kokoro_ready():
         return None
-    voice = _resolve_kokoro_voice(voice or _configured_voice())
-    return _worker_synth_wav("kokoro", text, voice=voice, speed=_speed_from_rate(rate))
+    resolved = _resolve_kokoro_voice(voice or _configured_voice())
+    if not resolved:
+        return None
+    return _worker_synth_wav(
+        "kokoro", text, voice=resolved, speed=_speed_from_rate(rate)
+    )
 
 
 def _piper_neural_bytes(text: str) -> bytes | None:
@@ -192,7 +296,9 @@ def _piper_neural_bytes(text: str) -> bytes | None:
     return _worker_synth_wav("piper", text, voice=_DEFAULT_PIPER_VOICE, speed=1.0)
 
 
-def _edge_voice_candidates(*, max_voices: int = 2, voice: str | None = None) -> list[str]:
+def _edge_voice_candidates(
+    *, max_voices: int = 2, voice: str | None = None
+) -> list[str]:
     voice_name = (voice or "").strip() or VOICE_TTS_VOICE
     if not voice:
         try:
@@ -227,7 +333,12 @@ async def _edge_bytes(text: str, voice: str, rate_s: str) -> bytes:
 
 def _is_edge_auth_block(exc: BaseException) -> bool:
     msg = str(exc).lower()
-    return "403" in msg or "invalid response status" in msg or "unauthorized" in msg or "timeout" in msg
+    return (
+        "403" in msg
+        or "invalid response status" in msg
+        or "unauthorized" in msg
+        or "timeout" in msg
+    )
 
 
 def edge_available() -> bool:
@@ -252,7 +363,9 @@ def _edge_tts_bytes(
     for cand in _edge_voice_candidates(max_voices=2 if not voice else 1, voice=voice):
         try:
             data = asyncio.run(
-                asyncio.wait_for(_edge_bytes(text, cand, rate_s), timeout=_EDGE_ATTEMPT_TIMEOUT_S)
+                asyncio.wait_for(
+                    _edge_bytes(text, cand, rate_s), timeout=_EDGE_ATTEMPT_TIMEOUT_S
+                )
             )
             if data and len(data) > 44:
                 return data
@@ -371,7 +484,10 @@ def _pyttsx3_tts(text: str, out: Path, *, timeout_s: float = 12.0) -> bool:
                 try:
                     for voice in engine.getProperty("voices") or []:
                         name = f"{getattr(voice, 'name', '')} {getattr(voice, 'id', '')}".lower()
-                        if any(k in name for k in ("zira", "female", "eva", "hazel", "susan")):
+                        if any(
+                            k in name
+                            for k in ("zira", "female", "eva", "hazel", "susan")
+                        ):
                             engine.setProperty("voice", voice.id)
                             break
                 except Exception:
@@ -414,6 +530,20 @@ def _scrub(text: str) -> str:
         return clean
 
 
+def _skin_tts_hints() -> tuple[str | None, str | None, str | None]:
+    """Active presence skin → (primary_voice, edge_fallback, rate)."""
+    try:
+        from friday.presence.registry import active_skin
+
+        skin = active_skin()
+        primary = (skin.tts_voice or "").strip() or None
+        edge = (getattr(skin, "tts_edge", "") or "").strip() or None
+        rate = (getattr(skin, "tts_rate", "") or "").strip() or None
+        return primary, edge, rate
+    except Exception:  # noqa: BLE001
+        return None, None, None
+
+
 def _synthesize_pipeline(
     clean: str,
     rate: str | None = None,
@@ -421,20 +551,37 @@ def _synthesize_pipeline(
     voice: str | None = None,
     engine: str | None = None,
 ) -> tuple[bytes, str]:
-    """Run the preferred engine chain. Returns (bytes, mime) or empty text/plain."""
-    engine = _engine_for_preview(voice, engine) if (voice or engine) else _tts_engine_pref()
-    voice_ov = (voice or "").strip() or None
+    """Run the preferred engine chain. Returns (bytes, mime) or empty text/plain.
 
-    def try_kokoro() -> tuple[bytes, str] | None:
-        data = _kokoro_bytes(clean, rate=rate, voice=voice_ov)
+    Character skins win: never speak Ultron/Jarvis with a female Kokoro stand-in.
+    """
+    skin_voice, skin_edge, skin_rate = _skin_tts_hints()
+    voice_ov = (voice or "").strip() or skin_voice or None
+    edge_ov = skin_edge if skin_edge and skin_edge != voice_ov else None
+    rate_eff = rate or skin_rate
+
+    # Voice identity beats Systems engine pref (e.g. kokoro + GuyNeural mismatch).
+    if voice_ov and (
+        voice_ov in _KOKORO_VOICES or voice_ov.startswith(("af_", "bf_", "am_", "bm_"))
+    ):
+        engine = "kokoro"
+    elif voice_ov and ("Neural" in voice_ov or voice_ov.startswith("en-")):
+        engine = "edge"
+    elif voice or engine:
+        engine = _engine_for_preview(voice_ov, engine)
+    else:
+        engine = _tts_engine_pref()
+
+    def try_kokoro(v: str | None = voice_ov) -> tuple[bytes, str] | None:
+        data = _kokoro_bytes(clean, rate=rate_eff, voice=v)
         return (data, "audio/wav") if data else None
 
     def try_piper() -> tuple[bytes, str] | None:
         data = _piper_neural_bytes(clean)
         return (data, "audio/wav") if data else None
 
-    def try_edge() -> tuple[bytes, str] | None:
-        data = _edge_tts_bytes(clean, rate=rate, voice=voice_ov)
+    def try_edge(v: str | None = voice_ov) -> tuple[bytes, str] | None:
+        data = _edge_tts_bytes(clean, rate=rate_eff, voice=v)
         return (data, "audio/mpeg") if data else None
 
     def try_gtts() -> tuple[bytes, str] | None:
@@ -448,7 +595,70 @@ def _synthesize_pipeline(
                 return path.read_bytes(), "audio/wav"
         return None
 
-    # Forced single engine
+    def try_character_chain() -> tuple[bytes, str] | None:
+        """Kokoro first (fluent offline), Edge only if still needed, then gender stand-in."""
+        for cand in (voice_ov, skin_voice):
+            if cand and (
+                cand in _KOKORO_VOICES or cand.startswith(("am_", "bm_", "af_", "bf_"))
+            ):
+                hit = try_kokoro(cand)
+                if hit:
+                    return hit
+        edge_voice = edge_ov or (
+            voice_ov if voice_ov and "Neural" in voice_ov else None
+        )
+        if edge_voice and edge_available():
+            hit = try_edge(edge_voice)
+            if hit:
+                return hit
+        # Bing cool-down / stale GuyNeural from HUD: stay local neural, same gender.
+        for cand in (voice_ov, edge_voice, skin_voice):
+            if not cand:
+                continue
+            standin = _resolve_kokoro_voice(cand)
+            if standin:
+                hit = try_kokoro(standin)
+                if hit:
+                    return hit
+        return None
+
+    # Character / explicit voice: stay in-family
+    if voice_ov:
+        hit = try_character_chain()
+        if hit:
+            return hit
+        # Last resorts still avoid wrong-gender Kokoro default when male was requested
+        male = voice_ov.startswith(("am_", "bm_")) or (
+            "Neural" in voice_ov
+            and any(
+                x in voice_ov
+                for x in (
+                    "Ryan",
+                    "Guy",
+                    "Davis",
+                    "Brian",
+                    "Christopher",
+                    "Eric",
+                    "Thomas",
+                )
+            )
+        )
+        if not male:
+            for fn in (try_piper, try_gtts, try_sapi):
+                hit = fn()
+                if hit:
+                    return hit
+        else:
+            standin = _resolve_kokoro_voice(voice_ov) or "am_adam"
+            hit = try_kokoro(standin)
+            if hit:
+                return hit
+            hit = try_sapi()
+            if hit:
+                return hit
+        return b"", "text/plain"
+
+    # Forced single engine (Systems preview)
     forced = {
         "kokoro": [try_kokoro],
         "piper": [try_piper],
@@ -471,7 +681,9 @@ def _synthesize_pipeline(
     return b"", "text/plain"
 
 
-def synthesize_to_file(text: str, out_path: str | Path, rate: str | None = None) -> Path:
+def synthesize_to_file(
+    text: str, out_path: str | Path, rate: str | None = None
+) -> Path:
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     clean = _scrub(text)

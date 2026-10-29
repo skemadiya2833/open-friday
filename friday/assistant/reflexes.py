@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable
 
 
 @dataclass
@@ -72,9 +72,7 @@ def _situation_brief() -> str:
     from friday.persona import owner_name
 
     now = datetime.now()
-    clock = (
-        f"{now.strftime('%I:%M %p').lstrip('0')} on {now.strftime('%A')}"
-    )
+    clock = f"{now.strftime('%I:%M %p').lstrip('0')} on {now.strftime('%A')}"
     tops: list[str] = []
     try:
         from friday.tasks.plan import get_plan
@@ -100,14 +98,25 @@ def _situation_brief() -> str:
 
 def try_reflex(message: str) -> ReflexHit | None:
     raw = (message or "").strip()
-    if not raw or len(raw) > 120:
+    if not raw or len(raw) > 180:
         return None
     msg = _strip_address(raw)
 
+    # Identity before greetings/status — never let chat invent "Electron" / dump prompts.
+    try:
+        from friday.presence.identity import identity_answer, is_identity_ask
+
+        if is_identity_ask(raw) or is_identity_ask(msg):
+            from friday.persona import owner_name
+
+            return ReflexHit("identity", identity_answer(raw, owner_name()))
+    except Exception:  # noqa: BLE001
+        pass
+
     # Blackout status
-    if re.match(r"^(is )?blackout (on|off|enabled|disabled)\??$", msg, re.I) or re.match(
-        r"^privacy mode\??$", msg, re.I
-    ):
+    if re.match(
+        r"^(is )?blackout (on|off|enabled|disabled)\??$", msg, re.IGNORECASE
+    ) or re.match(r"^privacy mode\??$", msg, re.IGNORECASE):
         from friday.runtime.blackout import enabled
 
         on = enabled()
@@ -127,7 +136,9 @@ def try_reflex(message: str) -> ReflexHit | None:
         r")\s*[?.!]?\s*$",
         msg,
     ):
-        text, cached = _cached(f"situation-{datetime.now().strftime('%Y%m%d%H%M')}", _situation_brief)
+        text, cached = _cached(
+            f"situation-{datetime.now().strftime('%Y%m%d%H%M')}", _situation_brief
+        )
         return ReflexHit("situation", text, cached=cached)
 
     if re.match(
@@ -136,8 +147,9 @@ def try_reflex(message: str) -> ReflexHit | None:
         r"|^what day is it\??$"
         r"|^what('?s| is) the (time|date)\??$",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
+
         def _clock() -> str:
             from friday.persona import owner_name
 
@@ -151,6 +163,7 @@ def try_reflex(message: str) -> ReflexHit | None:
         return ReflexHit("clock", text, cached=cached)
 
     if _is_greeting_only(raw) or _is_greeting_only(msg):
+
         def _greet() -> str:
             from friday.persona import owner_name
 
@@ -166,7 +179,12 @@ def try_reflex(message: str) -> ReflexHit | None:
         text, cached = _cached(f"greet-{datetime.now().hour}", _greet)
         return ReflexHit("greeting", text, cached=cached)
 
-    if re.match(r"^(how are you|status|systems? (check|status)|are you (up|online))\??$", msg, re.I):
+    if re.match(
+        r"^(how are you|status|systems? (check|status)|are you (up|online))\??$",
+        msg,
+        re.IGNORECASE,
+    ):
+
         def _status() -> str:
             from friday.persona import owner_name
             from friday.runtime.blackout import enabled
@@ -178,14 +196,5 @@ def try_reflex(message: str) -> ReflexHit | None:
 
         text, cached = _cached("status", _status)
         return ReflexHit("status", text, cached=cached)
-
-    if re.match(r"^(who are you|what('?s| is) your name)\??$", msg, re.I):
-        from friday.persona import owner_name
-
-        return ReflexHit(
-            "identity",
-            f"Friday — your local assistant on this PC, {owner_name()}. "
-            "I run here, I act here, and I don't phone home.",
-        )
 
     return None

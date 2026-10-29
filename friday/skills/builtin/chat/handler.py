@@ -39,25 +39,39 @@ def _history_messages(history: list[dict], *, limit: int = 16) -> list[dict]:
     return out
 
 
-def _honest_fallback(message: str, owner: str) -> str:
-    """Last resort when the model still dumps — answer the ask, never 'I glitched'."""
+def _direct_answer(message: str, owner: str) -> str:
+    """Answer from facts when the model dumps — never ask them to resend or 'try once more'."""
     m = (message or "").strip()
     low = m.lower()
+    try:
+        from friday.presence.identity import identity_answer, is_identity_ask
+
+        if is_identity_ask(m):
+            return identity_answer(m, owner)
+    except Exception:  # noqa: BLE001
+        pass
     if re.search(r"(?i)\b(too dumb|bad reply|useless|glitch)\b", low):
+        return f"Fair, {owner}. I'm still here — what do you need done?"
+    if re.search(r"(?i)\b(?:web)?camera|webcam\b", low):
         return (
-            f"Fair call, {owner}. That last answer failed. "
-            "Say the task once more and I'll take it cleanly."
+            f"I can use the local webcam when it's enabled and armed in Systems, {owner}. "
+            "Say look at me or what's on my desk and I'll take a real frame."
+        )
+    if re.search(
+        r"(?i)\b(schedule|agenda|plan for today|on today|what.+today)\b",
+        low,
+    ):
+        return (
+            f"I read today's agenda from the local plan board, {owner}. "
+            "Ask what's on schedule today and I'll list what's locked in — or say what to add."
         )
     if re.search(r"(?i)\b(pull(ed)? up|research|search|look(ed)? up|findings?)\b", low):
         return (
-            f"I don't have that research on this turn, {owner}. "
-            "Ask me to look it up again and I'll run search for real."
+            f"I don't have that research locked in this turn, {owner}. "
+            "Say what to look up and I'll run search for real."
         )
     if re.search(r"(?i)\b(remember|memory|what do you (know|have))\b", low):
-        return (
-            f"I need a memory search for that, {owner}. "
-            "Ask what I remember about a topic and I'll check notes."
-        )
+        return f"Ask what I remember about a topic, {owner}, and I'll check notes for real."
     if re.search(
         r"(?i)\b(freecad|\.fcstd|fcstd|\bcad\b|cube|bracket|plate)\b|"
         r"\b3\s*-?\s*d\s*(model|part|file)\b|"
@@ -66,9 +80,8 @@ def _honest_fallback(message: str, owner: str) -> str:
     ):
         return (
             f"I haven't run FreeCAD or saved anything on this turn, {owner}. "
-            "Say the part clearly (for example: make a 40×30×10 plate in FreeCAD) and I'll use the CAD path for real."
+            "Say the part clearly (for example: make a 40×30×10 plate in FreeCAD) and I'll use the CAD path."
         )
-    # Greetings / presence — never ask for "one more detail" on a hello.
     if re.search(
         r"(?i)\bwhat are you doing\b|"
         r"\bwhat('?s| is) up\b|"
@@ -78,21 +91,8 @@ def _honest_fallback(message: str, owner: str) -> str:
         low,
     ):
         return f"Right here, {owner} — standing by. What do you need?"
-    if re.search(
-        r"(?i)\b(just (a )?simple|simple thing|what i asked|that('?s| is) (all|it)|nothing fancy)\b",
-        low,
-    ):
-        return (
-            f"You're right, {owner} — that should've been easy. "
-            "Ask once more short and I'll answer straight."
-        )
-    short = re.sub(r"\s+", " ", m)[:80]
-    if short:
-        return (
-            f"I didn't get a clean answer out on that, {owner}. "
-            f"For \"{short}\"{'…' if len(m) > 80 else ''} — one more detail and I'll answer straight."
-        )
-    return f"Say that again with one more detail, {owner}, and I'll answer straight."
+    # Still answer — never tell them the reply was messy or to send it again.
+    return f"I'm with you, {owner}. What do you need done?"
 
 
 class SkillHandler(Skill):
@@ -111,7 +111,6 @@ class SkillHandler(Skill):
         from friday.humor import maybe_append_quip
         from friday.models.local import query_model_text
         from friday.persona import owner_name
-
         from friday.prompts import (
             CHAT_CHANNEL_ADDON,
             CHAT_ONGOING,
@@ -126,6 +125,19 @@ class SkillHandler(Skill):
         system += chat_owner_facts_block(owner_facts(10))
         system += chat_memory_hits_block(list(ctx.memory_hits or []))
         system += "\n\n" + CHAT_CHANNEL_ADDON
+        # Opt-in camera presence: one glance + appearance notes (discarded after turn).
+        try:
+            from friday.presence.camera_presence import presence_context_block
+
+            cam_block = presence_context_block()
+            if cam_block:
+                system += "\n\n" + cam_block
+                ctx.emit(
+                    "activity",
+                    {"step": "camera_presence", "message": "Presence glance…"},
+                )
+        except Exception:  # noqa: BLE001
+            pass
         # Doctrine is already agent-only in system_prompt — do not re-inject here.
         hist = _history_messages(list(ctx.history or []))
         if hist:
@@ -145,10 +157,13 @@ class SkillHandler(Skill):
         model_tag, route_meta = resolve_routed_chat_model(ctx.message)
         use_deep = deep_mode_enabled(ctx.message) and not ctx.voice_mode
         ctx.emit("status", {"status": "thinking"})
-        ctx.emit("activity", {
-            "step": "chat_think",
-            "message": "Working on a reply…",
-        })
+        ctx.emit(
+            "activity",
+            {
+                "step": "chat_think",
+                "message": "Working on a reply…",
+            },
+        )
 
         def _think(t: str) -> None:
             # HUD / live captions only — never TTS the raw chain-of-thought.
@@ -183,36 +198,49 @@ class SkillHandler(Skill):
             return SkillResult(reply=reply, skill_id="chat", metadata={"error": why})
         reply = (result.get("message") or result.get("raw") or "").strip()
         upgrades: list[str] = []
-        from friday.assistant.reply_guard import claims_unbacked_pc_action, looks_like_prompt_dump
+        from friday.assistant.reply_guard import (
+            claims_unbacked_pc_action,
+            looks_like_prompt_dump,
+        )
 
         who = owner_name()
-        if not reply:
-            reply = _honest_fallback(ctx.message, who)
-        elif claims_unbacked_pc_action(reply):
-            # Chat has no tools — never let the model invent Desktop / FreeCAD side effects.
-            print("[Chat] blocked unbacked PC/CAD claim in reply")
-            reply = _honest_fallback(ctx.message, who)
-        elif looks_like_prompt_dump(reply):
-            # Model recited scaffolding — one hard retry with clean prompt, no history ballast.
-            hard = [
-                {"role": "system", "content": chat_hard_retry_system(who)},
-                {"role": "user", "content": ctx.message},
-            ]
-            retry = query_model_text(
-                "",
-                messages=hard,
-                format_json=False,
-                reasoning_mode=False,
-                num_predict=160 if ctx.voice_mode else min(220, CHAT_NUM_PREDICT),
-                num_ctx=2048,
-                on_token=None,
-                model=model_tag,
-            )
-            retry_text = (retry.get("message") or retry.get("raw") or "").strip()
-            if retry_text and not looks_like_prompt_dump(retry_text):
-                reply = retry_text
-            else:
-                reply = _honest_fallback(ctx.message, who)
+        if (
+            not reply
+            or looks_like_prompt_dump(reply)
+            or claims_unbacked_pc_action(reply)
+        ):
+            if claims_unbacked_pc_action(reply or ""):
+                print("[Chat] blocked unbacked PC/CAD claim — retrying clean")
+            elif looks_like_prompt_dump(reply or ""):
+                print("[Chat] blocked prompt dump — retrying clean")
+            # Hard retry(s): prefer a real model answer over canned "one more detail".
+            recovered = ""
+            for attempt in range(2):
+                hard = [
+                    {"role": "system", "content": chat_hard_retry_system(who)},
+                    {"role": "user", "content": ctx.message},
+                ]
+                retry = query_model_text(
+                    "",
+                    messages=hard,
+                    format_json=False,
+                    reasoning_mode=False,
+                    num_predict=160
+                    if ctx.voice_mode
+                    else min(280, CHAT_NUM_PREDICT + 40),
+                    num_ctx=2048,
+                    on_token=_tok if attempt == 1 else None,
+                    model=model_tag,
+                )
+                retry_text = (retry.get("message") or retry.get("raw") or "").strip()
+                if (
+                    retry_text
+                    and not looks_like_prompt_dump(retry_text)
+                    and not claims_unbacked_pc_action(retry_text)
+                ):
+                    recovered = retry_text
+                    break
+            reply = recovered or _direct_answer(ctx.message, who)
         else:
             reply, upgrades = _capture_upgrades(reply)
             reply = maybe_append_quip(

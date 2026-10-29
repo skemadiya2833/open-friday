@@ -12,10 +12,11 @@ import time
 from collections import deque
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Deque
 
 # Per-request override from the Control Center Settings page.
-_humor_override: ContextVar[str | None] = ContextVar("friday_humor_override", default=None)
+_humor_override: ContextVar[str | None] = ContextVar(
+    "friday_humor_override", default=None
+)
 
 # Hand-written originals only — no film quotes.
 # Avoid "done / handled / noted" theater — those sound like work finished when glued to a stall.
@@ -30,28 +31,28 @@ _BANK = [
     "I'll keep the victory lap to a walk.",
 ]
 
-_recent: Deque[str] = deque(maxlen=20)
+_recent: deque[str] = deque(maxlen=20)
 _STRESS = re.compile(
     r"\b(urgent|emergency|asap|angry|upset|furious|crisis|panic|help me now|"
     r"something.?s wrong|broken|disaster)\b",
-    re.I,
+    re.IGNORECASE,
 )
 _ERR_MARKERS = re.compile(
     r"\b(error|failed|failure|denied|blocked|unauthorized|approval required|"
     r"couldn.?t|can'?t|cannot|unable|bad news|refused|"
     r"don'?t have access|no access to|internal knowledge base|"
     r"can'?t browse|cannot browse|unable to browse)\b",
-    re.I,
+    re.IGNORECASE,
 )
 _SECURITY = re.compile(
     r"\b(passkey|pairing|approve|approval|shell|authorize|authentication|"
     r"step-?up|revoke|credential|token|password|without asking|"
     r"physical confirmation|security)\b",
-    re.I,
+    re.IGNORECASE,
 )
 _BAD_NEWS = re.compile(
     r"\b(sorry|unfortunately|could not|wasn't able|i failed|went wrong)\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 
@@ -112,17 +113,26 @@ def blocked_context(
     return None
 
 
-def should_quip(*, user_text: str = "", reply: str = "", is_error: bool = False,
-                is_security: bool = False, is_approval: bool = False,
-                is_bad_news: bool = False) -> bool:
-    return blocked_context(
-        user_text=user_text,
-        reply=reply,
-        is_error=is_error,
-        is_security=is_security,
-        is_approval=is_approval,
-        is_bad_news=is_bad_news,
-    ) is None
+def should_quip(
+    *,
+    user_text: str = "",
+    reply: str = "",
+    is_error: bool = False,
+    is_security: bool = False,
+    is_approval: bool = False,
+    is_bad_news: bool = False,
+) -> bool:
+    return (
+        blocked_context(
+            user_text=user_text,
+            reply=reply,
+            is_error=is_error,
+            is_security=is_security,
+            is_approval=is_approval,
+            is_bad_news=is_bad_news,
+        )
+        is None
+    )
 
 
 def _rubric_ok(line: str) -> bool:
@@ -131,7 +141,16 @@ def _rubric_ok(line: str) -> bool:
         return False
     if s in _recent:
         return False
-    banned = ("i am iron", "assemble", "jarvis", "stark industries", "suit up")
+    # Film / franchise quote fragments — ban even in character skins.
+    banned = (
+        "i am iron man",
+        "avengers assemble",
+        "stark industries",
+        "suit up",
+        "i am inevitable",
+        "i don't feel so good",
+        "with great power",
+    )
     low = s.lower()
     if any(b in low for b in banned):
         return False
@@ -152,8 +171,22 @@ def pick_fallback_quip(*, context: str = "") -> str | None:
     elif 22 <= hour or hour < 5:
         timed = "Late shift. I'll keep it sharp so you can sleep eventually."
 
+    def _active_bank() -> list[str]:
+        try:
+            from friday.presence.registry import active_skin
+
+            bank = list(active_skin().humor_bank or ())
+            if bank:
+                return bank
+        except Exception:  # noqa: BLE001
+            pass
+        return list(_BANK)
+
     def _candidates() -> list[str]:
-        pool = ([timed] if timed and _rubric_ok(timed) else []) + [q for q in _BANK if _rubric_ok(q)]
+        bank = _active_bank()
+        pool = ([timed] if timed and _rubric_ok(timed) else []) + [
+            q for q in bank if _rubric_ok(q)
+        ]
         if context and "retry" in context.lower():
             pool.insert(0, "Second try. Persistence is underrated.")
         if context and "day_plan" in context.lower():
@@ -205,7 +238,8 @@ def maybe_append_quip(
     if (
         not quip
         and humor_level() in {"dry", "full", "roast"}
-        and (os.environ.get("FRIDAY_MODEL_ROLES") or "").lower() in {"1", "true", "yes", "on"}
+        and (os.environ.get("FRIDAY_MODEL_ROLES") or "").lower()
+        in {"1", "true", "yes", "on"}
     ):
         try:
             quip = _generate_quip(user_text=user_text, reply=reply, context=context)
@@ -246,13 +280,16 @@ def _generate_quip(*, user_text: str, reply: str, context: str) -> str | None:
         num_predict=40,
         model=model,
     )
-    line = (out.get("message") or out.get("raw") or "").strip().strip('"').split("\n")[0]
+    line = (
+        (out.get("message") or out.get("raw") or "").strip().strip('"').split("\n")[0]
+    )
     return line if _rubric_ok(line) else None
 
 
 # ---------------------------------------------------------------------------
 # Owner feedback (thumbs) — local JSON, bounded, deletable
 # ---------------------------------------------------------------------------
+
 
 class FeedbackStore:
     def __init__(self, path: Path | None = None) -> None:
@@ -299,7 +336,9 @@ class FeedbackStore:
 
     def delete(self, entry_id: str) -> bool:
         before = len(self.data.get("entries") or [])
-        self.data["entries"] = [e for e in (self.data.get("entries") or []) if e.get("id") != entry_id]
+        self.data["entries"] = [
+            e for e in (self.data.get("entries") or []) if e.get("id") != entry_id
+        ]
         self.save()
         return len(self.data["entries"]) < before
 
@@ -308,7 +347,9 @@ class FeedbackStore:
         out: list[str] = []
         for e in self.data.get("entries") or []:
             if e.get("vote") == "down" and e.get("kind") == "quip":
-                words = [w.lower() for w in re.findall(r"[a-zA-Z']{4,}", e.get("text") or "")]
+                words = [
+                    w.lower() for w in re.findall(r"[a-zA-Z']{4,}", e.get("text") or "")
+                ]
                 out.extend(words[:3])
         return list(dict.fromkeys(out))[-20:]
 

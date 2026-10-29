@@ -15,7 +15,14 @@ _SHOW_FRAME = re.compile(
     r"0,80}\b(camera|webcam|what you('?re| are) seeing|feed|preview|view)\b|"
     r"\b(show|open)\b.{"
     r"0,40}\b(what .{0,20}see)\b",
-    re.I,
+    re.IGNORECASE,
+)
+_ACCESS_ONLY = re.compile(
+    r"(?i)\b("
+    r"(?:can|could|do)\s+you\b.{0,48}\b(?:access|use|reach)\b.{0,40}\b(?:web)?camera\b|"
+    r"\bis\s+(?:my |the )?(?:web)?camera\b.{0,36}\b(?:on|ready|working|available|armed)\b|"
+    r"\b(?:access|use)\b.{0,24}\b(?:my |the )?(?:web)?camera\b"
+    r")",
 )
 
 
@@ -63,22 +70,54 @@ class SkillHandler(Skill):
         from friday.camera.describe import describe_camera
         from friday.camera.session import camera_feature_enabled, get_camera_session
         from friday.models.manager import get_model_manager
+        from friday.persona import owner_name
+
+        msg = ctx.message or ""
+        access_only = bool(_ACCESS_ONLY.search(msg)) and not _SHOW_FRAME.search(msg)
 
         if not camera_feature_enabled():
             reply = (
-                "Camera sensing is off. Turn on **Enable camera** in Systems "
-                "(or set `FRIDAY_CAMERA=on`), install "
-                "`pip install -r requirements/camera.lock.txt`, restart Friday, then ask again."
+                f"Not yet, {owner_name()} — camera sensing is off. "
+                "Enable it in Systems → Camera (or set FRIDAY_CAMERA=on), "
+                "install the camera extras if needed, then ask again."
             )
-            return SkillResult(reply=reply, skill_id="camera")
+            return SkillResult(reply=reply, skill_id="camera", metadata={"access": False})
 
         session = get_camera_session()
         st = session.status()
         if not st.opencv:
             return SkillResult(
-                reply="OpenCV is missing for webcam capture. Run `pip install -r requirements/camera.lock.txt` and restart.",
+                reply=(
+                    f"Camera is enabled but OpenCV isn't installed, {owner_name()}. "
+                    "Run `pip install -r requirements/camera.lock.txt` and restart."
+                ),
                 skill_id="camera",
+                metadata={"access": False},
             )
+
+        # Status-only ask — report readiness without forcing a full vision describe.
+        if access_only:
+            if not session.is_armed():
+                armed = session.arm(ttl=90)
+                if not armed.get("ok"):
+                    return SkillResult(
+                        reply=(
+                            armed.get("error")
+                            or f"Camera is on but I couldn't arm it, {owner_name()}. Try Arm camera in Systems."
+                        ),
+                        skill_id="camera",
+                        metadata={"access": False},
+                    )
+            return SkillResult(
+                reply=(
+                    f"Yes — I can use the webcam right now, {owner_name()}. "
+                    f"{st.detail or 'Armed and ready'}. "
+                    "Say look at me or what's on my desk and I'll take a frame."
+                ),
+                skill_id="camera",
+                metadata={"access": True, "status": st.to_dict() if hasattr(st, "to_dict") else {}},
+            )
+
         # Brief auto-arm for a look request so "show me what you see" just works.
         if not session.is_armed():
             armed = session.arm(ttl=90)
@@ -91,8 +130,8 @@ class SkillHandler(Skill):
                     skill_id="camera",
                 )
 
-        want_show = bool(_SHOW_FRAME.search(ctx.message or "")) or bool(
-            re.search(r"\b(show|open|display|preview|feed|through)\b", ctx.message or "", re.I)
+        want_show = bool(_SHOW_FRAME.search(msg)) or bool(
+            re.search(r"\b(show|open|display|preview|feed|through)\b", msg, re.IGNORECASE)
         )
 
         get_model_manager().ensure_loaded("vision")

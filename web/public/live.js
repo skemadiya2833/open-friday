@@ -13,8 +13,9 @@
     // Realtime streams Edge neural sentence-by-sentence; Relaxed speaks after the full reply.
     // eagerness mirrors OpenAI semantic_vad bands (ideas only) — see turn.js + docs/design/voice_turntaking.md
     // pauseMs kept as a legacy fallback if turn.js fails to load.
-    realtime: { pauseMs: 900, fillerMs: 280, streamSpeech: true, label: "Realtime", eagerness: "medium" },
-    relaxed: { pauseMs: 1600, fillerMs: 900, streamSpeech: false, label: "Relaxed", eagerness: "low" },
+    // Realtime: speak the first phrase ASAP (eager cut + caption-only thinking fillers).
+    realtime: { pauseMs: 450, fillerMs: 0, streamSpeech: true, label: "Realtime", eagerness: "high" },
+    relaxed: { pauseMs: 1400, fillerMs: 700, streamSpeech: false, label: "Relaxed", eagerness: "low" },
   };
   const PACE_RATE = { slow: "-18%", normal: "+0%", fast: "+18%" };
   const Voice = {
@@ -106,13 +107,32 @@
   // ------------------------------------------------------------------ orb
   const $ = (s) => document.querySelector(s);
   let overlay, canvas, g, raf = 0, state = "idle", t0 = 0, speakingSynth = false, open = false;
-  const COLORS = {
+  const COLORS_DEFAULT = {
     listening: ["#3ecbff", "#9be7ff"],
     thinking: ["#ffb347", "#ffd9a0"],
     acting: ["#ff6a2b", "#ffb347"],
     speaking: ["#7dffb2", "#c9ffe0"],
     idle: ["#3ecbff", "#9be7ff"],
   };
+  function skinColors() {
+    try {
+      const s = getComputedStyle(document.body);
+      const a = (s.getPropertyValue("--accent") || "").trim();
+      const a2 = (s.getPropertyValue("--accent-2") || "").trim();
+      const c = (s.getPropertyValue("--cyan") || "").trim();
+      if (!a || !a2 || !c) return COLORS_DEFAULT;
+      return {
+        listening: [c, a2],
+        thinking: [a2, a],
+        acting: [a, a2],
+        speaking: [a2, c],
+        idle: [c, a2],
+      };
+    } catch (_) {
+      return COLORS_DEFAULT;
+    }
+  }
+  const COLORS = COLORS_DEFAULT;
 
   // Real spectrum -> radial bars. Per-bar attack/decay smoothing + automatic gain, so quiet and loud voices both move the orb.
   const NB = 72, freq = new Uint8Array(256), bars = new Float32Array(NB);
@@ -156,7 +176,8 @@
     }
     level += (sum / NB - level) * (1 - Math.exp(-dt * 22));
     kick += (level - kick) * (1 - Math.exp(-dt * 10));
-    const [c1, c2] = COLORS[state] || COLORS.idle;
+    const pal = skinColors();
+    const [c1, c2] = pal[state] || pal.idle;
     g.clearRect(0, 0, W, H);
 
     const gl = g.createRadialGradient(cx, cy, R * 0.3, cx, cy, R * (1.9 + level * 0.9));
@@ -279,9 +300,11 @@
         ? window.sanitizeAssistantText(text)
         : String(text || "");
       const t = String(clean || "").replace(/\s+/g, " ").trim();
-      el.textContent = t.length > 220 ? "…" + t.slice(-220) : t;
+      // Full spoken line — CSS wraps/scrolls; never clip mid-word in the rail.
+      el.textContent = t;
       el.classList.toggle("filler", filler);
       el.classList.toggle("faded", !t);
+      el.scrollTop = el.scrollHeight;
     },
     activity(message, { live = true } = {}) {
       // Never open the RESULT panel for pipeline chatter — that panel is for the reply.
@@ -410,8 +433,8 @@
       let idx = Math.floor(Math.random() * 5);
       let progIdx = Math.floor(Math.random() * 4);
       let audioChain = Promise.resolve();
-      const speakAudio = !!speaker; // caption-only when TTS/voice is off
-      // Speak fillers in every pace mode — abort as soon as the real reply TTS starts.
+      // Realtime: captions only for thinking — audio fillers steal the TTS queue from the answer.
+      const speakAudio = !!speaker && !Voice.cfg().streamSpeech;
       const say = (type, { audio = speakAudio } = {}) => {
         if (stopped || spoken >= 4) return;
         const list = Live.FILLERS[type] || Live.FILLERS.thinking;
@@ -444,9 +467,9 @@
       return {
         // Realtime: speak sooner so "hold on boss" lands before a fast reply.
         start() {
-          const ms = Voice.cfg().streamSpeech
-            ? Math.min(220, Voice.cfg().fillerMs || 280)
-            : (Voice.cfg().fillerMs || 900);
+          // Realtime: no spoken/caption thinking fillers — they add delay before the answer.
+          if (Voice.cfg().streamSpeech) return;
+          const ms = Voice.cfg().fillerMs || 900;
           timer = setTimeout(() => {
             say(kind || "thinking");
             armBeat();
@@ -477,18 +500,20 @@
     },
 
     // ---------------------------------------------------------------- sentence-streamed speech
-    /* Always Edge neural (natural human voice). Realtime: stream clauses + prefetch N+1.
-     * Browser TTS is last-resort only — it sounds robotic on open speakers. */
+    /* Neural TTS when ready; first phrase falls through to browser fast so speech starts now.
+     * Realtime: eager first cut (clause / ~28 chars) — Jarvis-style talk-as-you-think. */
     speaker({ onFirst } = {}) {
       let pending = "", chain = Promise.resolve(), aborted = false, first = true, spokenReal = 0;
+      let eagerFirst = false;
       const trail = [];
       const sp = {
         spoken() { return spokenReal; },
         say(text, { filler = false } = {}) {
           const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
           if (!clean || aborted) return;
+          const isFirstReal = first && !filler;
           if (first) { first = false; onFirst && onFirst(); }
-          // Kick Edge fetch immediately; play when prior sentence finishes (prefetch N+1).
+          // Kick neural fetch immediately; play when prior sentence finishes (prefetch N+1).
           const pre = window.ttsFetchUrl ? window.ttsFetchUrl(clean) : Promise.resolve(null);
           chain = chain.then(async () => {
             if (aborted) return;
@@ -501,10 +526,18 @@
               if (trail.length > 6) trail.shift();
               Live._spokenTrail = trail.slice();
             }
-            // Never wait forever on Edge — fall through to browser voice.
+            // First phrase: speak via browser NOW (character pitch). Later lines use neural.
+            if (isFirstReal && window.speakBrowser) {
+              Live.synthSpeaking(true);
+              await Promise.race([
+                Promise.resolve(window.speakBrowser(clean)).catch(() => {}),
+                new Promise((r) => setTimeout(r, 20000)),
+              ]);
+              return;
+            }
             const url = await Promise.race([
               Promise.resolve(pre).catch(() => null),
-              new Promise((r) => setTimeout(() => r(null), 8500)),
+              new Promise((r) => setTimeout(() => r(null), 6000)),
             ]);
             if (aborted) return;
             const play = url && window.playUrl
@@ -521,19 +554,30 @@
         push(chunk) {
           pending += chunk;
           for (;;) {
-            // Cut on sentence endings only — never mid-clause on commas or raw length.
-            // (.!?…) + optional quotes/brackets + whitespace, or a blank line.
+            // Full sentence endings.
             const re = /[.!?\u2026]+["')\]]*(?:\s+|$)|(?:\r?\n){2,}/g;
             let m, cut = -1;
             while ((m = re.exec(pending))) {
               const end = m.index + m[0].length;
-              // Speak sooner: short openings ("Sure." / "On it.") used to wait for 18 chars.
-              if (end >= 8 || m[0].includes("\n")) { cut = end; break; }
+              if (end >= 4 || m[0].includes("\n")) { cut = end; break; }
             }
-            // Soft overflow: only at a word boundary if a sentence never arrived.
-            if (cut < 0 && pending.length > 160) {
-              const space = pending.lastIndexOf(" ", 140);
-              if (space >= 24) cut = space + 1;
+            // First utterance: start ASAP on a short phrase — don't wait for a period.
+            if (cut < 0 && spokenReal === 0 && !eagerFirst) {
+              const clause = /[,:;]\s+| — | – | - /g;
+              let cm;
+              while ((cm = clause.exec(pending))) {
+                const end = cm.index + cm[0].length;
+                if (end >= 12) { cut = end; eagerFirst = true; break; }
+              }
+              if (cut < 0 && pending.length >= 16) {
+                const space = pending.lastIndexOf(" ", Math.min(40, pending.length));
+                if (space >= 10) { cut = space + 1; eagerFirst = true; }
+              }
+            }
+            // Soft overflow at a word boundary if a sentence never arrived.
+            if (cut < 0 && pending.length > 80) {
+              const space = pending.lastIndexOf(" ", 72);
+              if (space >= 16) cut = space + 1;
             }
             if (cut < 0) break;
             sp.say(pending.slice(0, cut));

@@ -1,0 +1,6 @@
+id: presence
+name: Presence
+description: Switch callsign skins, chat models, and camera presence
+triggers: []
+priority: 96
+enabled: true

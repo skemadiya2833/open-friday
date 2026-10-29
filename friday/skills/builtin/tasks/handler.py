@@ -7,10 +7,12 @@ import re
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
 # Meta: build/organise the day — never store the utterance as an agenda item.
+# Do not match "what's on schedule today" (listing) — that is _LIST_TODAY.
 _PLAN_DAY = re.compile(
-    r"\b((help (me )?)?(plan|organise|organize|schedule|map out)\s+(my |the |a )?(day|today|agenda)"
+    r"\b((help (me )?)?(plan|organise|organize|map out)\s+(my |the |a )?(day|today|agenda)"
+    r"|(help (me )?)?schedule\s+(my |the |a )(day|today|agenda)"
     r"|make (me )?(a )?(day )?plan|organize my day|plan my day)\b",
-    re.I,
+    re.IGNORECASE,
 )
 # Add a concrete item — requires add-like language (bare "plan" alone is NOT enough).
 _ADD_TODAY = re.compile(
@@ -19,21 +21,23 @@ _ADD_TODAY = re.compile(
     r"for today\s*[:\-]|today\s*[:\-]\s+\S|"
     r"remind me today|"
     r"lock(ed)? in for today)\b",
-    re.I,
+    re.IGNORECASE,
 )
 _LIST_TODAY = re.compile(
     r"\b("
-    r"what('?s| is) (on |up for |up with )?(my )?(plan|agenda|today)|"
+    r"what('?s| is) (on |up for |up with )?(my )?(plan|agenda|today|schedule)|"
+    r"what\s+do\s+(we|i|you)\s+have\b.{0,40}\b(schedule|agenda|plan|today)|"
     r"what('?s| is) up( for today| today)?|"
-    r"(tell me |read (me )?|give me )?(the |my |today'?s )?(plan|agenda)( for today)?|"
-    r"show (me )?(my |the |today'?s )?(plan|agenda)|"
-    r"today'?s (plan|agenda|tasks)|list (my )?(plan|agenda)|"
+    r"(tell me |read (me )?|give me )?(the |my |today'?s )?(plan|agenda|schedule)( for today)?|"
+    r"show (me )?(my |the |today'?s )?(plan|agenda|schedule)|"
+    r"today'?s (plan|agenda|tasks|schedule)|list (my )?(plan|agenda|schedule)|"
     r"what('?s| is) the plan( for today)?|"
-    r"plan for today|agenda for today"
+    r"plan for today|agenda for today|schedule for today|"
+    r"on (the |my )?schedule( today)?"
     r")\b",
-    re.I,
+    re.IGNORECASE,
 )
-_DONE = re.compile(r"\b(done|finished|completed|check off)\b", re.I)
+_DONE = re.compile(r"\b(done|finished|completed|check off)\b", re.IGNORECASE)
 
 
 class SkillHandler(Skill):
@@ -145,7 +149,7 @@ class SkillHandler(Skill):
                     else f"Sure, {owner_name()}. When should I remind you? Say something like \"in 20 minutes\", \"tomorrow at 9\" or \"every weekday at 8\"."
                 )
                 return SkillResult(reply=reply, skill_id="tasks")
-        if re.search(r"\b(reminders?|alarms?|scheduled)\b", msg, re.I) and re.search(r"\b(what|which|show|list|any)\b", msg, re.I):
+        if re.search(r"\b(reminders?|alarms?|scheduled)\b", msg, re.IGNORECASE) and re.search(r"\b(what|which|show|list|any)\b", msg, re.IGNORECASE):
             import datetime as _dt
 
             from friday.persona import owner_name
@@ -169,6 +173,7 @@ class SkillHandler(Skill):
             extract_proposed_from_assistant,
             is_empty_task_capture,
             is_meta_plan_request,
+            is_schedule_list_request,
             parse_lock_in_confirmation,
             split_task_dictation,
         )
@@ -229,15 +234,15 @@ class SkillHandler(Skill):
                 },
             )
 
+        # Fast path: today's agenda / "what's on schedule" — never route to plan-my-day theater.
+        if (_LIST_TODAY.search(msg) or is_schedule_list_request(msg)) and not _ADD_TODAY.search(msg):
+            return self._reply_today_plan(ctx, msg, maybe_append_quip)
+
         # "Plan my day" / organise today — propose an outline; never save the request as a task.
-        if _PLAN_DAY.search(msg) or is_meta_plan_request(msg):
+        if (_PLAN_DAY.search(msg) or is_meta_plan_request(msg)) and not is_schedule_list_request(msg):
             built = compose_day_plan_reply(user_text=msg, voice_mode=bool(ctx.voice_mode))
             reply = maybe_append_quip(built["reply"], user_text=msg, context="day_plan")
             return SkillResult(reply=reply, skill_id="tasks", metadata={k: v for k, v in built.items() if k != "reply"})
-
-        # Fast path: today's agenda without a full ReAct loop.
-        if _LIST_TODAY.search(msg) and not _ADD_TODAY.search(msg):
-            return self._reply_today_plan(ctx, msg, maybe_append_quip)
 
         if _ADD_TODAY.search(msg):
             from friday.tasks.plan import add_item, format_for_prompt, get_plan

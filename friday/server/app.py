@@ -8,33 +8,54 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.config import (
-    API_TOKEN, DATA_DIR, EXTRA_ALLOWED_HOSTS, EXTRA_ALLOWED_ORIGINS, SERVER_HOST, SERVER_PORT,
-    SERVER_TLS_PORT, VOICE_ENABLED, ensure_data_dirs, resolve_chat_model,
+    API_TOKEN,
+    DATA_DIR,
+    EMBED_MODEL,
+    EXTRA_ALLOWED_HOSTS,
+    EXTRA_ALLOWED_ORIGINS,
+    SERVER_HOST,
+    SERVER_PORT,
+    SERVER_TLS_PORT,
+    VOICE_ENABLED,
+    ensure_data_dirs,
+    resolve_chat_model,
 )
-from friday.config import EMBED_MODEL
-from friday.server.routes_runs import router as runs_router
-from friday.server.routes_reminders import router as reminders_router
-from friday.server.routes_experience import router as experience_router
-from friday.server.routes_skillmd import router as skillmd_router
-from friday.server.routes_tools import router as tools_router
-from friday.server.routes_auth import router as auth_router
-from friday.server.routes_feedback import router as feedback_router
-from friday.server.routes_training import router as training_router
-from friday.server.routes_reports import router as reports_router
-from friday.server.routes_assistant import router as assistant_router
-from friday.server.routes_calendar import router as calendar_router
 from friday.server.routes_activity import router as activity_router
-from friday.server.routes_camera import router as camera_router
+from friday.server.routes_assistant import router as assistant_router
+from friday.server.routes_auth import router as auth_router
 from friday.server.routes_cad import router as cad_router
-from friday.server.routes_systems import router as systems_router
+from friday.server.routes_calendar import router as calendar_router
+from friday.server.routes_camera import router as camera_router
+from friday.server.routes_experience import router as experience_router
+from friday.server.routes_feedback import router as feedback_router
 from friday.server.routes_plans import router as plans_router
-from friday.server.security import RequestGuard, default_allowed_hosts, is_loopback, set_listen_host
+from friday.server.routes_presence import router as presence_router
+from friday.server.routes_reminders import router as reminders_router
+from friday.server.routes_reports import router as reports_router
+from friday.server.routes_runs import router as runs_router
+from friday.server.routes_skillmd import router as skillmd_router
+from friday.server.routes_systems import router as systems_router
+from friday.server.routes_tools import router as tools_router
+from friday.server.routes_training import router as training_router
+from friday.server.security import (
+    RequestGuard,
+    default_allowed_hosts,
+    is_loopback,
+    set_listen_host,
+)
 
 ensure_data_dirs()
 
@@ -45,7 +66,7 @@ async def lifespan(_app: FastAPI):
         from friday.diagnostics import enforce
         from friday.logs import setup_logging
 
-        enforce()                       # clear error + refuse to start on invalid config
+        enforce()  # clear error + refuse to start on invalid config
         setup_logging()
     except SystemExit:
         raise
@@ -79,7 +100,7 @@ async def lifespan(_app: FastAPI):
     try:
         from friday.tasks.scheduler import get_scheduler
 
-        get_scheduler()                 # arm saved reminders; late ones are delivered immediately
+        get_scheduler()  # arm saved reminders; late ones are delivered immediately
         try:
             from friday.briefing.morning import sync_builtin_job
 
@@ -93,6 +114,12 @@ async def lifespan(_app: FastAPI):
             print(f"[Briefing] sync skipped: {exc}")
     except Exception as exc:  # noqa: BLE001
         print(f"[Tasks] scheduler startup skipped: {exc}")
+    try:
+        from friday.presence.registry import warm_tts_voice
+
+        warm_tts_voice()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[TTS] warm skipped: {exc}")
     yield
     try:
         from friday.channels.telegram import stop as stop_telegram
@@ -129,6 +156,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Friday", version="3.1.0", lifespan=lifespan)
+
+
 # No CORS: the UI is served same-origin. The guard rejects foreign Host/Origin headers
 # (DNS rebinding / CSRF) and enforces a bearer token for non-loopback binds.
 def _guard_origins() -> list[str]:
@@ -164,6 +193,7 @@ app.include_router(camera_router)
 app.include_router(cad_router)
 app.include_router(systems_router)
 app.include_router(plans_router)
+app.include_router(presence_router)
 
 _ws_clients: list[WebSocket] = []
 
@@ -290,7 +320,11 @@ async def chat_stream(req: ChatRequest):
         if obj is None or isinstance(obj, (bool, int, float, str)):
             return obj
         if isinstance(obj, dict):
-            return {str(k): _safe(v) for k, v in obj.items() if str(k) not in {"image", "pil_image", "frame", "screenshot"}}
+            return {
+                str(k): _safe(v)
+                for k, v in obj.items()
+                if str(k) not in {"image", "pil_image", "frame", "screenshot"}
+            }
         if isinstance(obj, (list, tuple)):
             return [_safe(v) for v in obj]
         if "Image" in type(obj).__name__:
@@ -319,12 +353,14 @@ async def chat_stream(req: ChatRequest):
 @app.get("/api/sessions")
 def sessions() -> list[dict[str, Any]]:
     from friday.assistant.session import get_session_store
+
     return get_session_store().list_sessions()
 
 
 @app.get("/api/sessions/{session_id}")
 def session_detail(session_id: str) -> dict[str, Any]:
     from friday.assistant.session import get_session_store
+
     s = get_session_store().load(session_id)
     if not s:
         raise HTTPException(404, "Session not found")
@@ -334,18 +370,21 @@ def session_detail(session_id: str) -> dict[str, Any]:
 @app.post("/api/sessions")
 def new_session() -> dict[str, Any]:
     from friday.assistant.session import get_session_store
+
     return get_session_store().create().to_dict()
 
 
 @app.get("/api/skills")
 def skills() -> list[dict[str, Any]]:
     from friday.skills.registry import get_registry
+
     return [m.to_dict() for m in get_registry().list()]
 
 
 @app.patch("/api/skills/{skill_id}")
 def patch_skill(skill_id: str, body: SkillPatch) -> dict[str, Any]:
     from friday.skills.registry import get_registry
+
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     m = get_registry().update_manifest(skill_id, patch)
     if not m:
@@ -356,6 +395,7 @@ def patch_skill(skill_id: str, body: SkillPatch) -> dict[str, Any]:
 @app.post("/api/skills/{skill_id}/enabled")
 def set_skill_enabled(skill_id: str, enabled: bool = True) -> dict[str, Any]:
     from friday.skills.registry import get_registry
+
     if not get_registry().set_enabled(skill_id, enabled):
         raise HTTPException(404, "Skill not found")
     return {"id": skill_id, "enabled": enabled}
@@ -364,6 +404,7 @@ def set_skill_enabled(skill_id: str, enabled: bool = True) -> dict[str, Any]:
 @app.get("/api/memory")
 def memory_list(collection: str = "memories", limit: int = 100) -> list[dict[str, Any]]:
     from friday.memory import get_memory
+
     return [
         {"id": h.id, "text": h.text, "score": h.score, "metadata": h.metadata}
         for h in get_memory().list_all(collection=collection, limit=limit)
@@ -371,8 +412,11 @@ def memory_list(collection: str = "memories", limit: int = 100) -> list[dict[str
 
 
 @app.get("/api/memory/search")
-def memory_search(q: str, collection: str = "memories", limit: int = 8) -> list[dict[str, Any]]:
+def memory_search(
+    q: str, collection: str = "memories", limit: int = 8
+) -> list[dict[str, Any]]:
     from friday.memory import get_memory
+
     return [
         {"id": h.id, "text": h.text, "score": h.score, "metadata": h.metadata}
         for h in get_memory().search(q, collection=collection, limit=limit)
@@ -415,11 +459,14 @@ def memory_forget_all() -> dict[str, Any]:
 @app.get("/api/memory/stats")
 def memory_stats() -> dict[str, int]:
     from friday.memory import get_memory
+
     try:
         return get_memory().stats()
     except Exception as exc:
         print(f"[Memory] stats recovery: {exc}")
-        from friday.memory import reset_memory_singleton, get_memory as gm
+        from friday.memory import get_memory as gm
+        from friday.memory import reset_memory_singleton
+
         reset_memory_singleton()
         return gm().stats()
 
@@ -427,6 +474,7 @@ def memory_stats() -> dict[str, int]:
 @app.get("/api/tasks")
 def tasks_list() -> list[dict[str, Any]]:
     from friday.tasks.scheduler import get_scheduler
+
     return get_scheduler().list_jobs()
 
 
@@ -453,6 +501,7 @@ def tasks_create(body: TaskCreate) -> dict[str, Any]:
 @app.delete("/api/tasks/{job_id}")
 def tasks_cancel(job_id: str) -> dict[str, Any]:
     from friday.tasks.scheduler import get_scheduler
+
     if not get_scheduler().cancel(job_id):
         raise HTTPException(404, "Not found")
     return {"cancelled": True}
@@ -461,6 +510,7 @@ def tasks_cancel(job_id: str) -> dict[str, Any]:
 @app.post("/api/tasks/{job_id}/run")
 def tasks_run(job_id: str) -> dict[str, Any]:
     from friday.tasks.scheduler import get_scheduler
+
     if not get_scheduler().run_now(job_id):
         raise HTTPException(404, "Not found")
     return {"started": True}
@@ -469,12 +519,14 @@ def tasks_run(job_id: str) -> dict[str, Any]:
 @app.get("/api/plan/today")
 def plan_today() -> dict[str, Any]:
     from friday.tasks.plan import get_plan
+
     return get_plan()
 
 
 @app.post("/api/plan/today")
 def plan_add(body: PlanAddRequest) -> dict[str, Any]:
     from friday.tasks.plan import add_item
+
     try:
         return add_item(body.text, note=body.note)
     except ValueError as exc:
@@ -484,6 +536,7 @@ def plan_add(body: PlanAddRequest) -> dict[str, Any]:
 @app.post("/api/plan/today/{item_id}/done")
 def plan_done(item_id: str, done: bool = True) -> dict[str, Any]:
     from friday.tasks.plan import set_done
+
     item = set_done(item_id, done)
     if not item:
         raise HTTPException(404, "Not found")
@@ -493,6 +546,7 @@ def plan_done(item_id: str, done: bool = True) -> dict[str, Any]:
 @app.delete("/api/plan/today/{item_id}")
 def plan_delete(item_id: str) -> dict[str, Any]:
     from friday.tasks.plan import remove_item
+
     if not remove_item(item_id):
         raise HTTPException(404, "Not found")
     return {"deleted": True}
@@ -533,7 +587,10 @@ def agent_cancel() -> dict[str, Any]:
 
     n = cancel_all_agents("api") + 0
     get_run_manager().cancel_all("api")
-    return {"cancelled": n > 0, "message": "halt requested" if n else "no agent running"}
+    return {
+        "cancelled": n > 0,
+        "message": "halt requested" if n else "no agent running",
+    }
 
 
 @app.get("/api/agent/status")
@@ -555,7 +612,9 @@ async def voice_transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(400, "Voice disabled")
     from friday.voice.stt import transcribe_bytes
 
-    max_bytes = 25 * 1024 * 1024            # ~13 min of 16 kHz mono wav; stops disk/RAM exhaustion
+    max_bytes = (
+        25 * 1024 * 1024
+    )  # ~13 min of 16 kHz mono wav; stops disk/RAM exhaustion
     data = await file.read(max_bytes + 1)
     if not data:
         raise HTTPException(400, "Empty audio upload")
@@ -582,13 +641,32 @@ async def voice_transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
 def voice_speak(body: TTSRequest):
     if not VOICE_ENABLED:
         raise HTTPException(400, "Voice disabled")
-    from friday.voice.tts import synthesize_bytes
     from fastapi.responses import Response
 
+    from friday.voice.tts import synthesize_bytes
+
+    voice = (body.voice or "").strip() or None
+    rate = (body.rate or "").strip() or None
+    # Stale HUD may still send Edge GuyNeural after a skin switch — prefer active callsign.
+    try:
+        from friday.presence.registry import active_skin
+
+        skin = active_skin()
+        skin_v = (skin.tts_voice or "").strip()
+        if not voice:
+            voice = skin_v or None
+        elif skin_v.startswith(("af_", "bf_", "am_", "bm_")) and (
+            "Neural" in voice or voice.startswith("en-")
+        ):
+            voice = skin_v
+        if not rate:
+            rate = getattr(skin, "tts_rate", None) or None
+    except Exception:  # noqa: BLE001
+        pass
     data, mime = synthesize_bytes(
         body.text,
-        rate=body.rate,
-        voice=(body.voice or "").strip() or None,
+        rate=rate,
+        voice=voice,
         engine=(body.engine or "").strip() or None,
     )
     if mime.startswith("text"):
@@ -596,6 +674,39 @@ def voice_speak(body: TTSRequest):
             503,
             "Neural TTS unavailable — client should use browser SpeechSynthesis.",
         )
+    # Optional lip-sync after TTS (never blocks the audio response).
+    try:
+        from friday.avatar.pipeline import lipsync_enabled, render_for_active_skin
+
+        if lipsync_enabled() and data:
+            import tempfile
+            import threading
+            from pathlib import Path
+
+            def _avatar_job(payload: bytes, audio_mime: str) -> None:
+                suffix = (
+                    ".mp3" if "mpeg" in audio_mime or "mp3" in audio_mime else ".wav"
+                )
+                tmp = Path(tempfile.gettempdir()) / f"friday-tts-avatar{suffix}"
+                try:
+                    tmp.write_bytes(payload)
+                    render_for_active_skin(audio_path=tmp)
+                except Exception:  # noqa: BLE001
+                    pass
+                finally:
+                    try:
+                        tmp.unlink(missing_ok=True)
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            threading.Thread(
+                target=_avatar_job,
+                args=(data, mime),
+                daemon=True,
+                name="friday-avatar-lipsync",
+            ).start()
+    except Exception:  # noqa: BLE001
+        pass
     return Response(
         content=data,
         media_type=mime,
@@ -670,14 +781,26 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
     set_listen_host(bind)
 
     print(f"[Friday] Local  → http://127.0.0.1:{port}/")
-    print(f"[Friday] Auth   → mode={auth.mode} rp_id={auth.rp_id} origin={auth.origin}", flush=True)
+    print(
+        f"[Friday] Auth   → mode={auth.mode} rp_id={auth.rp_id} origin={auth.origin}",
+        flush=True,
+    )
     if auth.mode == "lan":
         for ip in local_ipv4s():
-            print(f"[Friday] Phone  → http://{ip}:{port}/  (approve device; passkey optional)", flush=True)
+            print(
+                f"[Friday] Phone  → http://{ip}:{port}/  (approve device; passkey optional)",
+                flush=True,
+            )
     elif auth.mode == "remote" and auth.public_host:
-        print(f"[Friday] Phone  → https://{auth.public_host}/  (passkey required)", flush=True)
+        print(
+            f"[Friday] Phone  → https://{auth.public_host}/  (passkey required)",
+            flush=True,
+        )
     else:
-        print("[Friday] Phone  → set FRIDAY_AUTH=lan in .env for Wi‑Fi access (docs/PHONE_SETUP.md)", flush=True)
+        print(
+            "[Friday] Phone  → set FRIDAY_AUTH=lan in .env for Wi‑Fi access (docs/PHONE_SETUP.md)",
+            flush=True,
+        )
     tls_port = SERVER_TLS_PORT
     if not is_loopback(bind) and auth.mode in ("remote", "lan"):
         from friday.server.lan import ensure_inbound
@@ -709,9 +832,15 @@ def run_server(host: str | None = None, port: int | None = None) -> None:
 
             threading.Thread(target=_https, name="FridayHTTPS", daemon=True).start()
             if auth.public_host:
-                print(f"[Friday] TLS    → https://{auth.public_host}:{tls_port}/", flush=True)
+                print(
+                    f"[Friday] TLS    → https://{auth.public_host}:{tls_port}/",
+                    flush=True,
+                )
             for ip in local_ipv4s():
-                print(f"[Friday] TLS    → https://{ip}:{tls_port}/  (self-signed; accept warning for mic)", flush=True)
+                print(
+                    f"[Friday] TLS    → https://{ip}:{tls_port}/  (self-signed; accept warning for mic)",
+                    flush=True,
+                )
         except Exception as exc:  # noqa: BLE001
             print(f"[Friday] HTTPS unavailable: {exc}", flush=True)
     print("[Friday] Stop   → Ctrl+C", flush=True)

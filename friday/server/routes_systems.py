@@ -157,6 +157,23 @@ def _apply_side_effects(patch: dict[str, Any]) -> None:
             set_humor_override(None)
         except Exception:  # noqa: BLE001
             pass
+    if "presence_skin" in patch:
+        try:
+            from friday.presence.skins import get_skin
+            from friday.runtime.prefs import get as pref_get
+            from friday.runtime.prefs import update as prefs_update
+
+            # Sync TTS + humor to the skin without re-entering apply_skin (already patched).
+            skin = get_skin(str(pref_get("presence_skin") or "friday"))
+            prefs_update({"tts_voice": skin.tts_voice, "humor": skin.humor_level})
+            from friday.presence.registry import presence_snapshot
+
+            snap = presence_snapshot()
+            from friday.presence.registry import _schedule_ws_presence
+
+            _schedule_ws_presence(snap)
+        except Exception:  # noqa: BLE001
+            pass
     if "chat_model" in patch or "vision_model" in patch:
         try:
             from friday import config as C

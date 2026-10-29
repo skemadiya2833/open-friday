@@ -14,7 +14,9 @@ from typing import Any, Literal
 
 from friday.skills.registry import get_registry
 
-Mode = Literal["talk", "look", "act", "cad", "remember", "research", "files", "schedule", "clarify"]
+Mode = Literal[
+    "talk", "look", "act", "cad", "remember", "research", "files", "schedule", "clarify"
+]
 
 _MODE_TO_SKILL = {
     "talk": "chat",
@@ -39,7 +41,7 @@ _LOOK_ONLY = re.compile(
     r"describe (my |the )?(screen|desktop|display)|look at (my )?(screen|desktop)|"
     r"tell me what you see|is (my )?(screen|desktop)"
     r")\b",
-    re.I,
+    re.IGNORECASE,
 )
 # Sitrep / "what's going on" with no screen words → chat (agenda/time), not desktop act.
 _SITUATION_ASK = re.compile(
@@ -60,19 +62,22 @@ _CAMERA_LOOK = re.compile(
     r"|(?:show|open|display)\b.{0,80}\b(?:(?:web)?camera|what (?:you'?re|you are|it'?s) (?:seeing|looking at))"
     r"|\b(?:what|what'?s|whats)\b.{0,60}\b(?:(?:web)?camera|seeing through)\b"
     r"|\blook through\b.{0,40}\b(?:web)?camera\b"
+    r"|\b(?:can|could|do)\s+you\b.{0,48}\b(?:access|use|see|open|reach)\b.{0,40}\b(?:web)?camera\b"
+    r"|\b(?:access|use)\b.{0,24}\b(?:my |the )?(?:web)?camera\b"
+    r"|\bis\s+(?:my |the )?(?:web)?camera\b.{0,36}\b(?:on|ready|working|available|armed)\b"
     r")",
-    re.I,
+    re.IGNORECASE,
 )
 _QUESTION = re.compile(
     r"^\s*(who|what|when|where|why|how|can you|could you|would you|is there|"
     r"are there|do you)\b.*\?\s*$",
-    re.I,
+    re.IGNORECASE,
 )
 _IMPERATIVE = re.compile(
     r"\b(open|launch|start|click|type|write|save|close|delete|install|download|"
     r"create|rename|move|copy|paste|run|execute|press|drag|scroll|"
     r"show|display|put|bring up|pull up)\b",
-    re.I,
+    re.IGNORECASE,
 )
 # "Put my system specs / resources / specification on screen" — act (direct tools → HTML).
 _SHOW_ON_SCREEN = re.compile(
@@ -85,7 +90,7 @@ _SHOW_ON_SCREEN = re.compile(
     r"computer specs?|device specs?|my specs?|my specifications?|specifications?|"
     r"resources?.{0,40}on (the )?system)\b.{"
     r"0,60}\b(on (my |the )?(screen|desktop)|in notepad|html|browser)\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 
@@ -137,7 +142,9 @@ def _parse_intent_json(text: str) -> dict[str, Any] | None:
     return None
 
 
-def _llm_classify(message: str, history: list[dict[str, str]] | None = None) -> dict[str, Any] | None:
+def _llm_classify(
+    message: str, history: list[dict[str, str]] | None = None
+) -> dict[str, Any] | None:
     from friday.config import CHAT_NUM_CTX
     from friday.models.local import query_model_text
 
@@ -180,7 +187,7 @@ def _normalize_proposed(data: dict[str, Any], message: str) -> Intent:
         skill = "observe"
     try:
         conf = float(data.get("confidence") or 0.5)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         conf = 0.5
     conf = max(0.0, min(1.0, conf))
     objective = str(data.get("objective") or message).strip() or message
@@ -221,7 +228,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
 
     # 2) Sitrep without screen words can never become Act / observe.
     if _SITUATION_ASK.match(msg) and not re.search(
-        r"\b(screen|desktop|monitor|display)\b", msg, re.I
+        r"\b(screen|desktop|monitor|display)\b", msg, re.IGNORECASE
     ):
         return Intent(
             mode="talk",
@@ -256,7 +263,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
                 r"\b(system specs?|hardware (?:status|check|report|info|specs?)|"
                 r"system hardware|pc specs?|my (?:system )?specs?)\b",
                 msg,
-                re.I,
+                re.IGNORECASE,
             )
         )
         has_imperative = bool(
@@ -267,7 +274,11 @@ def apply_policy(intent: Intent, message: str) -> Intent:
         )
         if not has_imperative:
             # Downgrade: question without action verbs → look if screen-related else talk
-            if re.search(r"\b(screen|desktop|monitor|display|window|open apps?)\b", msg, re.I):
+            if re.search(
+                r"\b(screen|desktop|monitor|display|window|open apps?)\b",
+                msg,
+                re.IGNORECASE,
+            ):
                 return Intent(
                     mode="look",
                     skill_id="observe",
@@ -297,7 +308,7 @@ def apply_policy(intent: Intent, message: str) -> Intent:
             if not re.search(
                 r"\b(system specs?|hardware (?:status|check|report)|pc specs?)\b",
                 msg,
-                re.I,
+                re.IGNORECASE,
             ):
                 return Intent(
                     mode="talk",
@@ -319,7 +330,9 @@ def apply_policy(intent: Intent, message: str) -> Intent:
     return intent
 
 
-def _deterministic_intent(message: str, history: list[dict[str, str]] | None = None) -> Intent | None:
+def _deterministic_intent(
+    message: str, history: list[dict[str, str]] | None = None
+) -> Intent | None:
     """
     Decide without the LLM when the utterance is unambiguous.
     This is the architectural fix: never ask a confused model a solved question.
@@ -327,9 +340,18 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     msg = message.strip()
     if not msg:
         return Intent(
-            mode="talk", skill_id="chat", confidence=1.0,
-            objective=msg, reason="empty", source="policy",
+            mode="talk",
+            skill_id="chat",
+            confidence=1.0,
+            objective=msg,
+            reason="empty",
+            source="policy",
         )
+
+    # Presence: skin / model / camera-presence switches (before camera look & chat).
+    presence_hit = _resolve_presence_intent(msg)
+    if presence_hit is not None:
+        return presence_hit
 
     # Webcam / desk camera before screen observe.
     # "show/open the camera" still counts as look (imperative words are OK here).
@@ -345,7 +367,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
 
     # Sitrep / "what's going on" (no screen) → talk — never computer_use.
     if _SITUATION_ASK.match(msg) and not re.search(
-        r"\b(screen|desktop|monitor|display)\b", msg, re.I
+        r"\b(screen|desktop|monitor|display)\b", msg, re.IGNORECASE
     ):
         return Intent(
             mode="talk",
@@ -379,7 +401,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"^(hi|hello|hey|thanks|thank you|good (morning|afternoon|evening)|"
         r"how are you|what('?s| is) your name)\b[!?.]*$",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="talk",
@@ -420,21 +442,49 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     from friday.tasks import reminders as _RM
 
     if _RM.is_reminder_request(msg) or re.search(
-        r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b", msg, re.I
+        r"\b(what|which|show|list)\b.{0,25}\b(reminders?|alarms?|scheduled)\b",
+        msg,
+        re.IGNORECASE,
     ):
-        return Intent(mode="schedule", skill_id="tasks", confidence=0.95, objective=msg,
-                      reason="deterministic: reminder", source="policy")
+        return Intent(
+            mode="schedule",
+            skill_id="tasks",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: reminder",
+            source="policy",
+        )
     if history:
-        last_a = next((t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
-        if re.search(r"when should I remind|say something like .in 20 minutes", last_a, re.I):
+        last_a = next(
+            (
+                t.get("content") or ""
+                for t in reversed(history)
+                if t.get("role") == "assistant"
+            ),
+            "",
+        )
+        if re.search(
+            r"when should I remind|say something like .in 20 minutes",
+            last_a,
+            re.IGNORECASE,
+        ):
             # Mic often re-hears Friday's own ask; only continue if the user gave a time.
-            echo = bool(re.search(
-                r"when should I remind|say something like|sure,? (?:boss|chief)",
-                msg, re.I,
-            ))
+            echo = bool(
+                re.search(
+                    r"when should I remind|say something like|sure,? (?:boss|chief)",
+                    msg,
+                    re.IGNORECASE,
+                )
+            )
             if not echo and (_RM.parse_when(msg) or _RM.is_reminder_request(msg)):
-                return Intent(mode="schedule", skill_id="tasks", confidence=0.93, objective=msg,
-                              reason="deterministic: reminder follow-up", source="policy")
+                return Intent(
+                    mode="schedule",
+                    skill_id="tasks",
+                    confidence=0.93,
+                    objective=msg,
+                    reason="deterministic: reminder follow-up",
+                    source="policy",
+                )
 
     # Plan / organise my day (meta) + concrete agenda phrases → tasks skill.
     if _RM.is_agenda_briefing(msg) or re.search(
@@ -446,7 +496,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"what('?s| is) (up for )?today|what('?s| is) the plan( for today)?|"
         r"(tell me |read )?(the |my )?plan for today|agenda for today)\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="schedule",
@@ -460,38 +510,35 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     # Conversational CAD: "make a 3d model…", plates/brackets with sizes, FreeCAD/Taiga.
     # Before HTML "build a page" / research. Skip filament / slicer shopping.
     # Also catch short solids ("make a cube") — otherwise chat invents .FCStd / desktop saves.
-    if (
-        re.search(
-            # ASR: "free CID" / "free cad" → FreeCAD
-            r"\b(freecad|free\s*c(?:ad|id)|free\s*cad|freecid|taiga(?:-s1)?|biome-s1|\.?fcstd)\b|"
-            r"\b(?:set\s*up|setup|enable|disable|launch|start)\b.{0,40}\b(?:cad|freecad|taiga)\b|"
-            r"\b(?:cad|freecad|taiga|free\s*c(?:ad|id))\b.{0,40}\b"
-            r"(?:set\s*up|setup|status|enable|disable|launch|open(?:ed)?|server)\b|"
-            r"\b(?:3\s*-?\s*d|3d|cad)\s*(?:model|part|solid|object|file)\b|"
-            r"\b(?:make|build|model|design|sketch|create|save)\b.{0,40}\b(?:a\s+)?(?:3\s*-?\s*d|3d)\s*(?:model|part|file)?\b|"
-            r"\b(?:how about|let'?s|can we|could we|we (?:should|could)|i want)\b.{0,80}\b"
-            r"(?:3\s*-?\s*d|3d|cad|model|plate|bracket|flange|part|cube|box|sphere)\b|"
-            r"\b(?:build|make|model|design|sketch|create|save)\b.{0,80}\b(?:in\s+)?freecad\b|"
-            r"\b(?:cad|partdesign|part\s*design)\b.{0,60}\b(?:part|plate|bracket|flange|model)\b|"
-            r"\b(?:build|make|model|design|create)\b.{0,80}\b"
-            r"(?:plate|bracket|flange|boss|pocket|cylinder|hex(?:agon)?|cube|box|sphere|solid)\b|"
-            r"\b(?:make|build|create|model)\b.{0,40}\b(?:a\s+)?(?:cube|box|sphere|cylinder)\b|"
-            r"\b(?:save|put|drop|create)\b.{0,60}\b(?:fcstd|\.fcstd|freecad|3\s*-?\s*d|cad)\b.{0,40}\b"
-            r"(?:desktop|download)\b|"
-            r"\b(?:fcstd|\.fcstd|freecad|3\s*-?\s*d\s*model|cad\s*(?:file|part))\b.{0,40}\b"
-            r"(?:on\s+(?:my\s+)?desktop|to\s+(?:my\s+)?desktop)\b|"
-            r"\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b.{0,40}\b"
-            r"(?:plate|box|block|bracket|mm|fillet|hole)\b|"
-            r"\b(?:plate|bracket|flange)\b.{0,60}\b(?:mm|fillet|hole|chamfer|polar)\b|"
-            r"[A-Za-z]:\\[^\n]{0,80}FreeCAD",
-            msg,
-            re.I,
-        )
-        and not re.search(
-            r"\b(filament|3d\s*print|printer|slicer|gcode|html(?:5)?|web\s*page|webpage|landing\s*page)\b",
-            msg,
-            re.I,
-        )
+    if re.search(
+        # ASR: "free CID" / "free cad" → FreeCAD
+        r"\b(freecad|free\s*c(?:ad|id)|free\s*cad|freecid|taiga(?:-s1)?|biome-s1|\.?fcstd)\b|"
+        r"\b(?:set\s*up|setup|enable|disable|launch|start)\b.{0,40}\b(?:cad|freecad|taiga)\b|"
+        r"\b(?:cad|freecad|taiga|free\s*c(?:ad|id))\b.{0,40}\b"
+        r"(?:set\s*up|setup|status|enable|disable|launch|open(?:ed)?|server)\b|"
+        r"\b(?:3\s*-?\s*d|3d|cad)\s*(?:model|part|solid|object|file)\b|"
+        r"\b(?:make|build|model|design|sketch|create|save)\b.{0,40}\b(?:a\s+)?(?:3\s*-?\s*d|3d)\s*(?:model|part|file)?\b|"
+        r"\b(?:how about|let'?s|can we|could we|we (?:should|could)|i want)\b.{0,80}\b"
+        r"(?:3\s*-?\s*d|3d|cad|model|plate|bracket|flange|part|cube|box|sphere)\b|"
+        r"\b(?:build|make|model|design|sketch|create|save)\b.{0,80}\b(?:in\s+)?freecad\b|"
+        r"\b(?:cad|partdesign|part\s*design)\b.{0,60}\b(?:part|plate|bracket|flange|model)\b|"
+        r"\b(?:build|make|model|design|create)\b.{0,80}\b"
+        r"(?:plate|bracket|flange|boss|pocket|cylinder|hex(?:agon)?|cube|box|sphere|solid)\b|"
+        r"\b(?:make|build|create|model)\b.{0,40}\b(?:a\s+)?(?:cube|box|sphere|cylinder)\b|"
+        r"\b(?:save|put|drop|create)\b.{0,60}\b(?:fcstd|\.fcstd|freecad|3\s*-?\s*d|cad)\b.{0,40}\b"
+        r"(?:desktop|download)\b|"
+        r"\b(?:fcstd|\.fcstd|freecad|3\s*-?\s*d\s*model|cad\s*(?:file|part))\b.{0,40}\b"
+        r"(?:on\s+(?:my\s+)?desktop|to\s+(?:my\s+)?desktop)\b|"
+        r"\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b.{0,40}\b"
+        r"(?:plate|box|block|bracket|mm|fillet|hole)\b|"
+        r"\b(?:plate|bracket|flange)\b.{0,60}\b(?:mm|fillet|hole|chamfer|polar)\b|"
+        r"[A-Za-z]:\\[^\n]{0,80}FreeCAD",
+        msg,
+        re.IGNORECASE,
+    ) and not re.search(
+        r"\b(filament|3d\s*print|printer|slicer|gcode|html(?:5)?|web\s*page|webpage|landing\s*page)\b",
+        msg,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="cad",
@@ -503,7 +550,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         )
 
     # Open latest research report on screen.
-    if re.search(r"\bopen (the |my )?(research )?report\b", msg, re.I):
+    if re.search(r"\bopen (the |my )?(research )?report\b", msg, re.IGNORECASE):
         return Intent(
             mode="research",
             skill_id="research",
@@ -517,7 +564,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     if re.search(
         r"\b(open|launch|show|bring up|pull up)\b.{0,40}\b(google\s+)?calendar\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="act",
@@ -535,7 +582,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"(search|check) (up )?your memory|"
         r"did I (ever )?(tell|mention)|what did I (tell|say) you)\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="remember",
@@ -587,9 +634,15 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
     if (
         (_RESEARCH.search(msg) or _SEARCH_VERB.search(msg))
         and not _DESKTOP_TARGET.search(msg)
-        and not re.search(r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b", msg, re.I)
-        and not re.search(r"\b(your |my )?memory\b", msg, re.I)
-        and not re.search(r"(?i)\b(tell me (some |an? )?(other )?tasks?|continue on our)\b", msg)
+        and not re.search(
+            r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b",
+            msg,
+            re.IGNORECASE,
+        )
+        and not re.search(r"\b(your |my )?memory\b", msg, re.IGNORECASE)
+        and not re.search(
+            r"(?i)\b(tell me (some |an? )?(other )?tasks?|continue on our)\b", msg
+        )
     ):
         if not _research_topic_residue(msg):
             return Intent(
@@ -616,7 +669,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"displays?|monitors?|audio|microphones?|printers?|connected (?:devices?|hardware))\b|"
         r"\b(?:device|peripheral|hardware)\s+(?:list|inventory)\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="act",
@@ -635,7 +688,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"dashboard\b.{0,60}\b(?:week|weekly|tasks?|agenda)|"
         r"tasks?\b.{0,40}\b(?:for the week|this week|week).{0,40}\b(?:visual|html|dashboard|screen|display))\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="act",
@@ -652,7 +705,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"html(?:5)?\b.{0,80}\b(?:page|file|document|site|webpage|landing)|"
         r"(?:write|create|make|build|generate)\b.{0,60}\b(?:web\s*page|webpage|landing\s*page))\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="act",
@@ -675,7 +728,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"(?:hardware|system specs?|pc specs?|gpu|vram|ram)\b"
         r")\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="act",
@@ -707,7 +760,7 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
         r"\b(notepad|chrome|browser|file|folder|window|app|desktop|"
         r"pc|computer|excel|word|discord|spotify|settings)\b",
         msg,
-        re.I,
+        re.IGNORECASE,
     ):
         return Intent(
             mode="act",
@@ -720,8 +773,14 @@ def _deterministic_intent(message: str, history: list[dict[str, str]] | None = N
 
     # Plain conversation: nothing here needs a tool, so skip the classifier round-trip (saves seconds per turn).
     if not _NEEDS_LLM.search(msg) and len(msg) < 500:
-        return Intent(mode="talk", skill_id="chat", confidence=0.85, objective=msg,
-                      reason="deterministic: conversation", source="policy")
+        return Intent(
+            mode="talk",
+            skill_id="chat",
+            confidence=0.85,
+            objective=msg,
+            reason="deterministic: conversation",
+            source="policy",
+        )
 
     return None
 
@@ -736,7 +795,7 @@ _RESEARCH = re.compile(
     r"business(?:es)?\s+like|"
     r"e-?commerce\s+platforms?|"
     r"platforms?\s+for\b)",
-    re.I,
+    re.IGNORECASE,
 )
 # Broader search verb (needs a topic residue — otherwise clarify).
 _SEARCH_VERB = re.compile(
@@ -746,7 +805,7 @@ _SEARCH_VERB = re.compile(
     r"research(?:ing|es)?|google|"
     r"do\s+(?:a\s+|me\s+a\s+)?(?:little\s+|quick\s+|small\s+|fast\s+)?(?:web\s+|online\s+)?search"
     r")\b",
-    re.I,
+    re.IGNORECASE,
 )
 _VAGUE_SEARCH_ASK = re.compile(
     r"(?i)^\s*(?:(?:hey|hi|okay|ok)\s+)?(?:friday[,:]?\s*)?"
@@ -792,7 +851,15 @@ def _research_topic_residue(msg: str) -> str:
     t = re.sub(r"(?i)^\s*(for|on|of|to)\s+", "", t)
     t = re.sub(r"\s+", " ", t).strip(" .?!,;:\"'")
     # Need a real noun/phrase — not just "it" / "that".
-    if len(t) < 3 or t.lower() in {"it", "that", "this", "them", "those", "one", "about"}:
+    if len(t) < 3 or t.lower() in {
+        "it",
+        "that",
+        "this",
+        "them",
+        "those",
+        "one",
+        "about",
+    }:
         return ""
     return t
 
@@ -800,7 +867,9 @@ def _research_topic_residue(msg: str) -> str:
 def _is_vague_research_ask(msg: str) -> bool:
     if _VAGUE_SEARCH_ASK.match(msg or ""):
         return True
-    if (_RESEARCH.search(msg or "") or _SEARCH_VERB.search(msg or "")) and not _research_topic_residue(msg):
+    if (
+        _RESEARCH.search(msg or "") or _SEARCH_VERB.search(msg or "")
+    ) and not _research_topic_residue(msg):
         # "search your memory" is memory, not vague web.
         if re.search(r"(?i)\b(your |my )?memory\b", msg or ""):
             return False
@@ -815,7 +884,11 @@ def _resolve_research_topic_reply(
     if not history or not (msg or "").strip():
         return None
     last_a = next(
-        (t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"),
+        (
+            t.get("content") or ""
+            for t in reversed(history)
+            if t.get("role") == "assistant"
+        ),
         "",
     )
     if not _ASKED_RESEARCH_TOPIC.search(last_a):
@@ -842,6 +915,8 @@ def _resolve_research_topic_reply(
         reason="deterministic: research-topic-reply",
         source="policy",
     )
+
+
 _LEARN = re.compile(
     r"\b("
     r"learn (from|about|how)|study (how|about)|read (up )?(on|about)|"
@@ -849,7 +924,7 @@ _LEARN = re.compile(
     r"teach yourself|research and (learn|remember|memorize)|"
     r"remember (this|these|how|what).{0,40}\b(for next time|going forward)"
     r")\b",
-    re.I,
+    re.IGNORECASE,
 )
 # Short confirms only — whole utterance. "yeah do that research" must NOT match
 # (that is handled by _CONFIRM_RESEARCH or web lookup with a real topic).
@@ -864,7 +939,7 @@ _CONFIRM_DO = re.compile(
     r")"
     r"(?:\s+(?:please|thanks|thank you|for me|now|then|boss)){0,3}"
     r"(?:\s*[.\!\,]*)?\s*$",
-    re.I,
+    re.IGNORECASE,
 )
 # "do that research" / "yeah run the research" — confirm an offered lookup, not a new topic.
 _CONFIRM_RESEARCH = re.compile(
@@ -934,7 +1009,9 @@ def _resolve_prior_research_ask(
     if not _PRIOR_RESEARCH_ASK.search(msg):
         return None
     # Prefer opening last findings when history/context says research already ran.
-    if _last_assistant_looks_like_research(history) or _last_user_was_research_ask(history):
+    if _last_assistant_looks_like_research(history) or _last_user_was_research_ask(
+        history
+    ):
         return Intent(
             mode="research",
             skill_id="research",
@@ -977,8 +1054,10 @@ def _resolve_show_research_findings(
     if not names_results and not pronoun_on_screen:
         return None
     # Wording that names search results is enough; pronoun needs recent research context.
-    if names_results or _last_user_was_research_ask(history) or _last_assistant_looks_like_research(
-        history
+    if (
+        names_results
+        or _last_user_was_research_ask(history)
+        or _last_assistant_looks_like_research(history)
     ):
         return Intent(
             mode="research",
@@ -986,6 +1065,75 @@ def _resolve_show_research_findings(
             confidence=0.95,
             objective="open research findings on screen",
             reason="deterministic: show research findings",
+            source="policy",
+        )
+    return None
+
+
+def _resolve_presence_intent(msg: str) -> Intent | None:
+    """Skin / model / camera-presence utterances → presence skill."""
+    if re.search(
+        r"(?i)\b(?:switch|change|set)\b.{0,24}\b(?:to\s+)?(?:mode\s+)?"
+        r"(friday|jarvis|ultron|vision|karen|edith|"
+        r"f\.r\.i\.d\.a\.y\.?|j\.a\.r\.v\.i\.s\.?|k\.a\.r\.e\.n\.?|e\.d\.i\.t\.h\.?)\b|"
+        r"\b(?:be|become)\s+(friday|jarvis|ultron|vision|karen|edith)\b|"
+        r"\b(friday|jarvis|ultron|vision|karen|edith)\s+mode\b",
+        msg,
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="presence",
+            confidence=0.97,
+            objective=msg,
+            reason="deterministic: presence skin switch",
+            source="policy",
+        )
+    if re.search(
+        r"(?i)\b(?:switch|change|use|load|set)\b.{0,28}\b(?:to\s+)?(?:model\s+)?"
+        r"(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*\b|"
+        r"\b(?:switch|change)\b.{0,16}\bmodel\b|"
+        r"\bwhat\s+model\b|\bwhich\s+model\b|\b(?:current|active)\s+model\b",
+        msg,
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="presence",
+            confidence=0.96,
+            objective=msg,
+            reason="deterministic: presence model switch",
+            source="policy",
+        )
+    if re.search(
+        r"(?i)\b(?:turn\s+on|enable|start|activate|turn\s+off|disable|stop)\b.{0,30}"
+        r"\b(?:camera\s+)?presence\b|"
+        r"\bcamera\s+presence\s+(?:on|off)\b|"
+        r"\b(?:see\s+me|look\s+at\s+me|watch\s+me|stop\s+looking\s+at\s+me)\b|"
+        r"\bpresence\s+mode\s+(?:on|off)\b",
+        msg,
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="presence",
+            confidence=0.96,
+            objective=msg,
+            reason="deterministic: camera presence toggle",
+            source="policy",
+        )
+    # Unknown callsign ("switch to Quinn", "become Quinn") — list skins; never invent.
+    # Avoid "be quiet" / "dark mode" / "set a reminder".
+    if re.search(
+        r"(?i)\b(?:callsign|persona|skin)\b.{0,24}\b([A-Za-z][\w.-]{1,24})\b|"
+        r"\bbecome\s+([A-Za-z][\w.-]{1,24})\b|"
+        r"\bbe\s+([A-Za-z][\w.-]{1,24})\s+(?:mode|callsign|persona|skin)\b|"
+        r"\b(?:switch|change)\s+to\s+([A-Za-z][\w.-]{1,24})\b",
+        msg,
+    ):
+        return Intent(
+            mode="talk",
+            skill_id="presence",
+            confidence=0.88,
+            objective=msg,
+            reason="deterministic: presence skin (unknown → list)",
             source="policy",
         )
     return None
@@ -1093,7 +1241,11 @@ def _resolve_confirm_followup(
     last_a = ""
     if history:
         last_a = next(
-            (t.get("content") or "" for t in reversed(history) if t.get("role") == "assistant"),
+            (
+                t.get("content") or ""
+                for t in reversed(history)
+                if t.get("role") == "assistant"
+            ),
             "",
         )
     offered = _assistant_offered_research_topic(last_a)
@@ -1144,9 +1296,8 @@ def _resolve_confirm_followup(
             reason="deterministic: confirm→research",
             source="policy",
         )
-    if (
-        _RESEARCH.search(objective)
-        or re.search(r"\b(reference|website|search|browser|sites?)\b", blob, re.I)
+    if _RESEARCH.search(objective) or re.search(
+        r"\b(reference|website|search|browser|sites?)\b", blob, re.IGNORECASE
     ):
         return Intent(
             mode="research",
@@ -1157,7 +1308,7 @@ def _resolve_confirm_followup(
             source="policy",
         )
     if _IMPERATIVE.search(objective) or re.search(
-        r"\b(screen|desktop|chrome|notepad|open|click|type)\b", blob, re.I
+        r"\b(screen|desktop|chrome|notepad|open|click|type)\b", blob, re.IGNORECASE
     ):
         return Intent(
             mode="act",
@@ -1176,11 +1327,13 @@ def _resolve_confirm_followup(
         reason="deterministic: confirm→research-default",
         source="policy",
     )
+
+
 _DESKTOP_TARGET = re.compile(
     r"\b(notepad|chrome|edge|firefox|browser window|desktop|click|type in|"
     r"calendar|google calendar|"
     r"open (the )?(chrome|browser|edge|notepad|calendar))\b",
-    re.I,
+    re.IGNORECASE,
 )
 _NEEDS_LLM = re.compile(
     r"\b(screen|desktop|monitor|display|window|windows|app|apps|open|launch|start|click|type|write|save|close|delete|"
@@ -1188,7 +1341,7 @@ _NEEDS_LLM = re.compile(
     r"install|run|play|send|email|e-?mail|message|whatsapp|rename|move|copy|paste|scroll|press|drag|"
     r"notepad|chrome|excel|word|discord|spotify|settings|pc|computer|"
     r"freecad|taiga|cad|bracket|fillet|chamfer|fcstd|cube|sphere|cylinder|3d|create|build|model)\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 

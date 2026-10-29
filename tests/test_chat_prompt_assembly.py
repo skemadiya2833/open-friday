@@ -25,18 +25,38 @@ def test_history_messages_skips_glitch_and_dumps():
     assert msgs[-1]["role"] == "assistant"
 
 
-def test_honest_fallback_never_says_glitched():
-    out = H._honest_fallback("Did you pull up those 3D printing ideas", "boss")
+def test_direct_answer_never_asks_resend():
+    out = H._direct_answer("Did you pull up those 3D printing ideas", "boss")
     assert "glitched" not in out.lower()
+    assert "one more detail" not in out.lower()
+    assert "messy" not in out.lower()
+    assert "once more" not in out.lower()
     assert "research" in out.lower() or "look" in out.lower()
-    # "3D printing" must not steal the CAD / FreeCAD fallback path.
     assert "freecad" not in out.lower()
 
 
-def test_honest_fallback_greeting_is_present():
-    out = H._honest_fallback("Hey Friday what are you doing", "boss")
+def test_direct_answer_greeting_is_present():
+    out = H._direct_answer("Hey Friday what are you doing", "boss")
     assert "one more detail" not in out.lower()
     assert "standing by" in out.lower() or "right here" in out.lower()
+
+
+def test_direct_answer_identity_and_camera():
+    cam = H._direct_answer("Can you access my camera right now", "boss")
+    assert "one more detail" not in cam.lower()
+    assert "camera" in cam.lower() or "webcam" in cam.lower()
+    ident = H._direct_answer("You sure I thought you were electron", "boss")
+    assert "messy" not in ident.lower()
+    assert "once more" not in ident.lower()
+    assert (
+        "electron" in ident.lower()
+        or "friday" in ident.lower()
+        or "callsign" in ident.lower()
+    )
+    generic = H._direct_answer("Tell me something random about Tuesday", "boss")
+    assert "one more detail" not in generic.lower()
+    assert "messy" not in generic.lower()
+    assert "once more" not in generic.lower()
 
 
 def test_prior_research_ask_routes_to_research():

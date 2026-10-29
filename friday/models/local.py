@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Callable
+from collections.abc import Callable
 
 import httpx
 
@@ -21,14 +21,24 @@ from friday.config import (
     OVERLAY_ENABLED,
     resolve_chat_model,
 )
-from friday.models.parser import ACTION_DELIMITER, parse_reasoning_response, synthesize_plan_from_partial
+from friday.models.parser import (
+    ACTION_DELIMITER,
+    parse_reasoning_response,
+    synthesize_plan_from_partial,
+)
 from friday.ui.events import emit
 
 if OVERLAY_ENABLED:
     from friday.ui import overlay
 
 _THINKING_MODEL_PREFIXES = (
-    "qwen3", "qwen3.5", "qwen3.8", "saluki", "deepseek-r1", "deepseek-r1:", "gpt-oss",
+    "qwen3",
+    "qwen3.5",
+    "qwen3.8",
+    "saluki",
+    "deepseek-r1",
+    "deepseek-r1:",
+    "gpt-oss",
 )
 
 
@@ -75,7 +85,9 @@ def _stream_chat(
         "stream": True,
         "keep_alive": _parse_keep_alive(),
         "options": {
-            "num_predict": int(num_predict if num_predict is not None else MODEL_NUM_PREDICT),
+            "num_predict": int(
+                num_predict if num_predict is not None else MODEL_NUM_PREDICT
+            ),
             "num_ctx": int(num_ctx if num_ctx is not None else MODEL_NUM_CTX),
             "temperature": MODEL_TEMPERATURE,
             "top_p": MODEL_TOP_P,
@@ -132,6 +144,7 @@ def _stream_chat(
             ctrl = None
             try:
                 from friday.agent.control import get_controller
+
                 ctrl = get_controller()
                 if ctrl is not None:
                     ctrl.register_http_client(client)
@@ -257,7 +270,11 @@ def query_model_text(
         return {"routing": "FALLBACK_TO_CLOUD", "reason": str(exc), "steps": []}
 
     if not accumulated.strip():
-        return {"routing": "FALLBACK_TO_CLOUD", "reason": "Empty response.", "steps": []}
+        return {
+            "routing": "FALLBACK_TO_CLOUD",
+            "reason": "Empty response.",
+            "steps": [],
+        }
 
     if reasoning_mode or format_json:
         try:
@@ -311,7 +328,9 @@ def query_aim_verification(
 
     iw, ih = image_size
     if uses_grid_coords():
-        coord_note = "integers on a 0-1000 grid: (0,0) top-left, (1000,1000) bottom-right"
+        coord_note = (
+            "integers on a 0-1000 grid: (0,0) top-left, (1000,1000) bottom-right"
+        )
     else:
         coord_note = f"pixels of this {iw}x{ih} image"
     prompt = _AIM_VERIFY_PROMPT.format(
@@ -351,9 +370,12 @@ def query_aim_verification(
         end = accumulated.rfind("}")
         if start >= 0 and end > start:
             try:
-                data = json.loads(accumulated[start:end + 1])
+                data = json.loads(accumulated[start : end + 1])
             except json.JSONDecodeError:
-                return {"verified": False, "reason": "Could not parse verification JSON."}
+                return {
+                    "verified": False,
+                    "reason": "Could not parse verification JSON.",
+                }
         else:
             return {"verified": False, "reason": "Could not parse verification JSON."}
 
@@ -366,7 +388,7 @@ def query_aim_verification(
         try:
             result["x"] = int(x)
             result["y"] = int(y)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
     return result
 
@@ -396,7 +418,9 @@ def _looks_like_optics_dump(reply: str) -> bool:
         r"identify the main (application|open)|"
         r"personal ai|"
         r"calm,\s*precise,\s*loyal|"
-        r"system prompt|persona"
+        r"system prompt|"
+        r"user\s*persona\s*:|"
+        r"output\s*constraint\s*:"
         r")\b",
         t,
     ):
@@ -407,13 +431,7 @@ def _looks_like_optics_dump(reply: str) -> bool:
     # Numbered analysis: "1. Identify / Analyze…"
     if re.search(r"(?i)^\s*1\.\s*(identify|analyze)\b", t) or (
         re.search(r"(?i)\bthe image shows\b", t)
-        and re.search(r"(?i)^\s*\d+\.\s+", t, re.M)
-    ):
-        return True
-    if re.search(r"(?i)\ba screenshot of (a |the )?(windows )?desktop\b", t) and not re.search(
-        r"(?i)\b(chrome|cursor|vscode|code|notepad|powershell|cmd|edge|firefox|"
-        r"explorer|settings|word|excel|slack|discord|spotify|terminal|powershell)\b",
-        t,
+        and re.search(r"(?i)^\s*\d+\.\s+", t, re.MULTILINE)
     ):
         return True
     # Restate-only answers with no concrete UI nouns
@@ -423,6 +441,43 @@ def _looks_like_optics_dump(reply: str) -> bool:
     ):
         return True
     return False
+
+
+def _salvage_optics_reply(reply: str) -> str:
+    """Keep a usable sentence if the model mixed theater with a real description."""
+    import re
+
+    t = (reply or "").strip()
+    if not t:
+        return ""
+    # Drop labeled theater lines; keep others.
+    keep: list[str] = []
+    for ln in re.split(r"[\n•]+", t):
+        ln = ln.strip(" -*\t")
+        if not ln:
+            continue
+        if re.search(
+            r"(?i)\b("
+            r"identity\s*:|tone\s*:|persona\s*:|constraint|thinking process|"
+            r"analyze the request|the user (wants|is asking)|goal\s*:|task\s*:"
+            r")\b",
+            ln,
+        ):
+            continue
+        keep.append(ln)
+    cleaned = " ".join(keep).strip()
+    if cleaned and not _looks_like_optics_dump(cleaned):
+        return cleaned
+    # Single sentence with a concrete app noun.
+    for sent in re.split(r"(?<=[.!?])\s+", t):
+        if re.search(
+            r"(?i)\b(chrome|cursor|vscode|code|notepad|powershell|cmd|edge|firefox|"
+            r"explorer|settings|word|excel|slack|discord|spotify|terminal|freecad|"
+            r"browser|window|taskbar|github|friday)\b",
+            sent,
+        ) and not _looks_like_optics_dump(sent):
+            return sent.strip()
+    return ""
 
 
 def describe_screen(
@@ -477,13 +532,38 @@ def describe_screen(
         prompt = observe_user_prompt(q, kind=kind)
         reply = _ask(prompt, tokens=predict, img=image)
         if _looks_like_optics_dump(reply):
-            # One hard retry with zero persona ballast.
-            hard = observe_hard_retry(q)
-            reply = _ask(hard, tokens=min(160, predict + 32), img=image)
+            salvaged = _salvage_optics_reply(reply)
+            if salvaged:
+                reply = salvaged
+            else:
+                # Hard retries with zero persona ballast — prefer model text over canned noise.
+                for tokens in (min(160, predict + 32), min(120, predict)):
+                    hard = observe_hard_retry(q)
+                    retry = _ask(hard, tokens=tokens, img=image)
+                    if retry and not _looks_like_optics_dump(retry):
+                        reply = retry
+                        break
+                    salvaged = _salvage_optics_reply(retry)
+                    if salvaged:
+                        reply = salvaged
+                        break
+                else:
+                    # Ultra-minimal last try
+                    bare = (
+                        f"{q}\n"
+                        "Name the frontmost app and what is on screen in one short sentence. "
+                        "No labels."
+                    )
+                    retry = _ask(bare, tokens=96, img=image)
+                    reply = (
+                        retry
+                        if retry and not _looks_like_optics_dump(retry)
+                        else (_salvage_optics_reply(retry) or "")
+                    )
         if not reply or _looks_like_optics_dump(reply):
             return _emit(
-                f"I have the screenshot, {owner_name()}, but the vision model gave me noise. "
-                "Try 'what's on my screen' once more."
+                f"I see the desktop, {owner_name()}, but the vision pass came back muddy. "
+                "Ask what's on my screen once more."
             )
         return _emit(reply)
     except RuntimeError as exc:
@@ -511,7 +591,11 @@ def query_model_vision(
     reasoning_mode: bool = False,
 ) -> dict:
     if not video_b64 and not frame_b64_list:
-        return {"routing": "FALLBACK_TO_CLOUD", "reason": "No vision input.", "steps": []}
+        return {
+            "routing": "FALLBACK_TO_CLOUD",
+            "reason": "No vision input.",
+            "steps": [],
+        }
 
     user_msg: dict = {"role": "user", "content": prompt}
     if video_b64:
@@ -543,7 +627,11 @@ def query_model_vision(
         return {"routing": "FALLBACK_TO_CLOUD", "reason": str(exc), "steps": []}
 
     if not accumulated.strip():
-        return {"routing": "FALLBACK_TO_CLOUD", "reason": "Empty response.", "steps": []}
+        return {
+            "routing": "FALLBACK_TO_CLOUD",
+            "reason": "Empty response.",
+            "steps": [],
+        }
 
     try:
         reasoning, plan = parse_reasoning_response(accumulated)
@@ -554,7 +642,9 @@ def query_model_vision(
         if not plan.get("steps"):
             synthesized = synthesize_plan_from_partial(accumulated)
             if synthesized:
-                print("[Model] Recovered plan via prose synthesis (ALLOW_PROSE_SYNTHESIS=true).")
+                print(
+                    "[Model] Recovered plan via prose synthesis (ALLOW_PROSE_SYNTHESIS=true)."
+                )
                 plan = synthesized
             else:
                 print("[Model] Parsed JSON but no actionable step.")
@@ -569,7 +659,14 @@ def query_model_vision(
         if steps:
             act = str(steps[0].get("action", "")).upper()
             s0 = steps[0]
-            if act in ("CLICK", "DOUBLE_CLICK", "RIGHT_CLICK", "HOVER", "SCROLL", "MOUSE_MOVE"):
+            if act in (
+                "CLICK",
+                "DOUBLE_CLICK",
+                "RIGHT_CLICK",
+                "HOVER",
+                "SCROLL",
+                "MOUSE_MOVE",
+            ):
                 if s0.get("x") is None or s0.get("y") is None:
                     print(f"[Model] {act} step missing coordinates after enrichment.")
                     return {

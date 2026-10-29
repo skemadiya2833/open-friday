@@ -15,9 +15,10 @@ import struct
 import subprocess
 import threading
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterator, Protocol
+from typing import Protocol
 
 import numpy as np
 

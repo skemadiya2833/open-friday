@@ -21,10 +21,10 @@
   // Eagerness bands inspired by OpenAI semantic_vad (low≈8s / medium≈4s / high≈2s max).
   const EAGER = {
     high: {
-      completeSilenceMs: 550,
-      incompleteSilenceMs: 1400,
-      maxWaitMs: 2000,
-      energyQuietMs: 280,
+      completeSilenceMs: 380,
+      incompleteSilenceMs: 900,
+      maxWaitMs: 1400,
+      energyQuietMs: 200,
       energyThresh: 0.045,
     },
     medium: {

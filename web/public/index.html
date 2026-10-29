@@ -35,7 +35,7 @@
   <header class="topbar">
     <div class="topbar-left">
       <span class="sigil">◈</span>
-      <span class="sys-id">FRIDAY // LOCAL HUD</span>
+      <span class="sys-id" id="sysId">FRIDAY // LOCAL HUD</span>
     </div>
     <div class="topbar-center">
       <span id="clockReadout">00:00:00</span>
@@ -70,22 +70,28 @@
 
   <div class="shell">
     <aside class="rail panel-frame">
-      <div class="brand">
-        <div class="orb-host" id="orbHost">
-          <div class="orb" id="orb" data-state="idle" aria-hidden="true">
-            <span class="orb-ring outer"></span>
-            <span class="orb-ring mid"></span>
-            <span class="orb-core"></span>
-            <span class="orb-cross"></span>
-            <span class="orb-work-bubble hidden" id="orbWorkBubble" aria-live="polite">working</span>
+      <div class="brand-block">
+        <div class="brand">
+          <div class="orb-host" id="orbHost">
+            <div class="orb" id="orb" data-state="idle" aria-hidden="true">
+              <span class="orb-ring outer"></span>
+              <span class="orb-ring mid"></span>
+              <span class="orb-core"></span>
+              <span class="orb-cross"></span>
+              <span class="orb-work-bubble hidden" id="orbWorkBubble" aria-live="polite">working</span>
+            </div>
+            <canvas id="liveOrb" class="live-orb-canvas" width="116" height="116"
+              title="Friday presence — click mic to talk, or click the orb to interrupt."></canvas>
           </div>
-          <canvas id="liveOrb" class="live-orb-canvas" width="116" height="116"
-            title="Friday presence — click mic to talk, or click the orb to interrupt."></canvas>
+          <div class="brand-copy">
+            <div class="brand-name" id="brandName">FRIDAY</div>
+            <div class="brand-tag" id="brandTag">F.R.I.D.A.Y. · LOCAL PROTOCOL</div>
+            <div class="brand-sub" id="statusLabel">STANDBY</div>
+          </div>
         </div>
-        <div class="brand-copy">
-          <div class="brand-name">FRIDAY</div>
-          <div class="brand-tag">F.R.I.D.A.Y. · LOCAL PROTOCOL</div>
-          <div class="brand-sub" id="statusLabel">STANDBY</div>
+        <div class="avatar-panel hidden" id="avatarPanel" aria-hidden="true">
+          <video class="avatar-video hidden" id="avatarVideo" playsinline muted></video>
+          <img class="avatar-still" id="avatarStill" alt="Presence portrait" />
         </div>
       </div>
 

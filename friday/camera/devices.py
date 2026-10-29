@@ -29,6 +29,10 @@ _VIRTUAL_HINTS = (
     "obs-camera",
     "manycam",
     "nvidia broadcast",
+    "nvidia",
+    "vcamds",
+    "nvx",
+    "maxine",
     "xsplit",
     "iriun",
     "epoccam",
@@ -112,7 +116,9 @@ def load_resolution() -> str:
 
 
 def load_resolution_wh() -> tuple[int, int]:
-    return RESOLUTION_PRESETS.get(load_resolution(), RESOLUTION_PRESETS[DEFAULT_RESOLUTION])
+    return RESOLUTION_PRESETS.get(
+        load_resolution(), RESOLUTION_PRESETS[DEFAULT_RESOLUTION]
+    )
 
 
 def load_selected_name() -> str:
@@ -122,7 +128,7 @@ def load_selected_name() -> str:
     raw = str(load_prefs().get("name") or "").strip()
     if " · " in raw:
         raw = raw.split(" · ", 1)[0].strip()
-    if re.fullmatch(r"Camera\s+\d+", raw, re.I):
+    if re.fullmatch(r"Camera\s+\d+", raw, re.IGNORECASE):
         return ""
     return raw[:120]
 
@@ -135,7 +141,7 @@ def clean_device_name(name: str) -> str:
     if " · " in raw:
         raw = raw.split(" · ", 1)[0].strip()
     raw = re.sub(r"\s+", " ", raw).strip()
-    if re.fullmatch(r"Camera\s+\d+", raw, re.I):
+    if re.fullmatch(r"Camera\s+\d+", raw, re.IGNORECASE):
         return ""
     return raw[:120]
 
@@ -185,7 +191,9 @@ def save_selected_index(
             data["name"] = label
         if resolution is not None:
             res = str(resolution).strip().lower()
-            data["resolution"] = res if res in RESOLUTION_PRESETS else DEFAULT_RESOLUTION
+            data["resolution"] = (
+                res if res in RESOLUTION_PRESETS else DEFAULT_RESOLUTION
+            )
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.environ["FRIDAY_CAMERA_INDEX"] = str(idx)
     try:
@@ -256,7 +264,12 @@ class CameraDevice:
 
     def sort_key(self) -> tuple:
         # Physical first, higher res first, then index.
-        return (1 if self.virtual else 0, -(self.width * self.height), self.backend, self.index)
+        return (
+            1 if self.virtual else 0,
+            -(self.width * self.height),
+            self.backend,
+            self.index,
+        )
 
 
 def _windows_friendly_names() -> list[str]:
@@ -270,7 +283,7 @@ def _windows_friendly_names() -> list[str]:
         "Select-Object -ExpandProperty Name"
     )
     try:
-        out = subprocess.run(  # noqa: S603
+        out = subprocess.run(
             ["powershell", "-NoProfile", "-Command", ps],
             capture_output=True,
             text=True,
@@ -296,7 +309,7 @@ def _ffmpeg_dshow_names() -> list[str]:
     if not ff or sys.platform != "win32":
         return []
     try:
-        proc = subprocess.run(  # noqa: S603
+        proc = subprocess.run(
             [ff, "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
             capture_output=True,
             text=True,
@@ -307,7 +320,7 @@ def _ffmpeg_dshow_names() -> list[str]:
         names: list[str] = []
         for ln in err.splitlines():
             # [in#0 @ ...] "SNAP U2" (video)
-            m = re.search(r'"([^"]+)"\s*\(video\)', ln, re.I)
+            m = re.search(r'"([^"]+)"\s*\(video\)', ln, re.IGNORECASE)
             if m:
                 names.append(m.group(1).strip())
         return names
@@ -334,7 +347,7 @@ def _ffmpeg_fingerprint(name: str) -> tuple[int, int, int] | None:
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             tmp = Path(f.name)
         # video=<name> — quotes handled by list argv (no shell).
-        proc = subprocess.run(  # noqa: S603
+        proc = subprocess.run(
             [
                 ff,
                 "-hide_banner",
@@ -467,7 +480,11 @@ def _open_capture(index: int, preferred: str | None = None):
         try:
             import cv2
 
-            cap = cv2.VideoCapture(index, api) if api is not None else cv2.VideoCapture(index)
+            cap = (
+                cv2.VideoCapture(index, api)
+                if api is not None
+                else cv2.VideoCapture(index)
+            )
             if cap is not None and cap.isOpened():
                 return cap, name
         except Exception:  # noqa: BLE001
@@ -597,7 +614,7 @@ def _list_cameras_ffmpeg_first() -> list[CameraDevice] | None:
                     mean = best[1].mean_luma
         devices.append(
             CameraDevice(
-                index=idx if idx >= 0 else 0,
+                index=max(idx, 0),
                 name=name,
                 width=w,
                 height=h,
@@ -665,9 +682,14 @@ def pick_default_device(devices: list[CameraDevice]) -> CameraDevice | None:
     pool = physical or [d for d in devices if not d.virtual] or devices
     if not pool:
         return None
+
     # Prefer names that look like USB webcams over anonymous "Camera N".
     def score(d: CameraDevice) -> tuple:
-        named = 1 if d.named_via == "ffmpeg" and not d.name.lower().startswith("camera ") else 0
+        named = (
+            1
+            if d.named_via == "ffmpeg" and not d.name.lower().startswith("camera ")
+            else 0
+        )
         return (named, d.mean_luma, d.width * d.height)
 
     return max(pool, key=score)
@@ -675,7 +697,11 @@ def pick_default_device(devices: list[CameraDevice]) -> CameraDevice | None:
 
 def devices_payload() -> dict[str, Any]:
     from friday.camera.capture import opencv_available
-    from friday.camera.session import camera_backend, camera_feature_enabled, camera_index
+    from friday.camera.session import (
+        camera_backend,
+        camera_feature_enabled,
+        camera_index,
+    )
 
     devices = list_cameras()
     selected = camera_index()
@@ -701,17 +727,31 @@ def devices_payload() -> dict[str, Any]:
                 break
     if selected_dev is None:
         selected_dev = next(
-            (d for d in devices if d.index == selected and (not backend or d.backend == backend)),
+            (
+                d
+                for d in devices
+                if d.index == selected and (not backend or d.backend == backend)
+            ),
             None,
         )
 
     warn = ""
-    if selected_dev and selected_dev.virtual and recommended and not recommended.virtual:
+    if (
+        selected_dev
+        and selected_dev.virtual
+        and recommended
+        and not recommended.virtual
+    ):
         warn = (
             f"Selected device looks virtual ({selected_dev.name}). "
             f"Recommended desk camera: {recommended.label()}"
         )
-    elif saved_name and is_virtual_name(saved_name) and recommended and not recommended.virtual:
+    elif (
+        saved_name
+        and is_virtual_name(saved_name)
+        and recommended
+        and not recommended.virtual
+    ):
         warn = (
             f"Saved camera '{saved_name}' is virtual. "
             f"Recommended: {recommended.label()}"
