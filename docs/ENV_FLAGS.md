@@ -40,7 +40,9 @@ Everyday knobs (persona, **chat/vision Ollama tags**, agent backend, tools-first
 | MODEL_THINK | `false` | Native thinking mode |
 | MODEL_COORD_SPACE | `pixel` | `pixel` \| `grid1000` \| `auto` |
 | CHAT_NUM_PREDICT | `256` | Chat reply cap |
-| CHAT_NUM_CTX | `4096` | Chat context |
+| CHAT_NUM_CTX | `4096` (example `.env` may use `32768`) | Preferred chat context; shared multimodal resident may cap lower |
+| FRIDAY_RESIDENT_NUM_CTX | (unset) | Pin one KV size for the hot chat/vision tag (avoids Ollama reload thrash) |
+| FRIDAY_MAX_SHARED_CTX | `8192` | Cap when chat==vision and `FRIDAY_RESIDENT_NUM_CTX` unset |
 | FRIDAY_MODEL_ROLES | `false` | Enable fast/main/vision/coder map |
 | FRIDAY_MODEL_FAST | same as MAIN | Role: fast (defaults to 9b; set 4b only if splitting) |
 | FRIDAY_MODEL_MAIN | `gemma4:12b` | Role: main (same multimodal as vision on 16GB; see `models/README.md`) |

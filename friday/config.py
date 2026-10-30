@@ -164,6 +164,30 @@ CHAT_NUM_PREDICT = int(os.getenv("CHAT_NUM_PREDICT", "256"))
 CHAT_NUM_CTX = int(os.getenv("CHAT_NUM_CTX", "4096"))
 # Keyword skill routing is fast; set true to also score via embeddings.
 SKILL_EMBED_ROUTE = _env_bool("SKILL_EMBED_ROUTE", "false")
+
+
+def resolve_resident_num_ctx() -> int:
+    """Stable KV size for the Systems chat/vision tag.
+
+    Ollama reloads the GPU resident when ``num_ctx`` changes between calls — intent at
+    1536 then chat at 32k then observe at 4096 feels like load/unload thrash. Pin one size.
+    Override with ``FRIDAY_RESIDENT_NUM_CTX``. Shared chat+vision defaults cap at 8192 so
+    image turns do not allocate a 32k KV every look (set the env to raise it).
+    """
+    raw = (os.getenv("FRIDAY_RESIDENT_NUM_CTX") or "").strip()
+    if raw:
+        try:
+            return max(512, int(raw))
+        except ValueError:
+            pass
+    base = max(512, CHAT_NUM_CTX)
+    try:
+        if resolve_chat_model() == resolve_vision_model():
+            cap = int(os.getenv("FRIDAY_MAX_SHARED_CTX", "8192"))
+            return min(base, max(512, cap))
+    except Exception:  # noqa: BLE001
+        pass
+    return base
 # Skip RAG lookup on normal chat (memory skill / remember phrases still use it).
 CHAT_RAG_ENABLED = _env_bool("CHAT_RAG_ENABLED", "false")
 # Indexing every assistant turn into Chroma adds an embed call — off by default.
@@ -285,6 +309,8 @@ def _name_looks_vision(tag: str) -> bool:
             "minicpm-v",
             "qwen2.5vl",
             "qwen3.5",
+            "qwen3.8",
+            "saluki",
             "gemma4",
             "gemma3",
         )

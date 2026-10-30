@@ -1,0 +1,9 @@
+# Underdog Saluki 27B (Qwen3.8-based) + vision projector for Friday / Ollama.
+# Build:  ollama create saluki -f Modelfile
+FROM ./Underdog-Saluki-27B-1.0-IQ2-mix.gguf
+FROM ./mmproj-Underdog-Saluki-27B-1.0-Q8_0.gguf
+
+PARAMETER temperature 0.6
+PARAMETER top_p 0.95
+PARAMETER top_k 20
+PARAMETER num_ctx 8192

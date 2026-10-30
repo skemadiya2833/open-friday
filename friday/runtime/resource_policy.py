@@ -60,7 +60,15 @@ def keep_alive_for_role(role: str) -> int | str:
     elif role == "embed":
         raw = os.getenv("FRIDAY_EMBED_KEEP_ALIVE", "10m")
     elif role == "vision":
-        # Short residency so look turns don't pin VL forever over the 27B chat brain.
+        # Shared chat+vision (saluki / gemma4 / qwen3.5): keep the same TTL as main.
+        try:
+            from friday.config import resolve_chat_model, resolve_vision_model
+
+            if resolve_chat_model() == resolve_vision_model():
+                return keep_alive_for_role("main")
+        except Exception:  # noqa: BLE001
+            pass
+        # Split VL installs: short residency so look turns don't pin VL over chat.
         raw = os.getenv("FRIDAY_VISION_KEEP_ALIVE", "3m")
     elif role in ("main", "chat", "fast"):
         # Voice assistants want a warm model (alexberardi latency pattern — architecture only).

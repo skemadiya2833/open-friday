@@ -44,6 +44,22 @@ def _history_messages(history: list[dict], *, limit: int = 16) -> list[dict]:
     return out
 
 
+def _voice_pick_answer(owner: str) -> str:
+    """Practical local TTS picks — never claim an MCU/Disney clone."""
+    try:
+        from friday.presence.registry import active_skin
+
+        current = active_skin().tts_voice
+    except Exception:  # noqa: BLE001
+        current = "af_bella"
+    return (
+        f"No official MCU character voice is available to use, {owner} — don't chase clones. "
+        f"For a calm local Friday-like aide here, use Kokoro af_bella (Friday default), "
+        f"or af_sarah / af_nicole. You're on {current} now. "
+        f"Say switch voice to af_bella if you want that one."
+    )
+
+
 def _direct_answer(message: str, owner: str) -> str:
     """Answer from facts when the model dumps — never ask them to resend."""
     m = (message or "").strip()
@@ -53,6 +69,13 @@ def _direct_answer(message: str, owner: str) -> str:
 
         if is_identity_ask(m):
             return identity_answer(m, owner)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from friday.assistant.intent import is_voice_pick_ask
+
+        if is_voice_pick_ask(m):
+            return _voice_pick_answer(owner)
     except Exception:  # noqa: BLE001
         pass
     if re.search(r"(?i)\b(too dumb|bad reply|useless|glitch|smart enough|blanked)\b", low):
@@ -149,9 +172,18 @@ class SkillHandler(Skill):
             from friday.assistant.intent import (
                 match_tool_fastpath,
                 _resolve_observe_answer_retry,
+                is_voice_pick_ask,
             )
             from friday.presence.modelswitch import looks_like_model_talk
             from friday.skills.registry import get_registry
+
+            if is_voice_pick_ask(ctx.message):
+                from friday.persona import owner_name
+
+                reply = _voice_pick_answer(owner_name())
+                return SkillResult(
+                    reply=reply, skill_id="chat", metadata={"voice_pick": True}
+                )
 
             fast = match_tool_fastpath(ctx.message) or _resolve_observe_answer_retry(
                 ctx.message, list(ctx.history or [])

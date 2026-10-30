@@ -7,6 +7,7 @@ from typing import Any
 
 # Spoken aliases → substring match against installed tags (prefer multimodal / larger).
 _ALIAS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("saluki", re.compile(r"(?i)^saluki")),
     ("gemma", re.compile(r"(?i)^gemma")),
     ("qwen", re.compile(r"(?i)^qwen")),
     ("llama", re.compile(r"(?i)^llama")),
@@ -73,6 +74,11 @@ def normalize_model_utterance(text: str) -> str:
     # "q w e n" / "g e m m a"
     t = re.sub(r"\bq\s+w\s+e\s+n\b", "qwen", t)
     t = re.sub(r"\bg\s+e\s+m\s+m\s+a\b", "gemma", t)
+    t = re.sub(r"\bs\s+a\s+l\s+u\s+k\s+i\b", "saluki", t)
+    t = re.sub(r"\bsalooki\b", "saluki", t)
+    # ASR: "saluki space 27b" / "saluki 27 b"
+    t = re.sub(r"\bsaluki\s+(?:space\s+)?27\s*b\b", "saluki", t)
+    t = re.sub(r"\bsaluki\s+27\b", "saluki", t)
     # Mishearings in switch phrases
     t = re.sub(r"\bgamma\b", "gemma", t)
     t = re.sub(r"\bwhen\s+(?=3)", "qwen ", t)  # "when 3.5…" ASR for qwen 3.5
@@ -280,6 +286,8 @@ def looks_like_model_switch(message: str) -> bool:
     if not msg:
         return False
     # Versioned tags anywhere: "qwen3.5", "qwen3.8-27b", "gemma4" — local switch, not web.
+    if re.search(r"(?i)\bsaluki\b", msg):
+        return True
     if re.search(
         r"(?i)\b(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)"
         r"[\w.:-]*\d[\w.:-]*\b",
@@ -287,7 +295,7 @@ def looks_like_model_switch(message: str) -> bool:
     ):
         return True
     if re.search(
-        r"(?i)(?:\b|_)(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm|ollama)",
+        r"(?i)(?:\b|_)(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm|ollama|saluki)",
         msg,
     ):
         if re.search(r"(?i)\b(switch|change|use|load|set|model|from|to|install|pull)\b", msg):

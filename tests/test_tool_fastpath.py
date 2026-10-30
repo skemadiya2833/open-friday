@@ -145,3 +145,24 @@ def test_by_yourself_after_look_retries_camera():
     intent = classify_intent("by yourself", history=history)
     assert intent.skill_id == "camera"
     assert intent.mode == "look"
+
+
+def test_wallpaper_is_observe_not_chat():
+    from friday.assistant.intent import classify_intent, is_screen_look_utterance
+
+    for msg in ("whats on my wallpaper", "what is my wallpaper", "describe my wallpaper"):
+        assert is_screen_look_utterance(msg), msg
+        intent = classify_intent(msg)
+        assert intent.skill_id == "observe", msg
+
+
+def test_mcu_friday_voice_is_chat_not_research():
+    from friday.assistant.intent import classify_intent
+
+    msg = (
+        "Search on internet what's the closest Voice related to the Friday from MCU "
+        "And which I can use in my project"
+    )
+    intent = classify_intent(msg)
+    assert intent.skill_id == "chat"
+    assert intent.skill_id != "research"

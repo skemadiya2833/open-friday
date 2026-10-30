@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from friday.skills.base import Skill, SkillContext, SkillManifest, SkillResult
 
 # Overlay/Tk-only traffic — never forward into the web SSE stream.

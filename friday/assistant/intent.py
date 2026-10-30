@@ -37,6 +37,7 @@ _ADDR = (
     r"(?:friday\s*[,:]?\s*)?"
 )
 _SCREEN_WORD = r"(?:screen|desktop|monitor|display)"
+_WALLPAPER = r"(?:wallpaper|background|desktop\s+background|lock\s*screen)"
 # Anchored look-only (classic phrasing).
 _LOOK_ONLY = re.compile(
     rf"^\s*{_ADDR}("
@@ -44,7 +45,9 @@ _LOOK_ONLY = re.compile(
     r"(?:are you|you)\s+able\s+to\s+see|"
     r"what('?s| is) going on( here| on (my |the )?{_SCREEN_WORD})?|"
     r"what('?s| is) on (my |the )?{_SCREEN_WORD}|"
-    r"describe (my |the )?{_SCREEN_WORD}|look at (my )?{_SCREEN_WORD}|"
+    rf"what('?s| is) (?:on |my |the )?{_WALLPAPER}|"
+    rf"describe (?:my |the )?(?:{_SCREEN_WORD}|{_WALLPAPER})|"
+    rf"look at (?:my )?(?:{_SCREEN_WORD}|{_WALLPAPER})|"
     r"tell me what you see|is (my )?{_SCREEN_WORD}|"
     rf"see (?:my |the )?{_SCREEN_WORD}|check (?:my |the )?{_SCREEN_WORD}|"
     rf"(?:take a |grab a )?screenshot|capture (?:my |the )?{_SCREEN_WORD}"
@@ -58,10 +61,23 @@ _SCREEN_LOOK = re.compile(
     rf"\b(?:can|could|do|would|are)\s+you\s+(?:able\s+to\s+)?(?:see|look(?:\s+at)?)\b.{{0,48}}\b{_SCREEN_WORD}\b|"
     rf"\b(?:see|look\s+at|describe|check|watch)\s+(?:what(?:'s| is|s)?\s+on\s+)?(?:my\s+|the\s+)?{_SCREEN_WORD}\b|"
     rf"\bwhat(?:'s| is|s)\s+(?:going\s+on\s+)?(?:on\s+)?(?:my\s+|the\s+)?{_SCREEN_WORD}\b|"
+    rf"\b(?:what(?:'s| is|s)|describe|look\s+at|see)\b.{{0,40}}\b{_WALLPAPER}\b|"
+    rf"\bmy\s+{_WALLPAPER}\b|"
     rf"\b(?:take|grab|do)\s+(?:a\s+)?screenshot\b|"
     rf"\bcapture\s+(?:my\s+|the\s+)?{_SCREEN_WORD}\b|"
     rf"\bshow\s+me\s+(?:what(?:'s| is)\s+on\s+)?(?:my\s+|the\s+)?{_SCREEN_WORD}\b"
     rf")"
+)
+# "Closest Friday / MCU voice" — local TTS advice, never web legal theater.
+_VOICE_PICK_ASK = re.compile(
+    r"(?i)\b("
+    r"(?:closest|best|good|recommend(?:ed)?)\s+voice.{"
+    r"0,48}\b(?:friday|mcu|marvel|jarvis|karen)|"
+    r"(?:friday|mcu|marvel|jarvis|karen).{0,48}\bvoice\b|"
+    r"voice\s+(?:like|for|of)\s+(?:friday|jarvis|karen|mcu)|"
+    r"which\s+voice.{"
+    r"0,40}\b(?:friday|project|kokoro|edge)"
+    r")\b"
 )
 # Sitrep / "what's going on" with no screen words → chat (agenda/time), not desktop act.
 _SITUATION_ASK = re.compile(
@@ -353,6 +369,11 @@ def is_tasks_utterance(message: str) -> bool:
         return False
 
 
+def is_voice_pick_ask(message: str) -> bool:
+    """True when they want a usable local TTS pick — not a Disney legal brief."""
+    return bool(_VOICE_PICK_ASK.search((message or "").strip()))
+
+
 def match_tool_fastpath(message: str) -> Intent | None:
     """
     Map a clear tool ask → skill with zero chat tokens.
@@ -544,6 +565,17 @@ def _deterministic_intent(
             confidence=fast.confidence,
             objective=msg,
             reason=f"deterministic: {fast.reason}",
+            source="policy",
+        )
+
+    # MCU / Friday voice pick — answer in chat with local Kokoro options (never research).
+    if is_voice_pick_ask(msg):
+        return Intent(
+            mode="talk",
+            skill_id="chat",
+            confidence=0.97,
+            objective=msg,
+            reason="deterministic: local voice pick (not web)",
             source="policy",
         )
 
@@ -781,6 +813,7 @@ def _deterministic_intent(
         (_RESEARCH.search(msg) or _SEARCH_VERB.search(msg))
         and not _DESKTOP_TARGET.search(msg)
         and not _model_talk(msg)
+        and not is_voice_pick_ask(msg)
         and not re.search(
             r"\b(open|launch|show)\b.{0,40}\bgoogle\s+(calendar|maps|drive|docs|mail|meet)\b",
             msg,
@@ -1281,10 +1314,11 @@ def _resolve_presence_intent(msg: str) -> Intent | None:
         or looks_like_model_switch(msg)
         or re.search(
             r"(?i)\b(?:switch|change|use|load|set|install|pull)\b.{0,48}\b(?:to\s+)?(?:model\s+)?"
-            r"(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*\b|"
+            r"(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm|saluki)[\w.:-]*\b|"
             r"\b(?:switch|change)\b.{0,24}\bmodel\b|"
             r"\bwhat\s+model\b|\bwhich\s+model\b|\b(?:current|active)\s+model\b|"
             r"\b(qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*\d[\w.:-]*\b|"
+            r"\bsaluki\b|"
             r"\bq\s+w\s+e\s+n\b|\bg\s+e\s+m\s+m\s+a\b",
             msg,
         )
@@ -1343,12 +1377,16 @@ _LOOK_PUSHBACK = re.compile(
     r"just (?:do|look|capture|see)\b|"
     r"you should (?:have|be|already)|"
     r"why (?:didn'?t|aren'?t|won'?t|can'?t) you|"
+    r"you (?:didn'?t|did not|aren'?t|won'?t|can'?t)\b.{0,40}\b"
+    r"(?:look|see|capture|run|trigger|check)|"
+    r"(?:didn'?t|did not)\s+(?:look|see|capture|run)\b|"
     r"take the (?:shot|frame|screenshot|picture)|"
     r"capture (?:it|already|now)|"
     r"look already|"
     r"see (?:it|me|the screen) already|"
     r"come on|"
     r"try again|look again|"
+    r"fire it off|"
     r"what('?s| is) (your |the )?answer|"
     r"tell me (your |the )?answer|"
     r"(that|this) was thinking|"
@@ -1428,7 +1466,15 @@ def _last_assistant_missed_look(history: list[dict[str, str]] | None) -> bool:
                 r"camera sensing is off|"
                 r"couldn'?t arm the camera|"
                 r"the user is challenging|"
-                r"didn'?t automatically capture"
+                r"didn'?t automatically capture|"
+                r"desktop vision agent|"
+                r"vision agent|"
+                r"vision tool|"
+                r"tool wired up|"
+                r"(?:didn'?t|did not) run this turn|"
+                r"can'?t see your screen|"
+                r"cannot see your screen|"
+                r"in this chat channel"
                 r")\b",
                 text,
             )

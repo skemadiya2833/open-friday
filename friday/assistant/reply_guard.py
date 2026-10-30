@@ -35,6 +35,21 @@ _DUMP_PATTERNS = (
     r"(?i)\bbecause i didn'?t\b",
     r"(?i)\*\s*friday\s*:\s*calm",
     r"(?i)\bcalm,\s*precise,\s*a step ahead\b",
+    r"(?i)\bmain app open\s*:",
+    r"(?i)\bvisible apps?\s*:",
+    r"(?i)\bcompetence over commentary\b",
+    r"(?i)\bcoffee optional;\s*competence\b",
+    # Fake tool/status theater — observe already ran; never narrate wiring.
+    r"(?i)\bdesktop vision agent\b",
+    r"(?i)\bvision agent\b",
+    r"(?i)\bvision/?desktop\b",
+    r"(?i)\bvision tool\b",
+    r"(?i)\btool wired up\b",
+    r"(?i)\b(didn'?t|did not) run this turn\b",
+    r"(?i)\btrigger(?:ed)? the (?:desktop )?vision\b",
+    r"(?i)\bcan'?t see your screen\b",
+    r"(?i)\bcannot see your screen\b",
+    r"(?i)\bin this chat channel\b",
     r"(?i)\bquestioning my identity\b",
     r"(?i)\bmight be another persona\b",
     r"(?i)\bthe user wants me to\b",
@@ -128,7 +143,17 @@ def looks_like_prompt_dump(reply: str) -> bool:
         r"the user is questioning|"
         r"questioning my identity|"
         r"theatrical, dry megalomania|"
-        r"mock-threaten entropy"
+        r"mock-threaten entropy|"
+        r"competence over commentary|"
+        r"desktop vision agent|"
+        r"vision agent|"
+        r"vision tool|"
+        r"tool wired up|"
+        r"(?:didn'?t|did not) run this turn|"
+        r"trigger(?:ed)? the (?:desktop )?vision|"
+        r"can'?t see your screen|"
+        r"cannot see your screen|"
+        r"in this chat channel"
         r")\b",
         t,
     ):

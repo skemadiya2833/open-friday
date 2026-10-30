@@ -19,16 +19,43 @@ _META_PLAN = re.compile(
 )
 
 
+# Listing today's agenda / calendar — never treat as "plan my day".
+_LIST_SCHEDULE = re.compile(
+    r"(?i)\b("
+    r"what\s+do\s+(we|i|you)\s+have\b.{0,40}\b(schedule|agenda|plan|today)|"
+    r"what('?s| is)\b.{0,40}\b(on\s+(the\s+|my\s+)?schedule|scheduled|"
+    r"on\s+(my\s+|the\s+)?(agenda|plan)|up\s+for\s+today)|"
+    r"(show|list|read|tell)\b.{0,30}\b(schedule|agenda|plan)\b.{0,20}\btoday|"
+    r"\bon\s+(the\s+|my\s+)?schedule\s+today\b|"
+    r"\bschedule\s+for\s+today\b|"
+    r"\btoday'?s\s+(schedule|agenda|plan|tasks?)\b"
+    r")",
+)
+
+
+def is_schedule_list_request(text: str) -> bool:
+    """True when the owner wants to *hear* today's plan, not rebuild it."""
+    return bool(_LIST_SCHEDULE.search(text or ""))
+
+
 def is_meta_plan_request(text: str) -> bool:
     t = (text or "").strip()
     if not t:
+        return False
+    # "What do we have on schedule today" is a list ask, not plan-my-day.
+    if is_schedule_list_request(t):
         return False
     if _META_PLAN.search(t):
         return True
     # Short variants
     return bool(
         re.match(
-            r"^(plan|organise|organize|schedule)\s+(my\s+)?(day|today)\s*[.!?]*$",
+            r"^(plan|organise|organize)\s+(my\s+)?(day|today)\s*[.!?]*$",
+            t,
+            re.I,
+        )
+        or re.match(
+            r"^schedule\s+(my\s+|the\s+|a\s+)(day|today)\s*[.!?]*$",
             t,
             re.I,
         )

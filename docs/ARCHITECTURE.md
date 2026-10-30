@@ -23,15 +23,17 @@ Browser / tray  ──HTTP/SSE/WS──►  FastAPI (friday/server)
 | Area | Location | Role |
 |------|----------|------|
 | Server & auth | `friday/server`, `friday/auth` | HTTP API, passkey sessions, request guard |
-| Assistant | `friday/assistant`, `friday/briefing` | Chat sessions, rhythm, morning/EOD briefings |
-| Skills & tools | `friday/skills`, `friday/tools` | Skill router, policy-gated tool registry |
+| Assistant | `friday/assistant`, `friday/briefing` | Intent fastpath, sessions, rhythm, briefings |
+| Skills & tools | `friday/skills`, `friday/tools` | Skill router (observe/camera/…), policy-gated tools |
+| Presence | `friday/presence`, `friday/avatar` | Callsign skins, model switch, camera presence, lipsync |
 | CAD (optional) | `friday/cad`, skill `cad` | FreeCAD builds via Taiga-S1 planner→executor |
 | Agent | `friday/agent`, `friday/vision`, `friday/actions` | Desktop automation loop |
 | Hybrid backend | `friday/agent/hybrid.py`, MCP | UIA-first with vision fallback |
+| Models | `friday/models` | Ollama client, ModelManager, resident `num_ctx` |
 | Memory & knowledge | `friday/memory`, `friday/knowledge` | Chroma embeddings, optional private library |
 | Calendar | `friday/calendar` | iCal feed (secret URL stored locally, never in repo) |
 | Activity & reports | `friday/activity`, `friday/reports` | ActivityWatch hooks, structured research reports |
-| Voice | `friday/voice` | STT/TTS pipeline (optional extras) |
+| Voice / camera | `friday/voice`, `friday/camera` | STT/TTS; opt-in desk webcam |
 | Safety | `friday/safety`, `friday/security` | Approvals, audit chain, SSRF/content scanners |
 | Diagnostics | `friday/diagnostics` | Startup validation, doctor/health summaries |
 
@@ -52,6 +54,8 @@ Loopback-first binding, Host/Origin guard, tiered tool policy, hash-chained audi
 
 ## Related docs
 
+- Project handoff / rules: [`CONTEXT.md`](../CONTEXT.md)
 - Feature design notes: `docs/design/`
+- Presence skins: `docs/PRESENCE.md`
 - ADRs: `docs/decisions/`
 - Benchmark methods (no raw JSON in repo): `docs/benchmarks.md`

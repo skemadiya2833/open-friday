@@ -134,7 +134,7 @@ class SkillHandler(Skill):
             if not token:
                 norm = normalize_model_utterance(msg)
                 m2 = re.search(
-                    r"(?i)\b((?:qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*)\b",
+                    r"(?i)\b((?:saluki|qwen|gemma|llama|mistral|phi|deepseek|llava|minicpm)[\w.:-]*)\b",
                     norm,
                 )
                 token = m2.group(1) if m2 else None
@@ -157,6 +157,21 @@ class SkillHandler(Skill):
                     ),
                     skill_id="presence",
                     metadata={"ok": False, "requested": token, "tags": tags},
+                )
+            from friday.presence.modelswitch import current_models
+
+            cur = current_models()
+            if (
+                cur.get("chat_model") == resolved
+                and cur.get("vision_model") == resolved
+            ):
+                return SkillResult(
+                    reply=(
+                        f"Already on {resolved} for chat and vision, {owner}. "
+                        "No web install needed — it's local in Ollama."
+                    ),
+                    skill_id="presence",
+                    metadata={"ok": True, "already": True, **cur},
                 )
             result = apply_chat_model(resolved, emit=ctx.emit)
             vision_note = ""

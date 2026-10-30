@@ -45,11 +45,10 @@ class ModelManager:
         """Warm a concrete Ollama tag and track it as the GPU resident."""
         name = (name or "").strip() or self.model_for(role)
         with self._lock:
-            # Embeddings stay light / often CPU — don't displace vision/chat.
+            # Embeddings stay light / often CPU — never mark them as the GPU resident
+            # (that forced a chat unload+warmup after every memory embed).
             if role == "embed":
-                if self._loaded_name != name:
-                    self._warmup(name, keep_alive=keep_alive_for_role("embed"))
-                    self._loaded_name = name
+                self._warmup(name, keep_alive=keep_alive_for_role("embed"))
                 return name
 
             # Already hot with this exact model — skip another warmup round-trip.
@@ -62,7 +61,11 @@ class ModelManager:
                 self._unload(self._loaded_name)
                 self._loaded_name = None
 
-            keep = keep_alive_for_role("vision" if role == "vision" else "main")
+            # Shared chat+vision tag: always use main keep_alive (never a short vision TTL).
+            if role == "vision" and self.same_chat_and_vision():
+                keep = keep_alive_for_role("main")
+            else:
+                keep = keep_alive_for_role("vision" if role == "vision" else "main")
             self._warmup(name, keep_alive=keep)
             self._loaded = role
             self._loaded_name = name

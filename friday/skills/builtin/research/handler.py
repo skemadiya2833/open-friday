@@ -246,6 +246,7 @@ class SkillHandler(Skill):
         msg = ctx.message or ""
         # Local model / Ollama talk is presence — never invent web lore (Saluki etc.).
         try:
+            from friday.assistant.intent import is_voice_pick_ask
             from friday.presence.modelswitch import looks_like_model_talk
             from friday.skills.registry import get_registry
 
@@ -254,11 +255,19 @@ class SkillHandler(Skill):
                 if presence is not None:
                     ctx.emit(
                         "activity",
-                        {"step": "reroute", "message": "Switching local model…"},
+                        {"step": "reroute", "message": "Local model path…"},
                     )
                     return presence.run(ctx)
+            if is_voice_pick_ask(msg):
+                chat = get_registry().get("chat")
+                if chat is not None:
+                    ctx.emit(
+                        "activity",
+                        {"step": "reroute", "message": "Local voice pick…"},
+                    )
+                    return chat.run(ctx)
         except Exception as exc:  # noqa: BLE001
-            print(f"[Research] model-talk reroute skipped: {exc}")
+            print(f"[Research] model/voice reroute skipped: {exc}")
         try:
             from friday.assistant.reflexes import _is_greeting_only, try_reflex
             from friday.persona import owner_name

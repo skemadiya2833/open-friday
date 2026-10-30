@@ -54,6 +54,23 @@ def _parse_keep_alive() -> int | str:
         return MODEL_KEEP_ALIVE
 
 
+def _stable_num_ctx(model: str | None, num_ctx: int | None) -> int:
+    """Keep one KV size for the hot chat/vision tag so Ollama does not reload mid-session."""
+    from friday.config import (
+        resolve_chat_model,
+        resolve_resident_num_ctx,
+        resolve_vision_model,
+    )
+
+    tag = (model or MODEL_NAME or "").strip()
+    hot = {resolve_chat_model().strip(), resolve_vision_model().strip()}
+    if tag and tag in hot:
+        return resolve_resident_num_ctx()
+    if num_ctx is not None:
+        return int(num_ctx)
+    return int(MODEL_NUM_CTX)
+
+
 def _extract_chat_tokens(chunk: dict) -> tuple[str, str]:
     thinking = chunk.get("thinking") or ""
     message = chunk.get("message")
@@ -79,8 +96,9 @@ def _stream_chat(
     on_thinking: Callable[[str], None] | None = None,
     _retried: bool = False,
 ) -> tuple[str, str]:
+    tag = model or MODEL_NAME
     payload: dict = {
-        "model": model or MODEL_NAME,
+        "model": tag,
         "messages": messages,
         "stream": True,
         "keep_alive": _parse_keep_alive(),
@@ -88,7 +106,7 @@ def _stream_chat(
             "num_predict": int(
                 num_predict if num_predict is not None else MODEL_NUM_PREDICT
             ),
-            "num_ctx": int(num_ctx if num_ctx is not None else MODEL_NUM_CTX),
+            "num_ctx": _stable_num_ctx(tag, num_ctx),
             "temperature": MODEL_TEMPERATURE,
             "top_p": MODEL_TOP_P,
             "presence_penalty": 0.0,
@@ -426,13 +444,38 @@ def _looks_like_optics_dump(reply: str) -> bool:
         r"calm,\s*precise,\s*loyal|"
         r"system prompt|"
         r"user\s*persona\s*:|"
-        r"output\s*constraint\s*:"
+        r"output\s*constraint\s*:|"
+        r"main app open\s*:|"
+        r"visible apps?\s*:|"
+        r"competence over commentary|"
+        r"coffee optional|"
+        r"i'?ll pretend that was the easy part|"
+        r"try not to look too impressed|"
+        r"desktop vision agent|"
+        r"vision agent|"
+        r"vision tool|"
+        r"tool wired up|"
+        r"(?:didn'?t|did not) run this turn|"
+        r"trigger(?:ed)? the (?:desktop )?vision|"
+        r"can'?t see your screen|"
+        r"cannot see your screen|"
+        r"in this chat channel|"
+        r"don'?t have that tool|"
+        r"do not have that tool|"
+        r"call didn'?t go through|"
+        r"fire it off again"
         r")\b",
         t,
     ):
         return True
     # Caption theater: "Image: A screenshot of a Windows desktop…"
     if re.match(r"(?i)^\s*image\s*:", t):
+        return True
+    # Labeled desktop inventory instead of spoken prose.
+    if re.search(r"(?i)^\s*main app open\s*:", t) or (
+        re.search(r"(?i)\bvisible apps?\s*:", t)
+        and re.search(r"(?i)^\s*[-•]", t, re.MULTILINE)
+    ):
         return True
     # Numbered analysis: "1. Identify / Analyze…"
     if re.search(r"(?i)^\s*1\.\s*(identify|analyze)\b", t) or (
@@ -465,7 +508,9 @@ def _salvage_optics_reply(reply: str) -> str:
         if re.search(
             r"(?i)\b("
             r"identity\s*:|tone\s*:|persona\s*:|constraint|thinking process|"
-            r"analyze the request|the user (wants|is asking)|goal\s*:|task\s*:"
+            r"analyze the request|the user (wants|is asking)|goal\s*:|task\s*:|"
+            r"vision agent|vision tool|tool wired|chat channel|"
+            r"can'?t see your screen|competence over commentary"
             r")\b",
             ln,
         ):

@@ -166,3 +166,24 @@ def test_detects_webcam_visibility_analysis_dump():
     from friday.models.local import _looks_like_optics_dump
 
     assert _looks_like_optics_dump(dump)
+
+
+def test_detects_vision_agent_meta_theater():
+    from friday.models.local import _looks_like_optics_dump
+
+    no_run = (
+        "The desktop vision agent didn't run this turn, so I can't see your screen "
+        "right now. If you want me to check it again, I'll need to actually trigger "
+        "the vision tool first."
+    )
+    wired = (
+        "I've triggered the desktop vision agent — but in this chat channel I don't "
+        "have that tool wired up, so the call didn't go through on my end. Competence "
+        "over commentary."
+    )
+    for dump in (no_run, wired, "Competence over commentary."):
+        assert looks_like_prompt_dump(dump), dump
+        assert _looks_like_optics_dump(dump), dump
+    assert not _looks_like_optics_dump(
+        "Cursor is open on cli.py, and a PowerShell window is behind it."
+    )
