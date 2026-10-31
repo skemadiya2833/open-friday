@@ -339,10 +339,36 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Dream mode (diary proposals)",
         "help": "Opt-in background diary synthesis notes — never silent memory writes. Off by default.",
     },
+    "presence_skin": {
+        "kind": "choice",
+        "default": "friday",
+        "choices": ["friday", "jarvis", "ultron", "vision", "karen", "edith"],
+        "group": "presence",
+        "label": "Callsign skin",
+        "help": "Active presence pack (voice + HUD + tone). Portraits upload on Systems → Presence.",
+    },
+    "avatar_lipsync": {
+        "kind": "bool",
+        "default": False,
+        "env": "FRIDAY_AVATAR_LIPSYNC",
+        "group": "presence",
+        "label": "Talking-head lip-sync",
+        "help": "When on and a portrait is uploaded, render lip-sync (MuseTalk/Wav2Lip) while TTS plays. Off = still portrait only.",
+    },
+    "avatar_engine": {
+        "kind": "choice",
+        "default": "auto",
+        "choices": ["auto", "still", "musetalk", "wav2lip"],
+        "env": "FRIDAY_AVATAR_ENGINE",
+        "group": "presence",
+        "label": "Avatar engine",
+        "help": "auto = MuseTalk → Wav2Lip → still. wav2lip = low-VRAM. Engines need data/vendor/MuseTalk or Wav2Lip installed.",
+    },
 }
 
 _GROUPS = [
     ("persona", "Persona"),
+    ("presence", "Presence / avatar"),
     ("agent", "Agent"),
     ("safety", "Safety"),
     ("voice", "Voice"),

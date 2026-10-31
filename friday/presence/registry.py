@@ -74,6 +74,12 @@ def prompt_presence_block(*, kind: str = "chat") -> str:
 def presence_snapshot() -> dict[str, Any]:
     skin = active_skin()
     portrait = portrait_path_for(skin.id)
+    portraits: dict[str, str | None] = {}
+    for s in list_skins():
+        p = portrait_path_for(s.id)
+        portraits[s.id] = (
+            f"/api/presence/portrait/{s.id}" if p is not None and p.is_file() else None
+        )
     return {
         "skin": skin.as_dict(),
         "skins": [s.as_dict() for s in list_skins()],
@@ -83,6 +89,7 @@ def presence_snapshot() -> dict[str, Any]:
         "portrait_url": f"/api/presence/portrait/{skin.id}"
         if portrait and portrait.is_file()
         else None,
+        "portraits": portraits,
         "clamp": CAPABILITY_CLAMP,
     }
 

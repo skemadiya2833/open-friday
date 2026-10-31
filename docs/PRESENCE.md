@@ -39,11 +39,14 @@ Each chat turn while on: one glance → appearance notes → optional in-charact
 
 ## Avatar / talking head
 
-- Upload portrait: `POST /api/presence/portrait/{skin_id}` (png/jpg/webp) → `data/presence/portraits/`.
+**UI:** Systems → **Presence** — pick callsign, upload one face image per skin (png/jpg/webp), toggle **Lip-sync while speaking**, choose engine (`auto` / `still` / MuseTalk / Wav2Lip).
+
+- Files land in `data/presence/portraits/{skin_id}.*`.
 - HUD shows still portrait when present (`#avatarPanel`).
-- Prefs: `avatar_engine` = `auto|still|musetalk|wav2lip`; `avatar_lipsync` (off by default).
+- Prefs (also under Preferences → Presence / avatar): `avatar_engine`, `avatar_lipsync` (off by default), `presence_skin`.
 - Engines live under `data/vendor/MuseTalk` and `data/vendor/Wav2Lip` when installed; otherwise still portrait only.
 - MuseTalk is the preferred lip-sync engine; Wav2Lip is the low-VRAM option.
+- Realtime lip-sync is **not** a live webcam stream — it renders against the uploaded portrait when TTS audio plays.
 
 ## API
 

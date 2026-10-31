@@ -81,87 +81,96 @@ async function bindModelPrefSelects(setHint, afterSave) {
   });
 }
 
-function prefsPanelHtml(snap) {
+function prefsGroupsMarkup(snap) {
   if (!snap || !snap.items) {
-    return `<div class="setting"><label>Preferences</label><p class="muted">Could not load prefs.</p></div>`;
+    return `<p class="muted">Could not load prefs.</p>`;
   }
   const byGroup = {};
   for (const it of snap.items) {
     (byGroup[it.group] || (byGroup[it.group] = [])).push(it);
   }
   const groups = snap.groups || [];
+  const chips = [];
   let body = "";
+  let first = true;
   for (const g of groups) {
     const items = byGroup[g.id];
     if (!items || !items.length) continue;
-    body += `<div class="prefs-group"><h3 class="prefs-group-title">${escapeHtml(g.label)}</h3>`;
+    chips.push(
+      `<button type="button" class="sys-chip${first ? " on" : ""}" data-prefs-group="${escapeHtml(g.id)}">${escapeHtml(g.label)}</button>`
+    );
+    body += `<div class="prefs-group" data-group-id="${escapeHtml(g.id)}" ${first ? "" : "hidden"}>
+      <h3 class="prefs-group-title">${escapeHtml(g.label)}</h3>`;
     for (const it of items) {
       body += prefItemHtml(it);
     }
     body += `</div>`;
+    first = false;
   }
   return `
-    <div class="setting ops-panel prefs-panel">
-      <label>Preferences</label>
-      <div class="prefs-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button type="button" class="ghost" id="prefsOptimaBtn">Reset to optima</button>
-        <button type="button" class="ghost" id="prefsClearBtn">Clear overrides</button>
-        <span class="muted" id="prefsSaveHint" style="align-self:center"></span>
-      </div>
-      ${body}
-    </div>`;
+    <div class="prefs-actions">
+      <button type="button" class="ghost" id="prefsOptimaBtn">Reset to optima</button>
+      <button type="button" class="ghost" id="prefsClearBtn">Clear overrides</button>
+      <span class="muted" id="prefsSaveHint"></span>
+    </div>
+    <nav class="prefs-subnav" aria-label="Preference groups">${chips.join("")}</nav>
+    <div class="prefs-groups">${body}</div>`;
 }
 
 function prefItemHtml(it) {
   const src = it.source === "ui" ? "Systems" : it.source === "env" ? ".env" : "optima";
-  const restart = it.restart ? ` <span class="muted">(restart recommended)</span>` : "";
-  let control = "";
+  const restart = it.restart ? ` <span class="muted">(restart)</span>` : "";
+  const meta = `<span class="muted pref-src"> · ${escapeHtml(src)}${restart}</span>`;
   if (it.kind === "bool") {
-    control = `<label class="speak-toggle" style="margin-top:8px">
-      <input type="checkbox" data-pref="${escapeHtml(it.key)}" ${it.value ? "checked" : ""} />
-      <span>${escapeHtml(it.label)}</span>
-    </label>`;
-  } else if (it.kind === "choice") {
+    return `<div class="pref-item pref-switch" data-pref-key="${escapeHtml(it.key)}">
+      <div class="pref-copy">
+        <strong>${escapeHtml(it.label)}</strong>${meta}
+      </div>
+      <label class="switch" title="${escapeHtml(it.label)}">
+        <input type="checkbox" data-pref="${escapeHtml(it.key)}" ${it.value ? "checked" : ""} />
+        <span class="switch-ui" aria-hidden="true"></span>
+      </label>
+    </div>`;
+  }
+  let control = "";
+  if (it.kind === "choice") {
     const opts = (it.choices || []).map((c) =>
       `<button type="button" data-pref="${escapeHtml(it.key)}" data-val="${escapeHtml(c)}" class="${c === it.value ? "on" : ""}">${escapeHtml(String(c))}</button>`
     ).join("");
-    control = `<div class="seg pref-seg" style="margin-top:8px;flex-wrap:wrap">${opts}</div>`;
+    control = `<div class="seg pref-seg">${opts}</div>`;
     if (it.key === "tts_voice") {
-      control += `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      control += `<div class="pref-inline">
         <button type="button" class="ghost" id="ttsVoicePreviewBtn" title="Hear the selected TTS voice">Preview voice</button>
-        <span class="muted" id="ttsVoicePreviewHint" style="font-size:12px"></span>
+        <span class="muted" id="ttsVoicePreviewHint"></span>
       </div>`;
     }
   } else if (it.key === "chat_model" || it.key === "vision_model") {
     const cur = escapeHtml(String(it.value ?? ""));
-    control = `<select data-pref="${escapeHtml(it.key)}" data-model-pref="${escapeHtml(it.key)}" style="margin-top:8px;width:min(360px,100%);padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)">
+    control = `<select class="sys-select" data-pref="${escapeHtml(it.key)}" data-model-pref="${escapeHtml(it.key)}">
       <option value="${cur}">${cur || "Loading…"}</option>
     </select>`;
     if (it.key === "vision_model") {
-      control += `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      control += `<div class="pref-inline">
         <button type="button" class="ghost" id="matchVisionToChatBtn" title="Use the same Ollama tag for chat and screen look">Match vision to chat</button>
-        <span class="muted" id="modelPrefHint" style="font-size:12px"></span>
+        <span class="muted" id="modelPrefHint"></span>
       </div>`;
     }
   } else if (it.kind === "secret" || it.secret) {
     const saved = it.has_secret
-      ? `<span class="muted" style="font-size:12px;margin-left:8px">saved</span>`
-      : `<span class="muted" style="font-size:12px;margin-left:8px">not set</span>`;
-    control = `<div style="margin-top:8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px">
-      <input type="password" autocomplete="new-password" data-pref="${escapeHtml(it.key)}" data-secret="1"
-        placeholder="${it.has_secret ? "•••••••• (leave blank to keep)" : "paste token here"}"
-        value="" style="width:min(360px,100%);padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)" />
+      ? `<span class="muted">saved</span>`
+      : `<span class="muted">not set</span>`;
+    control = `<div class="pref-inline">
+      <input class="sys-input" type="password" autocomplete="new-password" data-pref="${escapeHtml(it.key)}" data-secret="1"
+        placeholder="${it.has_secret ? "•••••••• (leave blank to keep)" : "paste token here"}" value="" />
       ${saved}
       ${it.has_secret ? `<button type="button" class="ghost" data-clear-secret="${escapeHtml(it.key)}" title="Clear stored token">Clear</button>` : ""}
     </div>`;
   } else {
     const wide = /path|install|repo|python|model|folder/i.test(it.key) || it.group === "cad";
-    const w = wide ? "min(520px,100%)" : "min(280px,100%)";
-    control = `<input type="text" data-pref="${escapeHtml(it.key)}" value="${escapeHtml(String(it.value ?? ""))}" style="margin-top:8px;width:${w};padding:6px 8px;background:transparent;border:1px solid var(--line);color:var(--text);font-family:var(--mono)" />`;
+    control = `<input class="sys-input${wide ? " sys-input-wide" : ""}" type="text" data-pref="${escapeHtml(it.key)}" value="${escapeHtml(String(it.value ?? ""))}" />`;
   }
   return `<div class="pref-item" data-pref-key="${escapeHtml(it.key)}">
-    <div class="pref-label"><strong>${escapeHtml(it.label)}</strong>
-      <span class="muted pref-src"> · ${escapeHtml(src)}${restart}</span></div>
+    <div class="pref-copy"><strong>${escapeHtml(it.label)}</strong>${meta}</div>
     ${control}
   </div>`;
 }
@@ -240,6 +249,157 @@ async function previewSelectedTtsVoice() {
   }
 }
 
+async function bindPresencePanel() {
+  const line = $("#presenceStatusLine");
+  const grid = $("#presencePortraitGrid");
+  const skinSeg = $("#presenceSkinSeg");
+  const engHint = $("#avatarEngineHint");
+  if (!grid || !skinSeg) return;
+
+  const render = async () => {
+    let snap = {};
+    try {
+      const res = await apiFetch("/api/presence");
+      if (res.ok) snap = await res.json();
+    } catch (_) {}
+    const skins = snap.skins || [];
+    const active = (snap.skin && snap.skin.id) || "friday";
+    const portraits = snap.portraits || {};
+    const avatar = snap.avatar || {};
+    const engines = (avatar.engines) || {};
+    skinSeg.innerHTML = skins.map((s) =>
+      `<button type="button" data-presence-skin="${escapeHtml(s.id)}" class="${s.id === active ? "on" : ""}">${escapeHtml(s.display_name || s.id)}</button>`
+    ).join("");
+    grid.innerHTML = skins.map((s) => {
+      const url = portraits[s.id];
+      const thumb = url
+        ? `<img src="${escapeHtml(url)}?t=${Date.now()}" alt="" class="presence-thumb" />`
+        : `<div class="presence-thumb presence-thumb-empty">No image</div>`;
+      return `<div class="presence-card" data-skin="${escapeHtml(s.id)}">
+        <div class="presence-card-head">${escapeHtml(s.display_name || s.id)}</div>
+        ${thumb}
+        <label class="ghost presence-upload-btn">
+          Upload
+          <input type="file" accept="image/png,image/jpeg,image/webp" data-portrait-upload="${escapeHtml(s.id)}" hidden />
+        </label>
+      </div>`;
+    }).join("");
+    const lipsync = !!snap.avatar_lipsync;
+    const lipsyncEl = $("#avatarLipsyncToggle");
+    if (lipsyncEl) lipsyncEl.checked = lipsync;
+    const eng = String(snap.avatar_engine || "auto");
+    document.querySelectorAll("#avatarEngineSeg [data-avatar-engine]").forEach((b) => {
+      b.classList.toggle("on", b.getAttribute("data-avatar-engine") === eng);
+    });
+    const bits = [];
+    bits.push(`Active engine: ${avatar.active || eng}`);
+    bits.push(`MuseTalk ${engines.musetalk ? "ready" : "not installed"}`);
+    bits.push(`Wav2Lip ${engines.wav2lip ? "ready" : "not installed"}`);
+    if (engHint) engHint.textContent = bits.join(" · ");
+    if (line) {
+      line.textContent = lipsync
+        ? "Lip-sync on — upload a face per callsign; needs Wav2Lip or MuseTalk under data/vendor."
+        : "Still portraits only until lip-sync is on.";
+    }
+  };
+
+  await render();
+
+  skinSeg.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-presence-skin]");
+    if (!btn) return;
+    const sid = btn.getAttribute("data-presence-skin");
+    try {
+      await apiFetch("/api/presence/skin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skin_id: sid }),
+      });
+      if (typeof refreshPresence === "function") refreshPresence();
+      await render();
+    } catch (_) {
+      if (line) line.textContent = "Could not switch callsign";
+    }
+  });
+
+  $("#avatarLipsyncToggle")?.addEventListener("change", async (e) => {
+    try {
+      await patchPrefs({ avatar_lipsync: !!e.target.checked });
+      await render();
+    } catch (_) {
+      e.target.checked = !e.target.checked;
+    }
+  });
+
+  document.querySelectorAll("#avatarEngineSeg [data-avatar-engine]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const val = btn.getAttribute("data-avatar-engine");
+      try {
+        await patchPrefs({ avatar_engine: val });
+        await render();
+      } catch (_) { /* ignore */ }
+    });
+  });
+
+  grid.addEventListener("change", async (ev) => {
+    const input = ev.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== "file") return;
+    const sid = input.getAttribute("data-portrait-upload");
+    const file = input.files && input.files[0];
+    if (!sid || !file) return;
+    if (line) line.textContent = `Uploading ${sid}…`;
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const res = await apiFetch(`/api/presence/portrait/${encodeURIComponent(sid)}`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      if (typeof refreshPresence === "function") refreshPresence();
+      await render();
+      if (line) line.textContent = `Portrait saved for ${sid}`;
+    } catch (err) {
+      if (line) line.textContent = `Upload failed — ${err && err.message ? err.message : "error"}`;
+    } finally {
+      input.value = "";
+    }
+  });
+}
+
+function bindSystemsNav() {
+  const nav = document.querySelector("#settingsGrid .systems-nav");
+  if (!nav) return;
+  nav.querySelectorAll("[data-sys-panel]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-sys-panel");
+      nav.querySelectorAll("[data-sys-panel]").forEach((b) => {
+        b.classList.toggle("on", b === btn);
+      });
+      document.querySelectorAll("#settingsGrid .systems-panel").forEach((panel) => {
+        const match = panel.getAttribute("data-panel") === id;
+        panel.hidden = !match;
+      });
+    });
+  });
+}
+
+function bindPrefsGroupNav() {
+  const sub = document.querySelector("#settingsGrid .prefs-subnav");
+  if (!sub) return;
+  sub.querySelectorAll("[data-prefs-group]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gid = btn.getAttribute("data-prefs-group");
+      sub.querySelectorAll("[data-prefs-group]").forEach((b) => {
+        b.classList.toggle("on", b === btn);
+      });
+      document.querySelectorAll("#settingsGrid .prefs-group").forEach((g) => {
+        g.hidden = g.getAttribute("data-group-id") !== gid;
+      });
+    });
+  });
+}
+
 function bindPrefsControls(snap) {
   const hint = $("#prefsSaveHint");
   const setHint = (t) => { if (hint) hint.textContent = t; };
@@ -273,6 +433,14 @@ function bindPrefsControls(snap) {
       const key = btn.getAttribute("data-pref");
       const val = btn.getAttribute("data-val");
       try {
+        if (key === "presence_skin") {
+          await apiFetch("/api/presence/skin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ skin_id: val }),
+          });
+          if (typeof refreshPresence === "function") refreshPresence();
+        }
         const snap2 = await patchPrefs({ [key]: val });
         afterSave(snap2);
         document.querySelectorAll(`#settingsGrid .pref-seg button[data-pref="${key}"]`).forEach((b) => {
@@ -369,7 +537,8 @@ function opsSummaryHtml(ops) {
     ? Object.entries(memCols).map(([k, v]) => `${k}:${v}`).join(" · ")
     : "";
   return `
-      <div class="setting ops-panel"><label>Ops</label>
+      <div class="ops-embed">
+        <h3 class="prefs-group-title">Ops</h3>
         <table class="ops-table"><tbody>
           <tr><td>Sessions</td><td>${c.sessions ?? "—"}</td><td>Active runs</td><td>${c.active_runs ?? "—"}</td></tr>
           <tr><td>Skills</td><td>${c.skills_enabled ?? "—"} / ${c.skills_total ?? "—"}</td><td>SKILL.md</td><td>${c.skillmd_installed ?? "—"} · ${c.skillmd_quarantine ?? "—"} Q</td></tr>
@@ -499,94 +668,172 @@ async function refreshSettings() {
     const uplink = $("#uplinkStatus");
     if (uplink) uplink.textContent = "UPLINK · SECURE";
     $("#settingsGrid").innerHTML = `
-      ${ownerProfileHtml(profile)}
-      ${opsSummaryHtml(ops)}
-      ${prefsPanelHtml(prefs)}
-      <div class="setting"><label>Models</label>
-        <div><span class="muted">Vision</span> <strong>${escapeHtml(h.vision_model || "—")}</strong></div>
-        <div><span class="muted">Chat</span> <strong>${escapeHtml(h.chat_model || "—")}</strong></div>
-        <div><span class="muted">Embed</span> <strong>${escapeHtml(h.embed_model || "—")}</strong></div>
-      </div>
-      <div class="setting"><label>Voice</label><strong>${h.voice ? "enabled" : "disabled"}</strong>
-        <label class="speak-toggle" style="margin-top:12px">
-          <input type="checkbox" id="speakToggleSettings" />
-          <span>Audio Out</span>
-        </label>
-      </div>
-      <div class="setting"><label>Voice pacing</label>
-        <div class="seg">
-          <button type="button" data-voice-style="realtime">Realtime</button>
-          <button type="button" data-voice-style="relaxed">Relaxed</button>
-        </div>
-        <div class="seg" style="margin-top:8px">
-          <button type="button" data-voice-duplex="hold">Hold</button>
-          <button type="button" data-voice-duplex="interrupt">Interrupt</button>
-        </div>
-      </div>
-      <div class="setting"><label>Briefings</label>
-        <label class="speak-toggle" style="margin-top:8px">
-          <input type="checkbox" id="morningBriefingToggle" />
-          <span>Morning (≈08:00)</span>
-        </label>
-        <label class="speak-toggle" style="margin-top:8px">
-          <input type="checkbox" id="eodBriefingToggle" />
-          <span>End of day (≈18:00)</span>
-        </label>
-        <label class="speak-toggle" style="margin-top:8px">
-          <input type="checkbox" id="weeklyBriefingToggle" />
-          <span>Weekly review</span>
-        </label>
-        <button type="button" class="ghost" id="morningBriefingRun" style="margin-top:8px">Run morning</button>
-      </div>
-      <div class="setting"><label>CAD / FreeCAD</label>
-        <p class="muted" id="cadStatusLine" style="margin:0 0 8px">Checking…</p>
-        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" class="ghost" id="cadDetectBtn">Detect FreeCAD</button>
-          <button type="button" class="ghost" id="cadSetupBtn">Setup Taiga</button>
-          <button type="button" class="ghost" id="cadLaunchBtn">Launch FreeCAD server</button>
-          <button type="button" class="ghost" id="cadRefreshBtn">Refresh</button>
-        </div>
-        <p class="muted" id="cadHint" style="margin:8px 0 0;font-size:12px"></p>
-      </div>
-      <div class="setting"><label>Camera</label>
-        <p class="muted" id="cameraStatusLine" style="margin:0 0 8px">Checking…</p>
-        <label class="speak-toggle">
-          <input type="checkbox" id="cameraEnableToggle" />
-          <span>Enable</span>
-        </label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
-          <label for="cameraDeviceSelect" class="muted" style="margin:0">Device</label>
-          <select id="cameraDeviceSelect" style="min-width:220px;max-width:100%">
-            <option value="">Scanning…</option>
-          </select>
-          <button type="button" class="ghost" id="cameraScanBtn" title="Re-scan">Scan</button>
-          <button type="button" class="ghost" id="cameraUseRecommendedBtn" title="Use recommended" style="display:none">Recommended</button>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
-          <label for="cameraResSelect" class="muted" style="margin:0">Resolution</label>
-          <select id="cameraResSelect" style="min-width:180px">
-            <option value="720p">720p</option>
-            <option value="480p">480p</option>
-            <option value="1080p">1080p</option>
-            <option value="auto">Auto</option>
-          </select>
-        </div>
-        <p class="muted" id="cameraDeviceHint" style="margin:0 0 8px"></p>
-        <label class="speak-toggle">
-          <input type="checkbox" id="cameraArmToggle" />
-          <span>Arm</span>
-        </label>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" class="ghost" id="cameraSnapBtn">Snap</button>
-          <button type="button" class="ghost" id="cameraPreviewBtn">Preview</button>
-          <span class="pill" id="cameraLivePill" style="display:none">CAMERA LIVE</span>
-        </div>
-        <img id="cameraPreviewImg" alt="Camera preview" class="hidden" style="margin-top:10px;max-width:100%;max-height:240px;border:1px solid var(--line);background:#000" />
+      <div class="systems-shell">
+        <nav class="systems-nav" aria-label="Systems sections">
+          <button type="button" class="sys-chip on" data-sys-panel="prefs">Preferences</button>
+          <button type="button" class="sys-chip" data-sys-panel="presence">Presence</button>
+          <button type="button" class="sys-chip" data-sys-panel="about">About you</button>
+          <button type="button" class="sys-chip" data-sys-panel="voice">Voice</button>
+          <button type="button" class="sys-chip" data-sys-panel="camera">Camera</button>
+          <button type="button" class="sys-chip" data-sys-panel="cad">CAD</button>
+          <button type="button" class="sys-chip" data-sys-panel="status">Status</button>
+        </nav>
+
+        <section class="systems-panel setting" id="sys-prefs" data-panel="prefs">
+          <label>Preferences</label>
+          ${prefsGroupsMarkup(prefs)}
+        </section>
+
+        <section class="systems-panel setting" id="sys-presence" data-panel="presence" hidden>
+          <label>Presence / talking head</label>
+          <p class="muted sys-status-line" id="presenceStatusLine">Loading callsigns…</p>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Active callsign</strong><span class="muted"> · skin + voice</span></div>
+            <div class="seg" id="presenceSkinSeg"></div>
+          </div>
+          <div class="pref-item pref-switch">
+            <div class="pref-copy"><strong>Lip-sync while speaking</strong><span class="muted"> · needs portrait + engine</span></div>
+            <label class="switch" title="Avatar lip-sync">
+              <input type="checkbox" id="avatarLipsyncToggle" />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Avatar engine</strong></div>
+            <div class="seg" id="avatarEngineSeg">
+              <button type="button" data-avatar-engine="auto">auto</button>
+              <button type="button" data-avatar-engine="still">still</button>
+              <button type="button" data-avatar-engine="musetalk">MuseTalk</button>
+              <button type="button" data-avatar-engine="wav2lip">Wav2Lip</button>
+            </div>
+            <p class="muted" id="avatarEngineHint" style="margin:8px 0 0"></p>
+          </div>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Portraits</strong><span class="muted"> · one face image per callsign</span></div>
+            <div class="presence-portrait-grid" id="presencePortraitGrid"></div>
+          </div>
+        </section>
+
+        <section class="systems-panel" id="sys-about" data-panel="about" hidden>
+          ${ownerProfileHtml(profile)}
+        </section>
+
+        <section class="systems-panel setting" id="sys-voice" data-panel="voice" hidden>
+          <label>Voice</label>
+          <div class="pref-item pref-switch">
+            <div class="pref-copy"><strong>Audio out</strong><span class="muted"> · speak replies</span></div>
+            <label class="switch" title="Audio out">
+              <input type="checkbox" id="speakToggleSettings" />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+          <p class="muted sys-status-line">Pipeline: <strong>${h.voice ? "enabled" : "disabled"}</strong></p>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Pacing</strong></div>
+            <div class="seg">
+              <button type="button" data-voice-style="realtime">Realtime</button>
+              <button type="button" data-voice-style="relaxed">Relaxed</button>
+            </div>
+          </div>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Duplex</strong></div>
+            <div class="seg">
+              <button type="button" data-voice-duplex="hold">Hold</button>
+              <button type="button" data-voice-duplex="interrupt">Interrupt</button>
+            </div>
+          </div>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Briefings</strong></div>
+            <div class="pref-stack">
+              <label class="switch-inline"><span>Morning ≈08:00</span>
+                <span class="switch"><input type="checkbox" id="morningBriefingToggle" /><span class="switch-ui" aria-hidden="true"></span></span>
+              </label>
+              <label class="switch-inline"><span>End of day ≈18:00</span>
+                <span class="switch"><input type="checkbox" id="eodBriefingToggle" /><span class="switch-ui" aria-hidden="true"></span></span>
+              </label>
+              <label class="switch-inline"><span>Weekly review</span>
+                <span class="switch"><input type="checkbox" id="weeklyBriefingToggle" /><span class="switch-ui" aria-hidden="true"></span></span>
+              </label>
+              <button type="button" class="ghost" id="morningBriefingRun">Run morning now</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="systems-panel setting" id="sys-camera" data-panel="camera" hidden>
+          <label>Camera</label>
+          <p class="muted sys-status-line" id="cameraStatusLine">Checking…</p>
+          <div class="pref-item pref-switch">
+            <div class="pref-copy"><strong>Enable</strong></div>
+            <label class="switch" title="Enable camera">
+              <input type="checkbox" id="cameraEnableToggle" />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Device</strong></div>
+            <div class="pref-inline">
+              <select class="sys-select" id="cameraDeviceSelect">
+                <option value="">Scanning…</option>
+              </select>
+              <button type="button" class="ghost" id="cameraScanBtn" title="Re-scan">Scan</button>
+              <button type="button" class="ghost" id="cameraUseRecommendedBtn" title="Use recommended" style="display:none">Recommended</button>
+            </div>
+          </div>
+          <div class="pref-item">
+            <div class="pref-copy"><strong>Resolution</strong></div>
+            <select class="sys-select" id="cameraResSelect">
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+              <option value="1080p">1080p</option>
+              <option value="auto">Auto</option>
+            </select>
+          </div>
+          <p class="muted" id="cameraDeviceHint"></p>
+          <div class="pref-item pref-switch">
+            <div class="pref-copy"><strong>Arm</strong><span class="muted"> · grant capture</span></div>
+            <label class="switch" title="Arm camera">
+              <input type="checkbox" id="cameraArmToggle" />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="pref-inline">
+            <button type="button" class="ghost" id="cameraSnapBtn">Snap</button>
+            <button type="button" class="ghost" id="cameraPreviewBtn">Preview</button>
+            <span class="pill" id="cameraLivePill" style="display:none">CAMERA LIVE</span>
+          </div>
+          <img id="cameraPreviewImg" alt="Camera preview" class="hidden camera-preview" />
+        </section>
+
+        <section class="systems-panel setting" id="sys-cad" data-panel="cad" hidden>
+          <label>CAD / FreeCAD</label>
+          <p class="muted sys-status-line" id="cadStatusLine">Checking…</p>
+          <div class="pref-inline">
+            <button type="button" class="ghost" id="cadDetectBtn">Detect FreeCAD</button>
+            <button type="button" class="ghost" id="cadSetupBtn">Setup Taiga</button>
+            <button type="button" class="ghost" id="cadLaunchBtn">Launch FreeCAD server</button>
+            <button type="button" class="ghost" id="cadRefreshBtn">Refresh</button>
+          </div>
+          <p class="muted" id="cadHint"></p>
+          <p class="muted">Paths and enable live under Preferences → CAD.</p>
+        </section>
+
+        <section class="systems-panel setting" id="sys-status" data-panel="status" hidden>
+          <label>Status</label>
+          <div class="status-models">
+            <div><span class="muted">Chat</span> <strong>${escapeHtml(h.chat_model || "—")}</strong></div>
+            <div><span class="muted">Vision</span> <strong>${escapeHtml(h.vision_model || "—")}</strong></div>
+            <div><span class="muted">Embed</span> <strong>${escapeHtml(h.embed_model || "—")}</strong></div>
+          </div>
+          ${opsSummaryHtml(ops)}
+        </section>
       </div>`;
+    bindSystemsNav();
+    bindPrefsGroupNav();
     bindOwnerProfile();
     bindVoiceControls();
     syncSpeakToggles();
     bindPrefsControls(prefs || { items: [] });
+    bindPresencePanel();
     bindMorningBriefing();
     bindCameraControls();
     bindCadControls();

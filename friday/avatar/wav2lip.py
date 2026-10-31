@@ -16,12 +16,34 @@ def _vendor_root() -> Path:
     return Path(DATA_DIR) / "vendor" / "Wav2Lip"
 
 
+def _wav2lip_python() -> str:
+    """Prefer the vendor venv so Friday's env stays free of Wav2Lip torch pins."""
+    import os
+
+    override = (os.getenv("FRIDAY_WAV2LIP_PYTHON") or "").strip()
+    if override and Path(override).is_file():
+        return override
+    root = _vendor_root()
+    for cand in (
+        root / ".venv" / "Scripts" / "python.exe",
+        root / ".venv" / "bin" / "python",
+    ):
+        if cand.is_file():
+            return str(cand)
+    return shutil.which("python") or sys.executable
+
+
 class Wav2LipEngine:
     name = "wav2lip"
 
     def available(self) -> bool:
         root = _vendor_root()
-        return (root / "inference.py").is_file()
+        if not (root / "inference.py").is_file():
+            return False
+        ckpt = root / "checkpoints" / "wav2lip_gan.pth"
+        if not ckpt.is_file():
+            ckpt = root / "checkpoints" / "wav2lip.pth"
+        return ckpt.is_file()
 
     def render(
         self,
@@ -53,7 +75,7 @@ class Wav2LipEngine:
         checkpoint = root / "checkpoints" / "wav2lip_gan.pth"
         if not checkpoint.is_file():
             checkpoint = root / "checkpoints" / "wav2lip.pth"
-        py = shutil.which("python") or sys.executable
+        py = _wav2lip_python()
         cmd = [
             py,
             str(root / "inference.py"),
