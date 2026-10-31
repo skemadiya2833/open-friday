@@ -55,7 +55,41 @@ if (-not (Test-Path $VenvPy)) {
 }
 Write-Host "[Wav2Lip] Installing torch + deps into vendor venv…"
 & $VenvPy -m pip install -U pip wheel
-& $VenvPy -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# Compatibility gate: pick a torch CUDA index that matches this GPU before downloading GBs.
+# RTX 50-series (sm_120 / Blackwell) needs cu128+; older cards can use cu124.
+$TorchIndex = "https://download.pytorch.org/whl/cu124"
+$CapMajor = $null
+try {
+  $CapMajor = & nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>$null |
+    Select-Object -First 1 |
+    ForEach-Object { [int](($_ -split '\.')[0]) }
+} catch {}
+if ($CapMajor -ge 12) {
+  $TorchIndex = "https://download.pytorch.org/whl/cu128"
+  Write-Host "[Wav2Lip] GPU compute >= 12.0 → torch cu128 (Blackwell / RTX 50)."
+} else {
+  Write-Host "[Wav2Lip] Using torch cu124 (compute_cap=$CapMajor)."
+}
+Write-Host "[Wav2Lip] pip index: $TorchIndex"
+& $VenvPy -m pip install torch torchvision --index-url $TorchIndex
+# Smoke: refuse to keep a wheel that can't run a CUDA conv on this card.
+& $VenvPy -c @"
+import torch, sys
+print('[Wav2Lip] torch', torch.__version__, 'cuda', torch.cuda.is_available())
+if not torch.cuda.is_available():
+    print('[Wav2Lip] WARNING: CUDA not available — CPU only.')
+    sys.exit(0)
+print('[Wav2Lip] GPU', torch.cuda.get_device_name(0), 'cap', torch.cuda.get_device_capability(0))
+x = torch.randn(2, 3, 32, 32, device='cuda')
+w = torch.randn(4, 3, 3, 3, device='cuda')
+y = torch.nn.functional.conv2d(x, w)
+print('[Wav2Lip] CUDA conv OK', tuple(y.shape))
+"@
+if ($LASTEXITCODE -ne 0) {
+  throw "[Wav2Lip] Torch CUDA smoke failed — aborting before more downloads. Fix GPU/torch match first."
+}
+
 # Core only — audio.py is a numpy mel shim (avoids flaky scipy/librosa wheels).
 & $VenvPy -m pip install numpy tqdm
 try {

@@ -1,4 +1,4 @@
-"""Presence skins, model aliases, capability clamp, humor banks."""
+"""Presence skins, model aliases, capability clamp."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def test_all_skins_registered():
         assert sid in SKINS
         skin = get_skin(sid)
         assert skin.style_delta
-        assert skin.humor_bank
+        assert not skin.humor_bank  # wit is model-generated; no stock banks
         assert skin.css_theme.startswith("skin-")
 
 
@@ -50,7 +50,7 @@ def test_ultron_style_is_theatrical_not_hacking():
     assert "takeover" in clamp or "destructive" in clamp
 
 
-def test_humor_banks_have_no_film_quotes():
+def test_style_deltas_have_no_film_quotes():
     banned = (
         "i am iron man",
         "avengers assemble",
@@ -59,9 +59,9 @@ def test_humor_banks_have_no_film_quotes():
         "with great power",
     )
     for skin in SKINS.values():
-        blob = " ".join(skin.humor_bank).lower()
+        blob = (skin.style_delta or "").lower()
         for b in banned:
-            assert b not in blob, f"{skin.id} bank contains {b!r}"
+            assert b not in blob, f"{skin.id} style contains {b!r}"
 
 
 def test_intent_skin_switch():
@@ -84,8 +84,9 @@ def test_intent_camera_presence():
     hit = _resolve_presence_intent("camera presence on")
     assert hit is not None
     assert hit.skill_id == "presence"
-    hit2 = _resolve_presence_intent("see me")
-    assert hit2 is not None
+    # Bare "see me" is a camera look, not a presence-mode toggle.
+    assert _resolve_presence_intent("see me") is None
+    assert _resolve_presence_intent("turn on camera presence") is not None
 
 
 def test_resolve_model_alias_picks_family():

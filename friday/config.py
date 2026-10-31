@@ -295,6 +295,11 @@ def resolve_chat_model() -> str:
 
 def _name_looks_vision(tag: str) -> bool:
     n = (tag or "").lower()
+    # Custom IQ/coder text GGUFs are not vision even when the family name looks multimodal.
+    if any(x in n for x in ("iq3", "iq2", "iq4", "iq1", "coder", "-text", "embed")) and not any(
+        x in n for x in ("vl:", "vl-", "-vl", "vision", "llava", "minicpm-v")
+    ):
+        return False
     # Explicit VL / multimodal tags — not plain text GGUFs.
     # gemma4:* ships with a CLIP projector in Ollama (vision-capable without "vl" in the name).
     # qwen3.5:* is multimodal in Ollama (same family as hybrid's norm1000 path).
@@ -319,10 +324,13 @@ def _name_looks_vision(tag: str) -> bool:
 
 def _name_looks_text_only(tag: str) -> bool:
     n = (tag or "").lower()
+    # IQ / coder / text GGUFs are never vision — even if the family name (e.g. qwen3.8) looks multimodal.
+    textish = any(x in n for x in ("iq3", "iq2", "iq4", "iq1", "coder", "-text", "embed"))
+    if textish and not any(x in n for x in ("vl:", "vl-", "-vl", "vision", "llava", "minicpm-v")):
+        return True
     if _name_looks_vision(n):
         return False
-    # Custom text GGUFs / coder / IQ quants without a VL projector.
-    return any(x in n for x in ("iq3", "iq2", "iq4", "iq1", "coder", "-text", "embed"))
+    return textish
 
 
 def resolve_vision_model() -> str:

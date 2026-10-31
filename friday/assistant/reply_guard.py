@@ -37,8 +37,6 @@ _DUMP_PATTERNS = (
     r"(?i)\bcalm,\s*precise,\s*a step ahead\b",
     r"(?i)\bmain app open\s*:",
     r"(?i)\bvisible apps?\s*:",
-    r"(?i)\bcompetence over commentary\b",
-    r"(?i)\bcoffee optional;\s*competence\b",
     # Fake tool/status theater — observe already ran; never narrate wiring.
     r"(?i)\bdesktop vision agent\b",
     r"(?i)\bvision agent\b",
@@ -49,7 +47,16 @@ _DUMP_PATTERNS = (
     r"(?i)\btrigger(?:ed)? the (?:desktop )?vision\b",
     r"(?i)\bcan'?t see your screen\b",
     r"(?i)\bcannot see your screen\b",
+    # False capability denials — Friday has shell / process list on this PC.
+    r"(?i)\bdon'?t have access to (your |the )?(desktop|process list|system)\b",
+    r"(?i)\bno access to (your |the )?(desktop environment|process list|desktop)\b",
+    r"(?i)\bcannot verify .{0,80}(desktop environment|process list)\b",
+    r"(?i)\bbecause i (don'?t|do not) have access\b",
     r"(?i)\bin this chat channel\b",
+    r"(?i)\bjust a text(?:-|\s)?(?:based\s)?agent\b",
+    r"(?i)\b(?:i'?m|i am) (?:just |only )?(?:a )?text(?:-|\s)?(?:based\s)?(?:agent|assistant|model)\b",
+    r"(?i)\bmight be using (?:tts|text[- ]to[- ]speech) to voice\b",
+    r"(?i)\byou(?:'re| are) (?:probably |maybe )?using (?:tts|text[- ]to[- ]speech)\b",
     r"(?i)\bquestioning my identity\b",
     r"(?i)\bmight be another persona\b",
     r"(?i)\bthe user wants me to\b",
@@ -153,6 +160,10 @@ def looks_like_prompt_dump(reply: str) -> bool:
         r"trigger(?:ed)? the (?:desktop )?vision|"
         r"can'?t see your screen|"
         r"cannot see your screen|"
+        r"don'?t have access to (?:your |the )?(?:desktop|process list|system)|"
+        r"no access to (?:your |the )?(?:desktop environment|process list|desktop)|"
+        r"cannot verify .{0,80}(?:desktop environment|process list)|"
+        r"because i (?:don'?t|do not) have access|"
         r"in this chat channel"
         r")\b",
         t,

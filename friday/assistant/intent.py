@@ -43,7 +43,8 @@ _LOOK_ONLY = re.compile(
     rf"^\s*{_ADDR}("
     r"can you see|do you see|what (do you )?see|"
     r"(?:are you|you)\s+able\s+to\s+see|"
-    r"what('?s| is) going on( here| on (my |the )?{_SCREEN_WORD})?|"
+    # Require "here" or a screen word — bare "what's going on" is sitrep (chat), not optics.
+    r"what('?s| is) going on( here| on (my |the )?{_SCREEN_WORD})|"
     r"what('?s| is) on (my |the )?{_SCREEN_WORD}|"
     rf"what('?s| is) (?:on |my |the )?{_WALLPAPER}|"
     rf"describe (?:my |the )?(?:{_SCREEN_WORD}|{_WALLPAPER})|"
@@ -84,8 +85,11 @@ _SITUATION_ASK = re.compile(
     rf"(?i)^\s*{_ADDR}("
     r"what('?s| is) (going on|up)( (today|tonight|this (evening|afternoon|morning)))?|"
     r"what('?s| is) the (status|sitrep|situation)|"
+    r"what are you doing|"
+    r"what('?re| are) you up to|"
     r"status report|sitrep|"
     r"anything (going )?on|"
+    r"how are you|"
     r"how('?s| is) (it|everything) (looking|going)"
     r")\s*[?.!]?\s*$"
 )
@@ -134,7 +138,8 @@ _MEMORY_STORE = re.compile(
 )
 _TASKS_FAST = re.compile(
     r"(?i)\b("
-    r"remind\s+me\b|"
+    # Not "remind me of someone" (resemblance) — that stays chat.
+    r"remind\s+me(?!\s+of\b)\b|"
     r"remember\s+to\b|"
     r"set\s+(?:a\s+)?(?:reminder|alarm|timer)\b|"
     r"(?:what|whats|what'?s|show|list)\b.{0,40}\b(?:reminders?|alarms?|agenda|schedule|plan)\b|"
@@ -265,7 +270,7 @@ def _normalize_proposed(data: dict[str, Any], message: str) -> Intent:
         skill = "observe"
     try:
         conf = float(data.get("confidence") or 0.5)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         conf = 0.5
     conf = max(0.0, min(1.0, conf))
     objective = str(data.get("objective") or message).strip() or message
@@ -298,6 +303,10 @@ def is_screen_look_utterance(message: str) -> bool:
     msg = (message or "").strip()
     if not msg:
         return False
+    has_screen = bool(re.search(rf"(?i)\b{_SCREEN_WORD}\b", msg))
+    # Sitrep with no screen word is chat/agenda — never observe fastpath.
+    if _SITUATION_ASK.match(msg) and not has_screen:
+        return False
     screenshot = bool(
         re.search(
             rf"(?i)\b(?:take|grab|do)\s+(?:a\s+)?screenshot\b|"
@@ -307,7 +316,6 @@ def is_screen_look_utterance(message: str) -> bool:
     )
     if _ACT_NOT_LOOK.search(msg) and not screenshot:
         return False
-    has_screen = bool(re.search(rf"(?i)\b{_SCREEN_WORD}\b", msg))
     has_cam_hw = bool(
         re.search(r"(?i)\b(?:web\s?cam(?:era)?|camera|my desk)\b", msg)
     )
@@ -359,6 +367,14 @@ def is_tasks_utterance(message: str) -> bool:
     msg = (message or "").strip()
     if not msg:
         return False
+    try:
+        from friday.tasks.reminders import _RESEMBLANCE
+
+        # "you remind me of X" is small talk, never tasks.
+        if _RESEMBLANCE.search(msg):
+            return False
+    except Exception:  # noqa: BLE001
+        pass
     if _TASKS_FAST.search(msg):
         return True
     try:
@@ -857,6 +873,22 @@ def _deterministic_intent(
             confidence=0.94,
             objective=msg,
             reason="deterministic: peripherals inventory",
+            source="policy",
+        )
+
+    # "Is Face Sink running?" / process checks → shell measure, never chat "no desktop access".
+    if re.search(
+        r"(?i)(?:^|\b)(?:is|are)\s+.+\s+running\b|"
+        r"\b(?:check|see|verify|look|tell me)\b.{0,36}\b(?:if|whether)\b.{0,48}\b(?:is|are)\s+running\b|"
+        r"\b(?:check|see|verify|find|look for)\b.{0,24}\b(?:process|processes|tasklist|task list)\b",
+        msg,
+    ):
+        return Intent(
+            mode="act",
+            skill_id="computer_use",
+            confidence=0.95,
+            objective=msg,
+            reason="deterministic: process check",
             source="policy",
         )
 

@@ -196,6 +196,9 @@ def save_selected_index(
             )
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.environ["FRIDAY_CAMERA_INDEX"] = str(idx)
+    # New pick → drop name-list cache so the next panel refresh rebinds.
+    _list_cache["at"] = 0.0
+    _list_cache["devices"] = None
     try:
         from friday.safety.audit import get_audit_log
 
@@ -564,57 +567,32 @@ def _probe_backend(backend: str, api: int | None, *, limit: int) -> list[CameraD
     return found
 
 
-def _list_cameras_ffmpeg_first() -> list[CameraDevice] | None:
-    """Windows: DirectShow *names* are authoritative; OpenCV indices are optional hints."""
+def _list_cameras_ffmpeg_first(*, deep: bool = False) -> list[CameraDevice] | None:
+    """Windows: DirectShow *names* are authoritative.
+
+    Default (deep=False): name list only — never open devices (avoids NVIDIA VCAMDS /
+    virtual-cam spam when Systems opens the Camera panel).
+
+    deep=True (Scan): open **only the currently selected** device once for WxH / luma.
+    Capture always uses the saved name via ffmpeg — never walks every index.
+    """
     names = _ffmpeg_dshow_names()
     if not names:
         return None
 
-    # Optional OpenCV slots for fallback capture when ffmpeg is busy.
-    opencv_slots: list[CameraDevice] = []
-    try:
-        from friday.camera.capture import opencv_available
-
-        if opencv_available():
-            prev_log = _silence_opencv_logs()
-            try:
-                for backend, api in _backend_apis():
-                    if backend != "dshow":
-                        continue
-                    opencv_slots.extend(_probe_backend(backend, api, limit=_MAX_PROBE))
-            finally:
-                _restore_opencv_logs(prev_log)
-    except Exception:  # noqa: BLE001
-        opencv_slots = []
-
-    used_idx: set[int] = set()
+    selected = load_selected_name().strip().lower()
     devices: list[CameraDevice] = []
-    for name in names:
-        fp = _ffmpeg_fingerprint(name)
+    for i, name in enumerate(names):
         w = h = 0
         mean = 0.0
-        if fp:
-            w, h, mean_i = fp
-            mean = float(mean_i)
-        # Attach nearest unused OpenCV index by mean (hint only — capture prefers name).
-        idx = -1
-        if fp and opencv_slots:
-            best = None
-            for slot in opencv_slots:
-                if slot.index in used_idx:
-                    continue
-                dist = abs(int(round(slot.mean_luma)) - int(mean))
-                if best is None or dist < best[0]:
-                    best = (dist, slot)
-            if best and best[0] <= 20:
-                idx = best[1].index
-                used_idx.add(idx)
-                if not w:
-                    w, h = best[1].width, best[1].height
-                    mean = best[1].mean_luma
+        if deep and selected and name.strip().lower() == selected:
+            fp = _ffmpeg_fingerprint(name)
+            if fp:
+                w, h, mean_i = fp
+                mean = float(mean_i)
         devices.append(
             CameraDevice(
-                index=max(idx, 0),
+                index=i,
                 name=name,
                 width=w,
                 height=h,
@@ -629,13 +607,32 @@ def _list_cameras_ffmpeg_first() -> list[CameraDevice] | None:
     return devices
 
 
-def list_cameras(*, max_index: int = _MAX_PROBE) -> list[CameraDevice]:
+_list_cache: dict[str, Any] = {"at": 0.0, "deep": False, "devices": None}
+_LIST_CACHE_TTL_S = 20.0
+
+
+def list_cameras(*, max_index: int = _MAX_PROBE, deep: bool = False) -> list[CameraDevice]:
     """List cameras. On Windows prefer ffmpeg DirectShow names (stable) over OpenCV indices."""
+    import time as _time
+
     from friday.camera.capture import opencv_available
 
+    now = _time.monotonic()
+    cached = _list_cache.get("devices")
+    if (
+        cached is not None
+        and not deep
+        and (now - float(_list_cache.get("at") or 0)) < _LIST_CACHE_TTL_S
+    ):
+        return list(cached)
+
     try:
-        named = _list_cameras_ffmpeg_first()
+        named = _list_cameras_ffmpeg_first(deep=deep)
         if named:
+            if not deep:
+                _list_cache["at"] = now
+                _list_cache["deep"] = False
+                _list_cache["devices"] = list(named)
             return named
     except Exception:  # noqa: BLE001
         pass
@@ -648,31 +645,45 @@ def list_cameras(*, max_index: int = _MAX_PROBE) -> list[CameraDevice]:
     except Exception:  # noqa: BLE001
         return []
 
-    limit = max(1, min(int(max_index), _MAX_PROBE))
+    # Fallback only when ffmpeg DirectShow listing is unavailable.
+    # Still avoid deep multi-backend walks unless the owner hit Scan.
+    limit = max(1, min(int(max_index), _MAX_PROBE if deep else 2))
     found: list[CameraDevice] = []
     seen: set[tuple[str, int]] = set()
     prev_log = _silence_opencv_logs()
     try:
-        for backend, api in _backend_apis():
+        backends = _backend_apis()
+        # Prefer dshow on Windows; probing msmf+dshow doubles virtual-cam chatter.
+        if not deep and any(b[0] == "dshow" for b in backends):
+            backends = [b for b in backends if b[0] == "dshow"]
+        for backend, api in backends:
             for dev in _probe_backend(backend, api, limit=limit):
                 key = (dev.backend, dev.index)
                 if key in seen:
                     continue
                 seen.add(key)
                 found.append(dev)
+                if not deep and found:
+                    break
+            if not deep and found:
+                break
     finally:
         _restore_opencv_logs(prev_log)
 
-    try:
-        _match_ffmpeg_names(found)
-    except Exception:  # noqa: BLE001
-        pass
+    if deep:
+        try:
+            _match_ffmpeg_names(found)
+        except Exception:  # noqa: BLE001
+            pass
 
     for d in found:
         if not d.virtual:
             d.virtual = is_virtual_name(d.name)
 
     found.sort(key=lambda d: d.sort_key())
+    if not deep:
+        _list_cache["at"] = now
+        _list_cache["devices"] = list(found)
     return found
 
 
@@ -695,7 +706,7 @@ def pick_default_device(devices: list[CameraDevice]) -> CameraDevice | None:
     return max(pool, key=score)
 
 
-def devices_payload() -> dict[str, Any]:
+def devices_payload(*, deep: bool = False) -> dict[str, Any]:
     from friday.camera.capture import opencv_available
     from friday.camera.session import (
         camera_backend,
@@ -703,7 +714,7 @@ def devices_payload() -> dict[str, Any]:
         camera_index,
     )
 
-    devices = list_cameras()
+    devices = list_cameras(deep=deep)
     selected = camera_index()
     backend = camera_backend()
     saved_name = load_selected_name()
@@ -781,5 +792,7 @@ def devices_payload() -> dict[str, Any]:
         "warning": warn,
         "devices": [d.to_dict() for d in devices],
         "count": len(devices),
-        "pnp_names": _windows_friendly_names(),
+        "deep": bool(deep),
+        # PnP names are expensive (PowerShell) — only on explicit Scan.
+        "pnp_names": _windows_friendly_names() if deep else [],
     }

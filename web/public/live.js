@@ -370,6 +370,11 @@
         speakingSynth = false;
       } catch (_) { speakingSynth = true; }
     },
+    /** 0..1 speech energy for avatar jaw / orb (TTS output analyser). */
+    outLevel() {
+      if (outAnalyser) return levelOf(outAnalyser);
+      return speakingSynth ? 0.35 + 0.2 * Math.sin(performance.now() / 90) : 0;
+    },
     synthSpeaking(on) { speakingSynth = !!on; },
     syncControls() {
       const st = Voice.style(), dx = Voice.duplex(), pace = Voice.pace();
@@ -460,8 +465,8 @@
         // Long Ollama warmups leave dead air after the first filler — keep a soft pulse.
         beat = setInterval(() => {
           if (stopped || spoken >= 4) { clearBeat(); return; }
-          // Later beats: caption always; speak at most every other so it doesn't nag.
-          say("progress", { audio: speakAudio && spoken < 3 && spoken % 2 === 1 });
+          // Caption-only — speaking progress lines mid-tool left the mouth clip looping silent.
+          say("progress", { audio: false });
         }, Voice.cfg().streamSpeech ? 4500 : 6000);
       };
       return {
@@ -475,9 +480,25 @@
             armBeat();
           }, ms);
         },
-        agent() { clearTimeout(timer); clearBeat(); say("acting"); armBeat(); },
-        lookup() { if (!spoken) { clearTimeout(timer); timer = setTimeout(() => { say("lookup"); armBeat(); }, 400); } },
-        looking() { clearTimeout(timer); clearBeat(); say("looking"); armBeat(); },
+        // Tool waits: captions only — spoken fillers + talking clip look like silent mocking.
+        agent() {
+          clearTimeout(timer);
+          clearBeat();
+          say("acting", { audio: false });
+          armBeat();
+        },
+        lookup() {
+          if (!spoken) {
+            clearTimeout(timer);
+            timer = setTimeout(() => { say("lookup", { audio: false }); armBeat(); }, 400);
+          }
+        },
+        looking() {
+          clearTimeout(timer);
+          clearBeat();
+          say("looking", { audio: false });
+          armBeat();
+        },
         // Caption-only thinking scraps from the model (never spoken — too long / raw).
         thinking(snippet) {
           if (stopped || !snippet) return;
@@ -509,7 +530,10 @@
       const sp = {
         spoken() { return spokenReal; },
         say(text, { filler = false } = {}) {
-          const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
+          const shown = String(text || "").replace(/[*_`#>]/g, "").trim();
+          const clean = window.forSpokenText
+            ? window.forSpokenText(shown)
+            : shown;
           if (!clean || aborted) return;
           if (first) { first = false; onFirst && onFirst(); }
           // One engine for the whole reply — neural first, browser only if neural fails.
@@ -519,10 +543,10 @@
             if (aborted) return;
             Live.state("speaking");
             if (!filler) {
-              Live.friday(clean);
+              Live.friday(shown || clean);
               spokenReal++;
-              Live._lastSpoken = clean;
-              trail.push(clean);
+              Live._lastSpoken = shown || clean;
+              trail.push(shown || clean);
               if (trail.length > 6) trail.shift();
               Live._spokenTrail = trail.slice();
             }
@@ -532,7 +556,7 @@
             ]);
             if (aborted) return;
             const play = url && window.playUrl
-              ? window.playUrl(url)
+              ? window.playUrl(url, clean)
               : (window.speakBrowser
                 ? (Live.synthSpeaking(true), window.speakBrowser(clean))
                 : Promise.resolve());
@@ -552,17 +576,18 @@
               const end = m.index + m[0].length;
               if (end >= 4 || m[0].includes("\n")) { cut = end; break; }
             }
-            // First utterance: start ASAP on a short phrase — don't wait for a period.
+            // Eager first cut: commas/colons only — never em-dashes
+            // (that produced orphan clips like "You're my name —" then "I'm Piegi…").
             if (cut < 0 && spokenReal === 0 && !eagerFirst) {
-              const clause = /[,:;]\s+| — | – | - /g;
+              const clause = /[,:;]\s+/g;
               let cm;
               while ((cm = clause.exec(pending))) {
                 const end = cm.index + cm[0].length;
-                if (end >= 12) { cut = end; eagerFirst = true; break; }
+                if (end >= 18) { cut = end; eagerFirst = true; break; }
               }
-              if (cut < 0 && pending.length >= 16) {
-                const space = pending.lastIndexOf(" ", Math.min(40, pending.length));
-                if (space >= 10) { cut = space + 1; eagerFirst = true; }
+              if (cut < 0 && pending.length >= 28) {
+                const space = pending.lastIndexOf(" ", Math.min(48, pending.length));
+                if (space >= 16) { cut = space + 1; eagerFirst = true; }
               }
             }
             // Soft overflow at a word boundary if a sentence never arrived.
@@ -581,7 +606,14 @@
           return Promise.race([
             chain.then(() => {}),
             new Promise((r) => setTimeout(r, 90000)),
-          ]);
+          ]).finally(() => {
+            // playUrl turns the talking clip on; clear so HUD isn't stuck mouthing.
+            try {
+              if (typeof window.setAvatarSpeaking === "function") window.setAvatarSpeaking(false);
+              else if (typeof window.stopSpeech === "function") window.stopSpeech();
+            } catch (_) {}
+            Live.synthSpeaking(false);
+          });
         },
         abort() { aborted = true; pending = ""; },
       };

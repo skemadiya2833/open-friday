@@ -32,9 +32,12 @@ def test_same_query_is_not_fetched_twice(monkeypatch):
     assert n["c"] == 1
 
 
-def test_format_empty_tells_the_model_not_to_open_tabs():
+def test_format_empty_is_plain_status_not_model_theater():
     text = format_results("x", [])
-    assert "do not open more tabs" in text.lower()
+    assert "no web results" in text.lower()
+    # Never coach the model with "do not open tabs" / brief-the-user lines.
+    assert "do not open" not in text.lower()
+    assert "brief the user" not in text.lower()
 
 
 def test_news_lookup_is_research_not_desktop():

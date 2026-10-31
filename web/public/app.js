@@ -88,12 +88,284 @@ function setCameraLooking(on, phase) {
 /** Presence working bubble — Systems `presence_orb` (default on). */
 let presenceOrbEnabled = true;
 
+let avatarTalkRaf = 0;
+let avatarTalkingUrl = null; // uploaded talking-head clip for active callsign
+let avatarMouthAtlasUrl = null; // kept for presence snap; no mid-clip seeking
+let avatarVideoToken = 0;
+let avatarSpeakStartedAt = 0;
+let avatarTalkSmooth = 0; // smoothed TTS energy
+let avatarClipDuration = 0;
+let avatarUtteranceDur = 0;
+let avatarVideoReady = false;
+let avatarGazeOn = false;
+let avatarGazeRaf = 0;
+let avatarGazeTx = 0;
+let avatarGazeTy = 0;
+let avatarGazeX = 0;
+let avatarGazeY = 0;
+let avatarGazeBored = 0;
+let avatarGazeLast = 0;
+let avatarGazeWanderAt = 0;
+let avatarGazeWanderX = 0;
+let avatarGazeWanderY = 0;
+
+function hideAvatarVideo() {
+  const panel = $("#avatarPanel");
+  const video = $("#avatarVideo");
+  if (panel) {
+    panel.classList.remove("lipsync", "mouth-blend");
+    panel.style.removeProperty("--talk");
+  }
+  if (video) {
+    video.classList.remove("show");
+    video.onended = null;
+    video.ontimeupdate = null;
+    video.onloadeddata = null;
+    video.onplaying = null;
+    video.onerror = null;
+    try { video.pause(); } catch (_) {}
+    try {
+      video.removeAttribute("src");
+      video.load();
+    } catch (_) {}
+  }
+  avatarVideoReady = false;
+  avatarClipDuration = 0;
+}
+
+function restoreAvatarStill() {
+  const panel = $("#avatarPanel");
+  hideAvatarVideo();
+  if (panel) {
+    panel.classList.remove("speaking", "mouth-blend");
+    panel.style.removeProperty("--mouth");
+    panel.style.removeProperty("--speak");
+    panel.style.removeProperty("--talk");
+  }
+  const still = $("#avatarStill");
+  if (still) still.classList.remove("hidden");
+  avatarTalkSmooth = 0;
+  avatarUtteranceDur = 0;
+}
+
+/**
+ * Single continuous talking clip — no mouth-slice seeks / dual-buffer fades.
+ * Research + practice: face crossfades ghost; mid-clip seeking looks like skipped frames.
+ * Keep one muted loop under TTS; energy only nudges rate + glow, not hard cuts.
+ */
+function playTalkingVideoWithSpeech() {
+  const panel = $("#avatarPanel");
+  const video = $("#avatarVideo");
+  if (!panel || !video || !avatarTalkingUrl) return;
+  const token = ++avatarVideoToken;
+  const url = avatarTalkingUrl;
+  const reveal = () => {
+    if (token !== avatarVideoToken) return;
+    if (!video.videoWidth || video.readyState < 2) return;
+    avatarVideoReady = true;
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      avatarClipDuration = video.duration;
+    }
+    video.classList.add("show");
+    panel.classList.add("lipsync");
+    // Stay visible for the whole utterance — energy flicker reads as blur/strobe.
+    panel.style.setProperty("--talk", "1");
+  };
+  const fail = () => {
+    if (token !== avatarVideoToken) return;
+    hideAvatarVideo();
+  };
+  panel.classList.add("lipsync");
+  video.muted = true;
+  video.defaultMuted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.playbackRate = 1;
+  video.onerror = fail;
+  video.onloadeddata = reveal;
+  video.onplaying = reveal;
+  let needLoad = true;
+  try {
+    const abs = new URL(url, location.origin).href;
+    if (video.src === abs && video.readyState >= 2) needLoad = false;
+    else if (video.src !== abs) video.src = url;
+  } catch (_) {
+    video.src = url;
+  }
+  if (!needLoad) reveal();
+  try {
+    if (!Number.isFinite(video.currentTime) || video.currentTime < 0.02) {
+      video.currentTime = 0.04;
+    }
+  } catch (_) {}
+  const p = video.play();
+  if (p && p.then) p.then(reveal).catch(fail);
+}
+
+/** New TTS phrase — keep the loop going; only soft-rewind if the clip is about to end. */
+function nudgeTalkingVideoForUtterance(durationSec, _text) {
+  if (Number.isFinite(durationSec) && durationSec > 0) avatarUtteranceDur = durationSec;
+  const video = $("#avatarVideo");
+  if (!video || !avatarTalkingUrl) return;
+  if (!avatarVideoReady) {
+    video.addEventListener("loadeddata", () => {
+      nudgeTalkingVideoForUtterance(avatarUtteranceDur, _text);
+    }, { once: true });
+    return;
+  }
+  try {
+    if (avatarClipDuration > 0.8 && video.currentTime > avatarClipDuration - 0.35) {
+      video.currentTime = 0.05;
+    }
+  } catch (_) {}
+  if (video.paused) video.play().catch(() => {});
+}
+
+function setAvatarSpeaking(on) {
+  const panel = $("#avatarPanel");
+  if (!panel) return;
+  if (!on) {
+    avatarVideoToken += 1;
+    if (avatarTalkRaf) {
+      cancelAnimationFrame(avatarTalkRaf);
+      avatarTalkRaf = 0;
+    }
+    restoreAvatarStill();
+    return;
+  }
+  if (panel.classList.contains("hidden")) return;
+  panel.classList.add("speaking");
+  const still = $("#avatarStill");
+  if (still) still.classList.remove("hidden");
+  avatarSpeakStartedAt = performance.now();
+  ensureAvatarGaze();
+  if (avatarTalkingUrl) {
+    const video = $("#avatarVideo");
+    const live = panel.classList.contains("lipsync") && video && video.classList.contains("show");
+    if (!live) playTalkingVideoWithSpeech();
+    else if (video && video.paused) video.play().catch(() => {});
+  } else {
+    hideAvatarVideo();
+  }
+  if (!avatarTalkRaf) {
+    const tick = () => {
+      const raw = (window.FridayLive && FridayLive.outLevel) ? FridayLive.outLevel() : 0;
+      const target = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+      const k = target > avatarTalkSmooth ? 0.5 : 0.18;
+      avatarTalkSmooth += (target - avatarTalkSmooth) * k;
+      const lvl = avatarTalkSmooth;
+      panel.style.setProperty("--speak", lvl.toFixed(3));
+
+      if (avatarTalkingUrl) {
+        // Solid opaque clip for the whole speaking turn — energy opacity /
+        // pause/rate breathes read as blur + skipped frames. Tool waits clear
+        // speaking via setAvatarSpeaking(false), so no silent mocking.
+        panel.style.setProperty("--talk", "1");
+        const video = $("#avatarVideo");
+        if (video && avatarVideoReady) {
+          try {
+            if (video.playbackRate !== 1) video.playbackRate = 1;
+          } catch (_) {}
+          if (video.paused) video.play().catch(() => {});
+        }
+      } else {
+        panel.style.setProperty("--mouth", Math.pow(lvl, 0.7).toFixed(3));
+      }
+      avatarTalkRaf = requestAnimationFrame(tick);
+    };
+    avatarTalkRaf = requestAnimationFrame(tick);
+  }
+}
+
+/** Idle presence: whole portrait parallax toward cursor / typing; soft wander when bored. */
+function ensureAvatarGaze() {
+  if (avatarGazeOn) return;
+  avatarGazeOn = true;
+  avatarGazeLast = performance.now();
+  const poke = () => { avatarGazeLast = performance.now(); };
+  window.addEventListener("pointermove", (e) => {
+    poke();
+    const panel = $("#avatarPanel");
+    if (!panel || panel.classList.contains("hidden")) return;
+    const r = panel.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return;
+    const cx = r.left + r.width * 0.5;
+    const cy = r.top + r.height * 0.42;
+    const nx = (e.clientX - cx) / Math.max(120, r.width * 0.85);
+    const ny = (e.clientY - cy) / Math.max(120, r.height * 0.85);
+    avatarGazeTx = Math.max(-1, Math.min(1, nx));
+    avatarGazeTy = Math.max(-1, Math.min(1, ny));
+  }, { passive: true });
+  const lookComposer = () => {
+    poke();
+    avatarGazeTx = 0.55;
+    avatarGazeTy = 0.7;
+  };
+  document.addEventListener("keydown", lookComposer, { passive: true });
+  $("#input")?.addEventListener("input", lookComposer, { passive: true });
+  $("#input")?.addEventListener("focus", lookComposer, { passive: true });
+  const tickGaze = () => {
+    const panel = $("#avatarPanel");
+    const now = performance.now();
+    const idleMs = now - avatarGazeLast;
+    const speaking = !!(panel && panel.classList.contains("speaking"));
+    const boredTarget = (!speaking && idleMs > 2800) ? Math.min(1, (idleMs - 2800) / 5000) : 0;
+    avatarGazeBored += (boredTarget - avatarGazeBored) * 0.04;
+    if (!speaking && idleMs > 2200) {
+      if (now >= avatarGazeWanderAt) {
+        avatarGazeWanderAt = now + 1600 + Math.random() * 2800;
+        avatarGazeWanderX = (Math.random() * 2 - 1) * (0.35 + avatarGazeBored * 0.45);
+        avatarGazeWanderY = 0.2 + Math.random() * 0.45 + avatarGazeBored * 0.3;
+      }
+      avatarGazeTx += (avatarGazeWanderX - avatarGazeTx) * 0.03;
+      avatarGazeTy += (avatarGazeWanderY - avatarGazeTy) * 0.03;
+    }
+    const damp = speaking ? 0.28 : 1;
+    const tx = avatarGazeTx * damp;
+    const ty = avatarGazeTy * damp;
+    avatarGazeX += (tx - avatarGazeX) * (speaking ? 0.08 : 0.14);
+    avatarGazeY += (ty - avatarGazeY) * (speaking ? 0.08 : 0.14);
+    if (panel && !panel.classList.contains("hidden")) {
+      panel.style.setProperty("--gaze-x", avatarGazeX.toFixed(3));
+      panel.style.setProperty("--gaze-y", avatarGazeY.toFixed(3));
+    }
+    avatarGazeRaf = requestAnimationFrame(tickGaze);
+  };
+  avatarGazeRaf = requestAnimationFrame(tickGaze);
+}
+
+/**
+ * Text shown in chat stays as-written; this is what TTS hears.
+ * Fixes em-dash eager cuts sounding like "— I'm Piegi…" and misread callsigns.
+ */
+function forSpokenText(text) {
+  let s = String(text || "");
+  s = s.replace(/[*_`#>]+/g, "");
+  s = s.replace(/\s*[—–―]+\s*/g, ", ");
+  s = s.replace(/\s+-\s+/g, ", ");
+  s = s.replace(/\bPiegi\b/gi, "Peegee");
+  s = s.replace(/\bPIEGI\b/g, "Peegee");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 function applyPresenceSnap(snap) {
   if (!snap || !snap.skin) return;
   const skin = snap.skin;
-  const themes = ["skin-friday", "skin-jarvis", "skin-ultron", "skin-vision", "skin-karen", "skin-edith"];
+  const themes = ["skin-friday", "skin-jarvis", "skin-ultron", "skin-vision", "skin-karen", "skin-edith", "skin-custom"];
   document.body.classList.remove(...themes);
   document.body.classList.add(skin.css_theme || "skin-friday");
+  if (skin.accent && /^#[0-9a-fA-F]{6}$/.test(skin.accent)) {
+    document.body.style.setProperty("--accent", skin.accent);
+    document.body.style.setProperty("--accent-2", skin.accent);
+    document.body.style.setProperty("--cyan", skin.accent);
+    document.body.style.setProperty("--line-hot", `${skin.accent}88`);
+  } else if (skin.css_theme !== "skin-custom") {
+    document.body.style.removeProperty("--accent");
+    document.body.style.removeProperty("--accent-2");
+    document.body.style.removeProperty("--cyan");
+    document.body.style.removeProperty("--line-hot");
+  }
   window.__fridayVoiceProfile = skin.voice_profile || "female_us";
   window.__fridayTtsVoice = skin.tts_voice || "";
   window.__fridayTtsRate = skin.tts_rate || "+0%";
@@ -106,17 +378,24 @@ function applyPresenceSnap(snap) {
   document.title = `${skin.callsign || "FRIDAY"} — HUD`;
   const panel = $("#avatarPanel");
   const still = $("#avatarStill");
-  const video = $("#avatarVideo");
+  const talkOn = snap.avatar_lipsync !== false;
+  avatarTalkingUrl = talkOn
+    ? (snap.talking_video_url || snap.video_url || null)
+    : null;
+  avatarMouthAtlasUrl = talkOn ? (snap.mouth_atlas_url || null) : null;
   if (panel && still) {
-    if (snap.portrait_url) {
-      still.src = `${snap.portrait_url}?t=${Date.now()}`;
-      still.classList.remove("hidden");
-      if (video) {
-        video.classList.add("hidden");
-        video.removeAttribute("src");
+    if (snap.portrait_url || avatarTalkingUrl) {
+      if (snap.portrait_url) {
+        const next = `${snap.portrait_url}?t=${Date.now()}`;
+        if (!still.getAttribute("src") || !String(still.src || "").includes(snap.portrait_url)) {
+          still.src = next;
+        }
       }
+      if (!panel.classList.contains("speaking")) restoreAvatarStill();
+      else still.classList.remove("hidden");
       panel.classList.remove("hidden");
       panel.setAttribute("aria-hidden", "false");
+      ensureAvatarGaze();
     } else {
       panel.classList.add("hidden");
       panel.setAttribute("aria-hidden", "true");
@@ -166,6 +445,11 @@ function setState(state, { force = false } = {}) {
   window.FridayLive && FridayLive.state(state);
   if (orb) orb.dataset.state = state;
   if (statusLabel) statusLabel.textContent = String(state || "standby").toUpperCase();
+  // Live.speaker → playUrl starts the talking clip; nothing cleared it when we
+  // flipped back to listening — HUD kept mouthing and felt deaf.
+  if (state === "listening" || state === "idle") {
+    try { setAvatarSpeaking(false); } catch (_) {}
+  }
   syncOrbWorkBubble(state);
   syncZenChips();
   const core = $("#coreState");
@@ -293,6 +577,12 @@ function startVoiceWatchdog() {
   voiceWatchIv = setInterval(() => {
     if (!voiceMode) return;
     const now = Date.now();
+    // Turn finished but HUD left on SPEAKING / talking clip (Live.speaker path).
+    if (!voiceBusy && (uiState === "speaking" || uiState === "thinking" || uiState === "acting")) {
+      pushActivity("Mic re-arm…", { live: false });
+      armMicNow();
+      return;
+    }
     // Stuck deaf after a turn (timer lost / missed arm).
     if (micSuspended && !voiceBusy && now > listenCooldownUntil + 500) {
       if (!releaseMicTimer) {
@@ -322,6 +612,7 @@ function armMicNow() {
   listenCooldownUntil = 0;
   finalBuffer = "";
   interimText = "";
+  try { setAvatarSpeaking(false); } catch (_) {}
   setState("listening", { force: true });
   // Always fresh SpeechRecognition after a turn — reuse-after-stop is the halt bug.
   recreateRecognition();
@@ -612,6 +903,24 @@ function sanitizeAssistantText(text) {
   return t;
 }
 
+function scrollMessagesToEnd(force = true) {
+  const box = $("#messages");
+  if (!box) return;
+  const stick = () => {
+    box.scrollTop = box.scrollHeight;
+    const last = box.lastElementChild;
+    if (last && typeof last.scrollIntoView === "function") {
+      try { last.scrollIntoView({ block: "end", behavior: "auto" }); } catch (_) {}
+    }
+  };
+  stick();
+  // Layout / fonts / streaming tokens often grow after the first paint.
+  requestAnimationFrame(() => {
+    stick();
+    if (force) requestAnimationFrame(stick);
+  });
+}
+
 function addBubble(role, text, meta = "") {
   const el = document.createElement("div");
   el.className = `bubble ${role}`;
@@ -629,7 +938,7 @@ function addBubble(role, text, meta = "") {
   $("#messages").appendChild(el);
   el.querySelector(".fb-up")?.addEventListener("click", () => sendFeedback(el, "up"));
   el.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(el, "down"));
-  $("#messages").scrollTop = $("#messages").scrollHeight;
+  scrollMessagesToEnd(true);
 }
 
 async function sendFeedback(bubble, vote) {
@@ -661,9 +970,9 @@ function clearActivity() {
   if (feed) feed.innerHTML = "";
 }
 
-/** Pipeline chatter that makes voice mode feel broken — keep off the live HUD. */
-function isVoiceNoise(message) {
-  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening|Scheduling|Researching|Working with files|Checking memory|Running |Controlling the desktop|Looking at your screen|Looking through (the )?camera)\b/i.test(
+/** Pipeline / chat chrome — never dump into the activity feed or live HUD. */
+function isFeedNoise(message) {
+  return /^(Processing speech|Thinking|Voice mode|Figuring out|Intent ·|Skill ·|Mode ·|Turn ready|Still listening|Go on —|Chatting|Done|Spoken|Speaking reply|Voice on|Voice mode off|Pause detected|Listening|Scheduling|Researching|Working with files|Working on a reply|Working…|working…|Checking memory|Running |Controlling the desktop|Looking at your screen|Looking through (the )?camera|Mic ·|Mic stalled|Mic re-arm|Transcribing|Recording)\b/i.test(
     String(message || "").trim(),
   );
 }
@@ -671,7 +980,7 @@ function isVoiceNoise(message) {
 /** Live HUD may show act/errors only — never skill-run labels like "Looking at your screen…". */
 function isLiveHudWorthy(message) {
   const m = String(message || "").trim();
-  if (!m || isVoiceNoise(m)) return false;
+  if (!m || isFeedNoise(m)) return false;
   // Skip long "Acting · create a dashboard…" noise; desktop agent still surfaces Agent/Shell.
   if (/^Acting\b/i.test(m)) return false;
   // Skill-run "Looking…" banners are noise — orb state already shows THINKING.
@@ -682,9 +991,8 @@ function isLiveHudWorthy(message) {
 function pushActivity(message, { live = true, detail = "" } = {}) {
   const feed = $("#activityFeed");
   if (!feed || !message) return;
+  if (isFeedNoise(message)) return;
   const voiceOpen = window.FridayLive && FridayLive.isOpen && FridayLive.isOpen();
-  // During live voice, don't dump classify/intent chips into the desktop feed either.
-  if (voiceOpen && isVoiceNoise(message)) return;
   feed.querySelectorAll(".step.live").forEach((el) => el.classList.remove("live"));
   const step = document.createElement("span");
   step.className = `step${live ? " live" : ""}`;
@@ -753,19 +1061,19 @@ async function restoreChat() {
     if (!turns.length) {
       addBubble(
         "assistant",
-        "Systems online, boss. Comms persist across refresh. Tell me what we're doing today and I'll lock it into the mission board.",
+        "Systems online. Comms persist across refresh. Tell me what we're doing today and I'll lock it into the mission board.",
       );
       return;
     }
     for (const t of turns) {
       addBubble(t.role === "user" ? "user" : "assistant", t.content || "", t.skill_id || "");
     }
-    $("#messages").scrollTop = $("#messages").scrollHeight;
+    scrollMessagesToEnd(true);
   } catch (_) {
     persistSession(null);
     addBubble(
       "assistant",
-      "Systems online, boss. Comms channel open — engage the mic for voice, or transmit text.",
+      "Systems online. Comms channel open — engage the mic for voice, or transmit text.",
     );
   }
 }
@@ -882,9 +1190,9 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     FridayLive.clearResult();
     FridayLive.clearHint && FridayLive.clearHint();
   }
-  pushActivity("Thinking…");
   const skillOverride = $("#skillOverride").value || null;
   const chip = $("#skillChip");
+  chip.classList.add("hidden");
   const useVoice = fromVoice || voiceMode;
   const epoch = ++turnEpoch;
   chatAbort = new AbortController();
@@ -922,10 +1230,22 @@ async function sendMessage(text, { fromVoice = false } = {}) {
 
   const live = document.createElement("div");
   live.className = "bubble assistant";
-  live.innerHTML = `<div class="meta">working…</div><span class="body"></span>`;
+  live.innerHTML = `<div class="meta hidden"></div><span class="body"></span>`;
   const liveBody = live.querySelector(".body");
   const liveMeta = live.querySelector(".meta");
+  const setLiveMeta = (text) => {
+    if (!liveMeta) return;
+    const t = String(text || "").trim();
+    if (!t || isFeedNoise(t) || /^(thinking…|working…|skill:chat|talk\s*·\s*chat|chat)$/i.test(t)) {
+      liveMeta.textContent = "";
+      liveMeta.classList.add("hidden");
+      return;
+    }
+    liveMeta.textContent = t;
+    liveMeta.classList.remove("hidden");
+  };
   $("#messages").appendChild(live);
+  scrollMessagesToEnd(true);
 
   try {
     const res = await apiFetch("/api/chat/stream", {
@@ -951,15 +1271,17 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     const handleStreamEvent = async (ev) => {
       if (ev.type === "activity") {
         if (filler && /search|web|look|memory|recall/i.test(ev.message || "")) filler.lookup();
-        pushActivity(ev.message || ev.step || "…", { detail: ev.detail || "" });
-        if (ev.message) liveMeta.textContent = ev.message;
+        const msg = ev.message || ev.step || "";
+        if (!isFeedNoise(msg)) {
+          pushActivity(msg || "…", { detail: ev.detail || "" });
+          if (ev.message) setLiveMeta(ev.message);
+        }
       }
       if (ev.type === "thinking_token" && (ev.token || ev.text)) {
         const scrap = String(ev.token || ev.text || "").trim();
         if (scrap) {
           if (filler && typeof filler.thinking === "function") filler.thinking(scrap);
           else if (window.FridayLive) FridayLive.friday(scrap.slice(0, 160), { filler: true });
-          liveMeta.textContent = "thinking…";
         }
       }
       if (ev.type === "thinking_set" && ev.text) {
@@ -967,21 +1289,34 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         if (scrap && filler && typeof filler.thinking === "function") filler.thinking(scrap);
       }
       if (ev.type === "intent") {
-        pushActivity(`Intent · ${ev.mode} → ${ev.skill_id}`, {
-          detail: ev.reason || "",
-        });
-        liveMeta.textContent = `${ev.mode} · ${ev.skill_id}`;
+        // Chat classify noise — never show Skill/Intent chips for ordinary talk.
+        if (ev.skill_id && ev.skill_id !== "chat") {
+          pushActivity(`Intent · ${ev.mode} → ${ev.skill_id}`, {
+            detail: ev.reason || "",
+          });
+          setLiveMeta(`${ev.mode} · ${ev.skill_id}`);
+        }
       }
       if (ev.type === "skill_selected") {
         skillId = ev.skill_id;
-        chip.textContent = `Skill · ${ev.skill_id}${ev.mode ? ` · ${ev.mode}` : ""}`;
-        chip.classList.remove("hidden");
-        liveMeta.textContent = `skill:${ev.skill_id}`;
+        if (ev.skill_id && ev.skill_id !== "chat") {
+          chip.textContent = `Skill · ${ev.skill_id}${ev.mode ? ` · ${ev.mode}` : ""}`;
+          chip.classList.remove("hidden");
+          setLiveMeta(`${ev.skill_id}`);
+        } else {
+          chip.classList.add("hidden");
+          setLiveMeta("");
+        }
         if (ev.skill_id === "computer_use") {
+          try { setAvatarSpeaking(false); } catch (_) {}
           setState("acting");
           // Status stays in the quiet hint — never open the RESULT card for pipeline chatter.
         }
+        if (ev.skill_id === "observe") {
+          try { setAvatarSpeaking(false); } catch (_) {}
+        }
         if (ev.skill_id === "camera") {
+          try { setAvatarSpeaking(false); } catch (_) {}
           setCameraLooking(true, "capture");
           filler && filler.looking && filler.looking();
         }
@@ -1011,13 +1346,15 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         img.style.cssText = "display:block;max-width:100%;max-height:280px;margin-top:8px;border:1px solid var(--line);background:#000;border-radius:4px";
         wrap.appendChild(img);
         $("#messages").appendChild(wrap);
-        $("#messages").scrollTop = $("#messages").scrollHeight;
+        scrollMessagesToEnd(true);
         pushActivity("Camera frame shown", { live: false });
       }
       if (ev.type === "screen_looking") {
+        try { setAvatarSpeaking(false); } catch (_) {}
         setScreenLooking(!!ev.on);
       }
       if (ev.type === "observation") {
+        try { setAvatarSpeaking(false); } catch (_) {}
         if (ev.source === "camera") {
           const sz = Array.isArray(ev.size) ? `${ev.size[0]}×${ev.size[1]}` : "";
           pushActivity(`Webcam frame${sz ? ` · ${sz}` : ""}`);
@@ -1037,6 +1374,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
         refreshBell();
       }
       if (ev.type === "computer_use_start") {
+        try { setAvatarSpeaking(false); } catch (_) {}
+        // Caption-only presence during desktop work — no silent mouthing clip.
         filler && filler.agent();
         setState("acting");
         setAgentStopVisible(true);
@@ -1076,7 +1415,7 @@ async function sendMessage(text, { fromVoice = false } = {}) {
           clearFillerForReply();
           if (shown === streamed || !/^\s*[\{\[]/.test(streamed)) speaker.push(ev.text);
         }
-        $("#messages").scrollTop = $("#messages").scrollHeight;
+        scrollMessagesToEnd(false);
       }
       if (ev.type === "warning" && ev.message) {
         pushActivity(`⚠ ${ev.message}`, { live: false });
@@ -1176,7 +1515,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       fb.querySelector(".fb-up")?.addEventListener("click", () => sendFeedback(live, "up"));
       fb.querySelector(".fb-down")?.addEventListener("click", () => sendFeedback(live, "down"));
     }
-    if (skillId) liveMeta.textContent = `skill:${skillId}`;
+    if (skillId && skillId !== "chat") setLiveMeta(skillId);
+    else setLiveMeta("");
     clearFillerForReply();
     const awaitSpeak = async (p) => {
       // Absolute cap so a stuck TTS chain cannot leave voiceBusy / SPEAKING forever.
@@ -1189,7 +1529,6 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       speaker.finish();
       await awaitSpeak(speaker.done());
     } else if (speakEnabled() && textOut && !/^No reply\.?$/i.test(textOut)) {
-      pushActivity("Speaking reply…");
       if (speaker) {
         speaker.push(String(textOut).slice(0, 700) + " ");
         speaker.finish();
@@ -1197,11 +1536,10 @@ async function sendMessage(text, { fromVoice = false } = {}) {
       } else {
         await awaitSpeak(speak(textOut));
       }
-      pushActivity("Spoken", { live: false });
     }
   } catch (err) {
     if (err.name === "AbortError" || /abort/i.test(err.message || "")) {
-      liveMeta.textContent = "interrupted";
+      setLiveMeta("");
       return;
     }
     liveBody.textContent = `Error: ${err.message}`;
@@ -1213,6 +1551,8 @@ async function sendMessage(text, { fromVoice = false } = {}) {
     voiceBusy = false;
     finalBuffer = "";
     interimText = "";
+    // Speaker path uses playUrl (talking video on) without speak()'s finally — clear here.
+    try { setAvatarSpeaking(false); } catch (_) {}
     if (!voiceMode) {
       setState("idle", { force: true });
       return;
@@ -1251,7 +1591,7 @@ $("#btnNewChat").addEventListener("click", async () => {
   $("#messages").innerHTML = "";
   $("#skillChip").classList.add("hidden");
   clearActivity();
-  addBubble("assistant", "New link established, boss. What are we working today?");
+  addBubble("assistant", "New link established. What are we working today?");
 });
 
 async function clearThisChat() {
@@ -1272,7 +1612,7 @@ async function clearThisChat() {
   $("#messages").innerHTML = "";
   $("#skillChip").classList.add("hidden");
   clearActivity();
-  addBubble("assistant", "Chat cleared, boss. Fresh page.");
+  addBubble("assistant", "Chat cleared. Fresh page.");
 }
 $("#btnClearChat")?.addEventListener("click", clearThisChat);
 $("#btnClearChat2")?.addEventListener("click", clearThisChat);
@@ -1441,7 +1781,6 @@ function stopVoiceMode() {
   setListeningLine("");
   setState("idle", { force: true });
   document.dispatchEvent(new CustomEvent("friday:voice", { detail: { on: false } }));
-  pushActivity("Voice mode off", { live: false });
   if (speakWasForced) {
     setSpeakEnabled(false);
     speakWasForced = false;
@@ -1955,7 +2294,7 @@ function speakBrowser(text) {
       resolve(false);
       return;
     }
-    const slice = String(text || "").slice(0, 800);
+    const slice = forSpokenText(text).slice(0, 800);
     if (!slice.trim()) {
       resolve(false);
       return;
@@ -1976,6 +2315,9 @@ function speakBrowser(text) {
       : (profile.startsWith("male") ? 0.94 : 1.0);
     u.pitch = profile.startsWith("male") ? 0.85 : 1.0;
     const maxMs = Math.min(45000, 2500 + slice.length * 90);
+    // Rough duration so the talking clip can restart with the phrase.
+    const words = slice.trim().split(/\s+/).filter(Boolean).length;
+    nudgeTalkingVideoForUtterance(Math.max(0.7, words / 2.5), slice);
     let settled = false;
     let safety = 0;
     const done = (ok) => {
@@ -2017,7 +2359,7 @@ function speakBrowser(text) {
 
 /** Server TTS (Edge). Hard 8s abort so a 403/hang never freezes the voice HUD. */
 async function ttsFetchUrl(text) {
-  const clean = String(text || "").replace(/\*\*/g, "").trim();
+  const clean = forSpokenText(text);
   if (!clean) return null;
   const ac = new AbortController();
   // Edge is fast; local SAPI can take a few seconds per sentence.
@@ -2045,7 +2387,7 @@ async function ttsFetchUrl(text) {
   return null;
 }
 
-function playUrl(url) {
+function playUrl(url, text) {
   return new Promise((resolve) => {
     try { window.FridaySfx && FridaySfx.unlock && FridaySfx.unlock(); } catch (_) {}
     const audio = new Audio(url);
@@ -2054,6 +2396,15 @@ function playUrl(url) {
     // Always 1× — rate is baked into Edge synthesis so it stays natural.
     audio.playbackRate = 1;
     window.FridayLive && FridayLive.attachAudio(audio);
+    setAvatarSpeaking(true);
+    const phrase = text != null ? String(text) : String(window.__fridayLastSpeakText || "");
+    window.__fridayLastSpeakText = phrase;
+    const syncMouth = () => {
+      const d = audio.duration;
+      nudgeTalkingVideoForUtterance(Number.isFinite(d) && d > 0 ? d : 0, phrase);
+    };
+    if (audio.readyState >= 1) syncMouth();
+    else audio.addEventListener("loadedmetadata", syncMouth, { once: true });
     let settled = false;
     let safety = 0;
     const fin = () => {
@@ -2089,11 +2440,12 @@ function stopSpeech() {
   } catch (_) {}
   currentAudio = null;
   try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (_) {}
+  setAvatarSpeaking(false);
 }
 
 /** Split spoken text on sentence endings so TTS never truncates mid-thought. */
 function speakSentences(text) {
-  const clean = String(text || "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  const clean = forSpokenText(text);
   if (!clean) return [];
   const parts = [];
   const re = /[^.!?\u2026]+[.!?\u2026]+["')\]]*(?:\s+|$)|[^.!?\u2026]+$/g;
@@ -2110,6 +2462,7 @@ async function speak(text) {
   if (!parts.length) return;
   stopSpeech();
   window.FridayLive && FridayLive.state("speaking");
+  setAvatarSpeaking(true);
   try {
     // Prefetch N+1 while N plays. First sentence: fall to browser fast so voice starts now.
     let next = ttsFetchUrl(parts[0]);
@@ -2125,33 +2478,41 @@ async function speak(text) {
         ]);
       } catch (_) { url = null; }
       if (url) {
-        await playUrl(url);
+        await playUrl(url, part);
         continue;
       }
       window.FridayLive && FridayLive.synthSpeaking(true);
+      setAvatarSpeaking(true);
       const ok = await speakBrowser(part);
       if (!ok) console.warn("[Friday] browser TTS unavailable");
     }
   } catch (err) {
     console.warn("[Friday] speak failed:", err);
+  } finally {
+    setAvatarSpeaking(false);
+    window.FridayLive && FridayLive.synthSpeaking(false);
   }
 }
 
 /** Pause-line TTS for voice mode. Does not cancel an in-flight reply. */
 async function speakFiller(text) {
-  const clean = String(text || "").replace(/[*_`#>]/g, "").trim();
+  const clean = forSpokenText(text);
   if (!clean) return;
   window.FridayLive && FridayLive.state("speaking");
+  setAvatarSpeaking(true);
   try {
     const url = await ttsFetchUrl(clean);
     if (url) {
-      await playUrl(url);
+      await playUrl(url, clean);
       return;
     }
     window.FridayLive && FridayLive.synthSpeaking(true);
     await speakBrowser(clean);
   } catch (err) {
     console.warn("[Friday] filler TTS failed:", err);
+  } finally {
+    setAvatarSpeaking(false);
+    window.FridayLive && FridayLive.synthSpeaking(false);
   }
 }
 
@@ -2162,6 +2523,9 @@ window.speakBrowser = speakBrowser;
 window.stopSpeech = stopSpeech;
 window.speak = speak;
 window.speakFiller = speakFiller;
+window.forSpokenText = forSpokenText;
+window.setAvatarSpeaking = setAvatarSpeaking;
+window.nudgeTalkingVideoForUtterance = nudgeTalkingVideoForUtterance;
 window.sanitizeAssistantText = sanitizeAssistantText;
 
 // ---------------------------------------------------------------- reminders + notifications
@@ -2201,8 +2565,8 @@ function showReminderPopup(n, { fromToast = false } = {}) {
   if (!fromToast || !shownReminders.has(n.id)) {
     showView("chat");
     const say = n.kind === "task"
-      ? `Task update, boss: ${n.title}${n.body ? ". " + n.body : ""}`
-      : `Reminder, boss: ${n.title}${n.body ? ". " + n.body : ""}`;
+      ? `Task update: ${n.title}${n.body ? ". " + n.body : ""}`
+      : `Reminder: ${n.title}${n.body ? ". " + n.body : ""}`;
     addBubble("assistant", say, n.kind === "task" ? "task" : "reminder");
     if (speakEnabled() || voiceMode) speak(say);
     if ("Notification" in window && Notification.permission === "granted") {
@@ -2358,6 +2722,7 @@ document.addEventListener("visibilitychange", () => {
   await refreshSettings();
   await refreshPresenceOrbPref();
   await refreshPresence();
+  ensureAvatarGaze();
   await restoreChat();
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission().catch(() => {});

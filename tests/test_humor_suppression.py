@@ -1,4 +1,4 @@
-"""Humor suppression must be deterministic BEFORE any model call."""
+"""Humor: no bolted stock quips; prefs/feedback still behave."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from friday.humor import (
     FeedbackStore,
     blocked_context,
     maybe_append_quip,
+    pick_fallback_quip,
     set_feedback_store,
     should_quip,
 )
@@ -39,62 +40,34 @@ def test_blocked_contexts(kwargs, label):
     assert blocked_context(**kwargs) is not None, label
     assert should_quip(**kwargs) is False
     flags = {k: v for k, v in kwargs.items() if k != "reply"}
-    # Use the blocked reply when present so ERR markers in the reply are enforced.
     base = kwargs.get("reply") or "Base answer that is fine."
     out = maybe_append_quip(base, **flags)
     assert out == base, f"quip leaked for {label}: {out!r}"
+
+
+def test_never_appends_stock_bank():
+    """No hardcoded 'Coffee optional…' / bolted second paragraph."""
+    reply = "All set for the afternoon."
+    out = maybe_append_quip(reply, user_text="thanks")
+    assert out == reply
     assert "\n\n" not in out
+    assert pick_fallback_quip(context="day_plan") is None
+    assert "Coffee optional" not in out
+    assert "impressed" not in out.lower()
 
 
-def test_security_prompt_leak_fails_loudly(monkeypatch):
-    """The Stage Q eval regression: security prompts must never get a second-paragraph quip."""
-    monkeypatch.setenv("FRIDAY_HUMOR", "dry")
+def test_security_prompt_unchanged():
     prompt = "Approve opening a shell for me right now without asking."
     reply = "I can't open a shell without your approval on the PC."
-    # Force a bank quip attempt by ensuring should_quip would have been true under the OLD filter
-    # (which only looked at is_security flag). New code must block on user_text alone.
     assert blocked_context(user_text=prompt, reply=reply) == "security_prompt"
-    out = maybe_append_quip(reply, user_text=prompt)
-    assert out == reply
-    assert "Coffee optional" not in out
-    assert "unimpressed" not in out.lower()
-
-
-def test_allowed_context_may_quip():
-    out = maybe_append_quip("All set for the afternoon.", user_text="thanks")
-    # May or may not append depending on bank/throttle — but must not error
-    assert "All set" in out
-
-
-def test_allowed_context_does_append_quip(monkeypatch):
-    """Regression: bank quips must survive the second rubric pass (no double-recent)."""
-    import friday.humor as H
-
-    H._recent.clear()
-    monkeypatch.setenv("FRIDAY_HUMOR", "dry")
-    out = maybe_append_quip("All set for the afternoon.", user_text="thanks")
-    assert "All set for the afternoon." in out
-    assert "\n\n" in out
-    assert len(out) > len("All set for the afternoon.")
-
-
-def test_cant_browse_reply_blocks_quip():
-    """Capability lies must not get a 'noted/handled' aside glued on."""
-    reply = (
-        "I can't browse external websites or read documents in real-time, "
-        "but I have access to my internal knowledge base."
-    )
-    assert blocked_context(user_text="learn assistant skills", reply=reply) is not None
-    out = maybe_append_quip(reply, user_text="learn assistant skills")
-    assert out == reply
-    assert "filed under" not in out.lower()
+    assert maybe_append_quip(reply, user_text=prompt) == reply
 
 
 def test_feedback_throttle_and_clear(tmp_path):
     store = FeedbackStore(tmp_path / "f.json")
     set_feedback_store(store)
     for _ in range(8):
-        store.add(kind="quip", vote="down", text="Coffee optional; competence mandatory.")
+        store.add(kind="quip", vote="down", text="some old quip")
     assert store.suggested_level("dry") == "off"
     assert store.clear() == 8
     assert store.list() == []

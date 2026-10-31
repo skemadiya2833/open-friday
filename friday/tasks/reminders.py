@@ -26,9 +26,14 @@ _NUM_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five"
 
 # Explicit reminder verbs only. Bare "every day" is NOT enough — that matches agenda talk
 # ("grow YouTube every day") and used to dump the whole monologue into a reminder title.
+# "you remind me of someone" is resemblance chat — not a timed reminder.
+_RESEMBLANCE = re.compile(
+    r"(?i)\bremind(?:s|ed)?\s+(?:me|us|you|him|her|them)\s+of\b"
+)
 _REMIND_VERB = re.compile(
     r"\b("
-    r"remind (me|us)|reminder|"
+    # Negative lookahead: "remind me of …" ≠ schedule a ping.
+    r"remind (me|us)(?!\s+of\b)|reminder|"
     r"set (an? )?(alarm|timer|reminder)|"
     r"alarm (for|at)|timer for|wake me|notify me|ping me|"
     r"schedule (an? |the |this |that )?(task|reminder|job|call|meeting)|"
@@ -272,6 +277,9 @@ def is_agenda_briefing(text: str) -> bool:
 def is_reminder_request(text: str) -> bool:
     t = (text or "").strip()
     if not t:
+        return False
+    # "You remind me of …" is chat, not a timer.
+    if _RESEMBLANCE.search(t):
         return False
     # Planning monologues with a stray "every day at 9" must not become reminders.
     if is_agenda_briefing(t):

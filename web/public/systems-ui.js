@@ -254,7 +254,25 @@ async function bindPresencePanel() {
   const grid = $("#presencePortraitGrid");
   const skinSeg = $("#presenceSkinSeg");
   const engHint = $("#avatarEngineHint");
+  const form = $("#presenceCustomForm");
+  const voiceSel = $("#presenceVoiceSelect");
+  const delBtn = $("#presenceDeleteBtn");
   if (!grid || !skinSeg) return;
+  let lastSnap = {};
+
+  const fillVoices = (choices) => {
+    if (!voiceSel) return;
+    const list = (choices && choices.length) ? choices : [
+      { id: "af_bella", label: "Bella (female US)" },
+      { id: "bm_george", label: "George (male GB)" },
+      { id: "am_adam", label: "Adam (male US)" },
+    ];
+    const cur = voiceSel.value;
+    voiceSel.innerHTML = list.map((v) =>
+      `<option value="${escapeHtml(v.id)}" data-profile="${escapeHtml(v.profile || "")}">${escapeHtml(v.label || v.id)}</option>`
+    ).join("");
+    if (cur) voiceSel.value = cur;
+  };
 
   const render = async () => {
     let snap = {};
@@ -262,44 +280,57 @@ async function bindPresencePanel() {
       const res = await apiFetch("/api/presence");
       if (res.ok) snap = await res.json();
     } catch (_) {}
+    lastSnap = snap;
     const skins = snap.skins || [];
     const active = (snap.skin && snap.skin.id) || "friday";
     const portraits = snap.portraits || {};
     const avatar = snap.avatar || {};
     const engines = (avatar.engines) || {};
+    fillVoices(snap.voice_choices);
     skinSeg.innerHTML = skins.map((s) =>
-      `<button type="button" data-presence-skin="${escapeHtml(s.id)}" class="${s.id === active ? "on" : ""}">${escapeHtml(s.display_name || s.id)}</button>`
+      `<button type="button" data-presence-skin="${escapeHtml(s.id)}" class="${s.id === active ? "on" : ""}">${escapeHtml(s.display_name || s.id)}${s.custom ? " ★" : ""}</button>`
     ).join("");
     grid.innerHTML = skins.map((s) => {
       const url = portraits[s.id];
+      const hasTalk = !!s.talking_video;
       const thumb = url
         ? `<img src="${escapeHtml(url)}?t=${Date.now()}" alt="" class="presence-thumb" />`
         : `<div class="presence-thumb presence-thumb-empty">No image</div>`;
       return `<div class="presence-card" data-skin="${escapeHtml(s.id)}">
-        <div class="presence-card-head">${escapeHtml(s.display_name || s.id)}</div>
+        <div class="presence-card-head">${escapeHtml(s.display_name || s.id)}${s.custom ? " · custom" : ""}${hasTalk ? " · talk" : ""}</div>
         ${thumb}
-        <label class="ghost presence-upload-btn">
-          Upload
-          <input type="file" accept="image/png,image/jpeg,image/webp" data-portrait-upload="${escapeHtml(s.id)}" hidden />
-        </label>
+        <div class="presence-card-actions">
+          <label class="ghost presence-upload-btn">
+            Portrait
+            <input type="file" accept="image/png,image/jpeg,image/webp" data-portrait-upload="${escapeHtml(s.id)}" hidden />
+          </label>
+          ${url ? `<button type="button" class="ghost presence-del-btn" data-portrait-delete="${escapeHtml(s.id)}">Remove image</button>` : ""}
+          <label class="ghost presence-upload-btn">
+            Talking video
+            <input type="file" accept="video/mp4,video/webm,video/quicktime" data-talking-upload="${escapeHtml(s.id)}" hidden />
+          </label>
+          ${hasTalk ? `<button type="button" class="ghost presence-del-btn" data-talking-delete="${escapeHtml(s.id)}">Remove video</button>` : ""}
+        </div>
       </div>`;
     }).join("");
-    const lipsync = !!snap.avatar_lipsync;
+    const lipsync = snap.avatar_lipsync !== false;
     const lipsyncEl = $("#avatarLipsyncToggle");
     if (lipsyncEl) lipsyncEl.checked = lipsync;
-    const eng = String(snap.avatar_engine || "auto");
-    document.querySelectorAll("#avatarEngineSeg [data-avatar-engine]").forEach((b) => {
-      b.classList.toggle("on", b.getAttribute("data-avatar-engine") === eng);
-    });
-    const bits = [];
-    bits.push(`Active engine: ${avatar.active || eng}`);
-    bits.push(`MuseTalk ${engines.musetalk ? "ready" : "not installed"}`);
-    bits.push(`Wav2Lip ${engines.wav2lip ? "ready" : "not installed"}`);
-    if (engHint) engHint.textContent = bits.join(" · ");
+    const activeTalk = !!(snap.skin && snap.skin.talking_video);
+    if (engHint) {
+      engHint.textContent = activeTalk
+        ? "Active callsign has a talking video — energy-synced (muted) with TTS."
+        : "Upload a talking-head mp4 per callsign (from wav2lip.org or similar). Wav2Lip generation is retired.";
+    }
     if (line) {
-      line.textContent = lipsync
-        ? "Lip-sync on — upload a face per callsign; needs Wav2Lip or MuseTalk under data/vendor."
-        : "Still portraits only until lip-sync is on.";
+      line.textContent = activeTalk
+        ? "Talking video on — speak and the clip plays with your voice."
+        : "Upload a talking video to animate the avatar with speech (no on-device Wav2Lip).";
+    }
+    if (delBtn) {
+      const isCustom = !!(snap.skin && snap.skin.custom);
+      delBtn.hidden = !isCustom;
+      delBtn.dataset.skinId = isCustom ? snap.skin.id : "";
     }
   };
 
@@ -331,38 +362,171 @@ async function bindPresencePanel() {
     }
   });
 
-  document.querySelectorAll("#avatarEngineSeg [data-avatar-engine]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const val = btn.getAttribute("data-avatar-engine");
-      try {
-        await patchPrefs({ avatar_engine: val });
-        await render();
-      } catch (_) { /* ignore */ }
-    });
-  });
-
   grid.addEventListener("change", async (ev) => {
     const input = ev.target;
     if (!(input instanceof HTMLInputElement) || input.type !== "file") return;
-    const sid = input.getAttribute("data-portrait-upload");
+    const portraitSid = input.getAttribute("data-portrait-upload");
+    const talkSid = input.getAttribute("data-talking-upload");
     const file = input.files && input.files[0];
-    if (!sid || !file) return;
-    if (line) line.textContent = `Uploading ${sid}…`;
+    if (!file) return;
+    if (portraitSid) {
+      if (line) line.textContent = `Uploading portrait ${portraitSid}…`;
+      try {
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+        const res = await apiFetch(`/api/presence/portrait/${encodeURIComponent(portraitSid)}`, {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) throw new Error(await res.text());
+        if (typeof refreshPresence === "function") refreshPresence();
+        await render();
+        if (line) line.textContent = `Portrait saved for ${portraitSid}`;
+      } catch (err) {
+        if (line) line.textContent = `Upload failed — ${err && err.message ? err.message : "error"}`;
+      } finally {
+        input.value = "";
+      }
+      return;
+    }
+    if (talkSid) {
+      if (line) line.textContent = `Uploading talking video ${talkSid}…`;
+      try {
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+        const res = await apiFetch(`/api/presence/talking/${encodeURIComponent(talkSid)}`, {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) throw new Error(await res.text());
+        if (typeof refreshPresence === "function") refreshPresence();
+        await render();
+        if (line) line.textContent = `Talking video saved for ${talkSid}`;
+      } catch (err) {
+        if (line) line.textContent = `Talking upload failed — ${err && err.message ? err.message : "error"}`;
+      } finally {
+        input.value = "";
+      }
+    }
+  });
+
+  grid.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-portrait-delete], [data-talking-delete]");
+    if (!btn) return;
+    const portraitSid = btn.getAttribute("data-portrait-delete");
+    const talkSid = btn.getAttribute("data-talking-delete");
+    if (portraitSid) {
+      if (!window.confirm(`Remove portrait for ${portraitSid}?`)) return;
+      if (line) line.textContent = `Removing portrait ${portraitSid}…`;
+      try {
+        const res = await apiFetch(`/api/presence/portrait/${encodeURIComponent(portraitSid)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (typeof refreshPresence === "function") refreshPresence();
+        await render();
+        if (line) line.textContent = `Portrait removed for ${portraitSid}`;
+      } catch (err) {
+        if (line) line.textContent = `Remove failed — ${err && err.message ? err.message : "error"}`;
+      }
+      return;
+    }
+    if (talkSid) {
+      if (!window.confirm(`Remove talking video for ${talkSid}?`)) return;
+      if (line) line.textContent = `Removing talking video ${talkSid}…`;
+      try {
+        const res = await apiFetch(`/api/presence/talking/${encodeURIComponent(talkSid)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (typeof refreshPresence === "function") refreshPresence();
+        await render();
+        if (line) line.textContent = `Talking video removed for ${talkSid}`;
+      } catch (err) {
+        if (line) line.textContent = `Remove failed — ${err && err.message ? err.message : "error"}`;
+      }
+    }
+  });
+
+  form?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(form);
+    const name = String(fd.get("display_name") || "").trim();
+    if (!name) return;
+    const voice = String(fd.get("tts_voice") || "af_bella");
+    const opt = voiceSel && voiceSel.selectedOptions[0];
+    const profile = (opt && opt.getAttribute("data-profile")) || "female_us";
+    const payload = {
+      display_name: name,
+      callsign: String(fd.get("callsign") || "").trim() || undefined,
+      address_as: String(fd.get("address_as") || "").trim() || undefined,
+      accent: String(fd.get("accent") || "#3dd6c6"),
+      tts_voice: voice,
+      voice_profile: profile,
+      humor_level: String(fd.get("humor_level") || "dry"),
+      personality: String(fd.get("personality") || "").trim() || undefined,
+      lipsync: true,
+      activate: true,
+    };
+    if (line) line.textContent = `Creating ${name}…`;
     try {
-      const fd = new FormData();
-      fd.append("file", file, file.name);
-      const res = await apiFetch(`/api/presence/portrait/${encodeURIComponent(sid)}`, {
+      const res = await apiFetch("/api/presence/skins", {
         method: "POST",
-        body: fd,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+          const err = await res.json();
+          msg = err.detail || msg;
+        } catch (_) {}
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
+      const created = await res.json();
+      const sid = (created.skin && created.skin.id) || (created.skin_id);
+      const portrait = fd.get("portrait");
+      if (sid && portrait && portrait instanceof File && portrait.size > 0) {
+        const pfd = new FormData();
+        pfd.append("file", portrait, portrait.name);
+        await apiFetch(`/api/presence/portrait/${encodeURIComponent(sid)}`, {
+          method: "POST",
+          body: pfd,
+        });
+      }
+      const talking = fd.get("talking");
+      if (sid && talking && talking instanceof File && talking.size > 0) {
+        const tfd = new FormData();
+        tfd.append("file", talking, talking.name);
+        await apiFetch(`/api/presence/talking/${encodeURIComponent(sid)}`, {
+          method: "POST",
+          body: tfd,
+        });
+      }
+      form.reset();
+      if (form.querySelector('[name="accent"]')) form.querySelector('[name="accent"]').value = "#f472b6";
       if (typeof refreshPresence === "function") refreshPresence();
       await render();
-      if (line) line.textContent = `Portrait saved for ${sid}`;
+      if (line) line.textContent = `${name} ready — switched.`;
     } catch (err) {
-      if (line) line.textContent = `Upload failed — ${err && err.message ? err.message : "error"}`;
-    } finally {
-      input.value = "";
+      if (line) line.textContent = `Create failed — ${err && err.message ? err.message : "error"}`;
+    }
+  });
+
+  delBtn?.addEventListener("click", async () => {
+    const sid = delBtn.dataset.skinId;
+    if (!sid) return;
+    if (!window.confirm(`Delete custom callsign ${sid}?`)) return;
+    try {
+      const res = await apiFetch(`/api/presence/skins/${encodeURIComponent(sid)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (typeof refreshPresence === "function") refreshPresence();
+      await render();
+      if (line) line.textContent = `Deleted ${sid}`;
+    } catch (err) {
+      if (line) line.textContent = `Delete failed — ${err && err.message ? err.message : "error"}`;
     }
   });
 }
@@ -692,25 +856,54 @@ async function refreshSettings() {
             <div class="seg" id="presenceSkinSeg"></div>
           </div>
           <div class="pref-item pref-switch">
-            <div class="pref-copy"><strong>Lip-sync while speaking</strong><span class="muted"> · needs portrait + engine</span></div>
-            <label class="switch" title="Avatar lip-sync">
+            <div class="pref-copy"><strong>Play talking video with speech</strong><span class="muted"> · fades/paces your clip to TTS energy</span></div>
+            <label class="switch" title="Talking video">
               <input type="checkbox" id="avatarLipsyncToggle" />
               <span class="switch-ui" aria-hidden="true"></span>
             </label>
           </div>
           <div class="pref-item">
-            <div class="pref-copy"><strong>Avatar engine</strong></div>
-            <div class="seg" id="avatarEngineSeg">
-              <button type="button" data-avatar-engine="auto">auto</button>
-              <button type="button" data-avatar-engine="still">still</button>
-              <button type="button" data-avatar-engine="musetalk">MuseTalk</button>
-              <button type="button" data-avatar-engine="wav2lip">Wav2Lip</button>
-            </div>
+            <div class="pref-copy"><strong>Portraits &amp; talking videos</strong><span class="muted"> · still image + optional talk clip per callsign</span></div>
+            <div class="presence-portrait-grid" id="presencePortraitGrid"></div>
             <p class="muted" id="avatarEngineHint" style="margin:8px 0 0"></p>
           </div>
-          <div class="pref-item">
-            <div class="pref-copy"><strong>Portraits</strong><span class="muted"> · one face image per callsign</span></div>
-            <div class="presence-portrait-grid" id="presencePortraitGrid"></div>
+          <div class="pref-item" id="presenceCustomBox">
+            <div class="pref-copy"><strong>Create your callsign</strong><span class="muted"> · inherits tools &amp; safety; customize voice, talk style, avatar</span></div>
+            <form id="presenceCustomForm" class="presence-custom-form" autocomplete="off">
+              <div class="presence-custom-row">
+                <label>Name<input name="display_name" required maxlength="40" placeholder="Piegi" /></label>
+                <label>Callsign<input name="callsign" maxlength="32" placeholder="PIEGI" /></label>
+              </div>
+              <div class="presence-custom-row">
+                <label>Address them as<input name="address_as" maxlength="48" placeholder="boss (optional)" /></label>
+                <label>Accent<input name="accent" type="color" value="#f472b6" /></label>
+              </div>
+              <div class="presence-custom-row">
+                <label>Voice
+                  <select name="tts_voice" id="presenceVoiceSelect"></select>
+                </label>
+                <label>Humor
+                  <select name="humor_level">
+                    <option value="dry">dry</option>
+                    <option value="full">full</option>
+                    <option value="off">off</option>
+                  </select>
+                </label>
+              </div>
+              <label class="presence-custom-full">Personality / way of talking
+                <textarea name="personality" rows="3" maxlength="800" placeholder="Warm, playful, short answers."></textarea>
+              </label>
+              <label class="presence-custom-full">Portrait (optional)
+                <input type="file" name="portrait" accept="image/png,image/jpeg,image/webp" />
+              </label>
+              <label class="presence-custom-full">Talking video (optional)
+                <input type="file" name="talking" accept="video/mp4,video/webm,video/quicktime" />
+              </label>
+              <div class="presence-custom-actions">
+                <button type="submit" class="primary" id="presenceCreateBtn">Create &amp; switch</button>
+                <button type="button" class="ghost" id="presenceDeleteBtn" hidden>Delete active custom</button>
+              </div>
+            </form>
           </div>
         </section>
 
@@ -976,16 +1169,21 @@ async function saveCameraSelection(extra = {}) {
   return res.json();
 }
 
-async function refreshCameraDevices() {
+async function refreshCameraDevices({ deep = false } = {}) {
   const sel = $("#cameraDeviceSelect");
   const resSel = $("#cameraResSelect");
   const hint = $("#cameraDeviceHint");
   const recBtn = $("#cameraUseRecommendedBtn");
   if (!sel) return null;
   sel.disabled = true;
-  if (hint) hint.textContent = "Scanning connected cameras…";
+  if (hint) {
+    hint.textContent = deep
+      ? "Scanning selected camera…"
+      : "Listing cameras…";
+  }
   try {
-    const data = await (await apiFetch("/api/camera/devices")).json();
+    const q = deep ? "?deep=1" : "";
+    const data = await (await apiFetch(`/api/camera/devices${q}`)).json();
     const devices = Array.isArray(data.devices) ? data.devices : [];
     const selectedIdx = typeof data.selected_index === "number" ? data.selected_index : 0;
     const selectedBe = (data.selected_backend || "").trim();
@@ -1084,7 +1282,8 @@ async function bindCameraControls() {
     if (enableToggle?.checked) await refreshCameraDevices();
   });
   scanBtn?.addEventListener("click", async () => {
-    await refreshCameraDevices();
+    // deep=1 opens only the currently selected device (not every virtual cam).
+    await refreshCameraDevices({ deep: true });
     await refreshCameraStatus();
   });
   $("#cameraUseRecommendedBtn")?.addEventListener("click", async () => {

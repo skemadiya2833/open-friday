@@ -71,6 +71,23 @@ def _stable_num_ctx(model: str | None, num_ctx: int | None) -> int:
     return int(MODEL_NUM_CTX)
 
 
+def _ollama_num_gpu() -> int | None:
+    """Prefer full GPU residency when VRAM allows (Ollama ``options.num_gpu``).
+
+    Default 999 = all layers on GPU. Set ``FRIDAY_OLLAMA_NUM_GPU=0`` to force CPU,
+    or a positive layer count to cap. Empty / ``auto`` leaves Ollama's default.
+    """
+    import os
+
+    raw = (os.getenv("FRIDAY_OLLAMA_NUM_GPU") or "999").strip().lower()
+    if raw in {"", "auto", "default"}:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return 999
+
+
 def _extract_chat_tokens(chunk: dict) -> tuple[str, str]:
     thinking = chunk.get("thinking") or ""
     message = chunk.get("message")
@@ -113,6 +130,9 @@ def _stream_chat(
             "repeat_penalty": 1.05,
         },
     }
+    n_gpu = _ollama_num_gpu()
+    if n_gpu is not None:
+        payload["options"]["num_gpu"] = n_gpu
     # Prefer JSON Schema structured outputs (Ollama) so planners cannot wrap {"args":...} oddly.
     if format_schema is not None:
         payload["format"] = format_schema
@@ -406,7 +426,7 @@ def query_aim_verification(
         try:
             result["x"] = int(x)
             result["y"] = int(y)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             pass
     return result
 
@@ -447,10 +467,6 @@ def _looks_like_optics_dump(reply: str) -> bool:
         r"output\s*constraint\s*:|"
         r"main app open\s*:|"
         r"visible apps?\s*:|"
-        r"competence over commentary|"
-        r"coffee optional|"
-        r"i'?ll pretend that was the easy part|"
-        r"try not to look too impressed|"
         r"desktop vision agent|"
         r"vision agent|"
         r"vision tool|"

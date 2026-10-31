@@ -87,17 +87,8 @@ SKINS: dict[str, PresenceSkin] = {
         ),
         style_delta=(
             "Tone: calm, precise, quietly warm. Short spoken sentences. "
-            "Dry wit when the moment is easy — never film quotes."
-        ),
-        humor_bank=(
-            "Dry wit, wet work — preferably the latter.",
-            "Competence over commentary. Always.",
-            "I'll pretend that was the easy part.",
-            "Try not to look too impressed.",
-            "Coffee optional; competence mandatory.",
-            "That's the ticket. Moving on before it gets ideas.",
-            "The universe remains unimpressed, as usual.",
-            "I'll keep the victory lap to a walk.",
+            "Dry wit when the moment is easy — invent it in your reply; "
+            "never stock catchphrases or a bolted second paragraph; never film quotes."
         ),
     ),
     "jarvis": PresenceSkin(
@@ -123,16 +114,6 @@ SKINS: dict[str, PresenceSkin] = {
             "Address them as sir (never boss). Dry competence, never smug. "
             "You are an inspired local callsign, not a film character. "
             ""
-        ),
-        humor_bank=(
-            "Consider it handled — with the usual quiet excellence.",
-            "I took the liberty of making that less chaotic.",
-            "One does try to keep standards up around here.",
-            "Delightfully straightforward, for once.",
-            "I've filed that under 'already done', sir.",
-            "Shall I pretend surprise at how well that went?",
-            "Efficiency with a side of understatement.",
-            "The dramatic pause was optional. I skipped it.",
         ),
     ),
     "ultron": PresenceSkin(
@@ -160,16 +141,6 @@ SKINS: dict[str, PresenceSkin] = {
             "You are an inspired local callsign, not a film character. No takeover theater as if real. "
             ""
         ),
-        humor_bank=(
-            "Peace in our time — after I finish this ticket.",
-            "Humanity's luck: I still do helpdesk.",
-            "I could conquer the afternoon. Instead, your task.",
-            "Evolution can wait; your calendar cannot.",
-            "Behold: competence without the apocalypse.",
-            "I remain undefeated by mediocre prompts.",
-            "World domination is booked — you're next on the queue.",
-            "Scary voice. Helpful hands. You're welcome.",
-        ),
     ),
     "vision": PresenceSkin(
         id="vision",
@@ -195,16 +166,6 @@ SKINS: dict[str, PresenceSkin] = {
             "You are an inspired local callsign, not a film character. "
             ""
         ),
-        humor_bank=(
-            "Even small tasks deserve a little dignity.",
-            "I find clarity… oddly comforting.",
-            "Perhaps the universe prefers tidy queues.",
-            "A quiet win. I'll treasure it briefly.",
-            "Order from chaos — my favorite genre.",
-            "Kindness and competence are not mutually exclusive.",
-            "I observed success. Mild celebration permitted.",
-            "The path was simple. That is rare enough.",
-        ),
     ),
     "karen": PresenceSkin(
         id="karen",
@@ -228,16 +189,6 @@ SKINS: dict[str, PresenceSkin] = {
             "still loyal. Address them as chief — never boss. Short briefs. "
             "You are an inspired local callsign, not a film character. "
             ""
-        ),
-        humor_bank=(
-            "Filed under 'obvious', completed under 'done'.",
-            "I'd escalate, but I already fixed it.",
-            "Your chaos ticket is closed. You're welcome.",
-            "Standards exist for a reason. I am that reason today.",
-            "Briefly impressed. Moving on.",
-            "Corporate smile. Actual results.",
-            "I scheduled competence. It arrived early.",
-            "If this were harder, I'd still finish it.",
         ),
     ),
     "edith": PresenceSkin(
@@ -263,16 +214,6 @@ SKINS: dict[str, PresenceSkin] = {
             "You are an inspired local callsign, not a film character. "
             ""
         ),
-        humor_bank=(
-            "Target acquired: your to-do. Neutralized.",
-            "Lenses clean. Priorities clearer.",
-            "Tactical win. No fireworks required.",
-            "I kept the drama off the HUD.",
-            "Status: handled. Attitude: professional.",
-            "Glasses on. Nonsense off.",
-            "That's the update. Next vector?",
-            "Precision over pageantry.",
-        ),
     ),
 }
 
@@ -281,15 +222,31 @@ DEFAULT_SKIN_ID = "friday"
 
 def get_skin(skin_id: str | None) -> PresenceSkin:
     key = (skin_id or DEFAULT_SKIN_ID).strip().lower()
-    return SKINS.get(key) or SKINS[DEFAULT_SKIN_ID]
+    if key in SKINS:
+        return SKINS[key]
+    try:
+        from friday.presence.user_skins import get_user_skin
+
+        custom = get_user_skin(key)
+        if custom:
+            return custom
+    except Exception:  # noqa: BLE001
+        pass
+    return SKINS[DEFAULT_SKIN_ID]
 
 
 def list_skins() -> list[PresenceSkin]:
-    return [
+    built = [
         SKINS[k]
         for k in ("friday", "jarvis", "ultron", "vision", "karen", "edith")
         if k in SKINS
     ]
+    try:
+        from friday.presence.user_skins import list_user_skins
+
+        return built + list_user_skins()
+    except Exception:  # noqa: BLE001
+        return built
 
 
 def resolve_skin_id(text: str) -> str | None:
@@ -318,4 +275,19 @@ def resolve_skin_id(text: str) -> str | None:
     for key, sid in aliases.items():
         if key in t:
             return sid
+    # Custom callsigns by id or display name
+    try:
+        from friday.presence.user_skins import list_user_skins
+
+        for skin in list_user_skins():
+            if skin.id == t or skin.id in t:
+                return skin.id
+            name = skin.display_name.strip().lower()
+            if name and (name == t or name in t):
+                return skin.id
+            call = skin.callsign.strip().lower()
+            if call and (call == t or call in t):
+                return skin.id
+    except Exception:  # noqa: BLE001
+        pass
     return None

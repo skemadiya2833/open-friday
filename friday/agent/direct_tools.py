@@ -214,6 +214,17 @@ _LIST_CAMERAS = re.compile(
     r"\bcameras?\s+(?:list|available|connected)\b",
     re.I,
 )
+# "Is Face Sink running?" / "check if notepad is running" — measure via Get-Process, never invent.
+_PROCESS_RUNNING = re.compile(
+    r"(?i)^\s*(?:hey\s+)?(?:friday[,:]?\s*)?(?:please\s+)?"
+    r"(?:"
+    r"(?:is|are)\s+(?P<name1>.+?)\s+running\b|"
+    r"(?:check|see|verify|look|tell me)\s+(?:if|whether)\s+"
+    r"(?P<name2>.+?)\s+(?:is|are)\s+running\b|"
+    r"(?:check|see|verify|find|look for)\s+(?:the\s+)?(?:process|processes|task(?:list)?|apps?)\s+"
+    r"(?:for\s+|named\s+|called\s+)?(?P<name3>[\w .+\-]{2,48})"
+    r")\s*[?.!]?\s*$"
+)
 # Week / task dashboard as HTML in the browser — never the vision desktop agent.
 _WEEK_DASHBOARD = re.compile(
     r"\b("
@@ -538,6 +549,84 @@ def _specs_to_rows(text: str) -> list[tuple[str, str]]:
         if k and v:
             rows.append((k, v))
     return rows
+
+
+def _sanitize_process_query(raw: str) -> str:
+    """Keep only a safe process/app needle for PowerShell -match."""
+    t = (raw or "").strip().strip("\"'`")
+    t = re.sub(
+        r"(?i)^(the\s+|my\s+|a\s+|an\s+|app\s+|application\s+|process\s+|program\s+)+",
+        "",
+        t,
+    )
+    t = re.sub(
+        r"(?i)\s+(app|application|process|program|exe|service)s?\s*$",
+        "",
+        t,
+    ).strip()
+    t = re.sub(r"[^\w .+\-]", "", t)
+    return t[:48].strip()
+
+
+def _extract_process_query(objective: str) -> str | None:
+    m = _PROCESS_RUNNING.match((objective or "").strip())
+    if not m:
+        return None
+    raw = (m.group("name1") or m.group("name2") or m.group("name3") or "").strip()
+    return _sanitize_process_query(raw) or None
+
+
+def _check_process_running(query: str) -> str:
+    """Return a short measured answer: whether matching processes are live.
+
+    Match process name / window title only — never CommandLine (that false-hits the
+    checker PowerShell that embeds the query string).
+    """
+    q = _sanitize_process_query(query)
+    if not q:
+        return "Need a process or app name to check."
+    lit = q.replace("'", "''")
+    compact = re.sub(r"\s+", "", q).replace("'", "''")
+    ps = rf"""
+$ErrorActionPreference = 'SilentlyContinue'
+$q = '{lit}'
+$c = '{compact}'
+$me = $PID
+$parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$me").ParentProcessId
+$hits = @(Get-Process | Where-Object {{
+  $_.Id -ne $me -and $_.Id -ne $parent -and (
+    $_.ProcessName -like ("*" + $q + "*") -or
+    ($c -and $_.ProcessName -like ("*" + $c + "*")) -or
+    ($_.MainWindowTitle -and (
+      $_.MainWindowTitle -like ("*" + $q + "*") -or
+      ($c -and $_.MainWindowTitle -like ("*" + $c + "*"))
+    ))
+  )
+}} | Select-Object -First 8 ProcessName, Id, MainWindowTitle)
+if (-not $hits.Count) {{
+  Write-Output "NOT_RUNNING|$q"
+  exit 0
+}}
+$lines = $hits | ForEach-Object {{
+  $t = if ($_.MainWindowTitle) {{ " title=$($_.MainWindowTitle)" }} else {{ "" }}
+  "$($_.ProcessName) pid=$($_.Id)$t"
+}}
+Write-Output ("RUNNING|" + ($lines -join '; '))
+"""
+    out = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    line = (out.stdout or "").strip().splitlines()
+    text = (line[-1] if line else "").strip()
+    if text.startswith("RUNNING|"):
+        detail = text.split("|", 1)[1].strip()
+        return f"Yes — {q} is running ({detail})."
+    if text.startswith("NOT_RUNNING|") or not text:
+        return f"No — I don't see {q} running right now."
+    return f"Checked for {q}: {text[:200]}"
 
 
 def _specs_spoken_brief(text: str) -> str:
@@ -1182,6 +1271,16 @@ def try_direct(objective: str, *, workspace: str | None = None,
             "What should I put on screen — your tasks, system specs, a note, or an HTML page?",
             "clarify_screen",
         )
+
+    # "Is X running?" — Get-Process / CIM, never "I don't have access to the desktop".
+    proc_q = _extract_process_query(obj)
+    if proc_q:
+        try:
+            return DirectResult(True, True, _check_process_running(proc_q), "process_check")
+        except Exception as exc:  # noqa: BLE001
+            return DirectResult(
+                True, False, f"Couldn't check processes for {proc_q}: {exc}", "process_check"
+            )
 
     # Cameras / peripherals inventory (before generic specs — more specific).
     if _LIST_CAMERAS.search(obj) or _PERIPHERALS.search(obj):

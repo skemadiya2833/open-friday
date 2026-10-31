@@ -10,6 +10,9 @@ Environment knobs (owner-tunable, no service edits):
   FRIDAY_CODER_KEEP_ALIVE   — after coder use (default ``0`` = unload immediately)
   FRIDAY_EMBED_KEEP_ALIVE   — light embed model (default ``10m``)
   FRIDAY_GPU_IDLE_UTIL_PCT  — util below this ⇒ background may use GPU (default 15)
+  FRIDAY_OLLAMA_NUM_GPU     — Ollama ``options.num_gpu`` (default ``999`` = all layers on GPU)
+  FRIDAY_WAV2LIP_YIELD_GPU  — unload chat before Wav2Lip so it uses VRAM not shared RAM (default on)
+  FRIDAY_WAV2LIP_BATCH      — Wav2Lip batch (default ``16``; old ``128`` thrash-spilled to RAM)
 """
 
 from __future__ import annotations

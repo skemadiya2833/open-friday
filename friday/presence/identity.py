@@ -1,17 +1,18 @@
-"""Deterministic identity answers — never let the model dump callsign instructions."""
+"""Deterministic identity answers — only for clear who/name/callsign asks."""
 
 from __future__ import annotations
 
 import re
 
+# Keep this tight. "You sure about that" is normal chat — never identity dump.
 _IDENTITY_ASK = re.compile(
     r"(?i)\b("
-    r"who are you|what('?s| is) your name|"
-    r"are you (friday|jarvis|ultron|vision|karen|edith|electron|an? ai)|"
-    r"i thought you (were|are)|"
-    r"you sure\b|"
-    r"still (friday|jarvis|ultron|vision|karen|edith)|"
-    r"you('?re| are) (friday|jarvis|ultron|vision|karen|edith|electron)|"
+    r"who are you|"
+    r"what('?s| is) your name|"
+    r"are you (friday|jarvis|ultron|vision|karen|edith|piegi|electron|an? ai)|"
+    r"i thought you (were|are)\s+(friday|jarvis|ultron|vision|karen|edith|piegi|an? ai)|"
+    r"still (friday|jarvis|ultron|vision|karen|edith|piegi)\b|"
+    r"you('?re| are) (friday|jarvis|ultron|vision|karen|edith|piegi|electron)|"
     r"what callsign|which (mode|persona|callsign)"
     r")"
 )
@@ -33,8 +34,4 @@ def identity_answer(message: str, owner: str) -> str:
             f"Sure — I'm {skin.display_name}, {owner}. "
             "Not Electron the app framework. Local callsign on this PC."
         )
-    if re.search(r"(?i)\bi thought you (were|are)\b", low) or re.search(
-        r"(?i)\byou sure\b", low
-    ):
-        return f"Sure thing — {base}"
     return base

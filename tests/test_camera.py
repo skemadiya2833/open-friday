@@ -218,7 +218,7 @@ def test_list_cameras_mocked(monkeypatch):
 
 
 def test_list_cameras_stops_after_consecutive_misses(monkeypatch):
-    """Do not keep probing past the last device (avoids FFmpeg index-out-of-range spam)."""
+    """Light OpenCV fallback uses dshow only — never walks msmf+dshow for a panel open."""
     from friday.camera import devices as cam_dev
 
     calls: list[tuple[str, int]] = []
@@ -230,21 +230,23 @@ def test_list_cameras_stops_after_consecutive_misses(monkeypatch):
 
     monkeypatch.setattr("friday.camera.capture.opencv_available", lambda: True)
     # Force OpenCV probe path (skip live ffmpeg DirectShow enumeration).
-    monkeypatch.setattr(cam_dev, "_list_cameras_ffmpeg_first", lambda: None)
+    monkeypatch.setattr(cam_dev, "_list_cameras_ffmpeg_first", lambda **_k: None)
     monkeypatch.setattr(cam_dev, "_windows_friendly_names", lambda: [])
     monkeypatch.setattr(cam_dev, "_backend_apis", lambda: [("msmf", 0), ("dshow", 1)])
     monkeypatch.setattr(cam_dev, "_probe_backend", fake_probe)
     monkeypatch.setattr(cam_dev, "_silence_opencv_logs", lambda: None)
     monkeypatch.setattr(cam_dev, "_restore_opencv_logs", lambda _p: None)
     monkeypatch.setattr(cam_dev, "_match_ffmpeg_names", lambda _devs: None)
+    cam_dev._list_cache["at"] = 0.0
+    cam_dev._list_cache["devices"] = None
     try:
         import cv2  # noqa: F401
     except Exception:
         return
-    out = cam_dev.list_cameras(max_index=8)
+    out = cam_dev.list_cameras(max_index=8, deep=False)
     assert out == []
-    # Each backend probes until two consecutive misses (indices 0,1).
-    assert calls == [("msmf", 0), ("msmf", 1), ("dshow", 0), ("dshow", 1)]
+    # Light list: dshow only, two miss slots — not both backends.
+    assert calls == [("dshow", 0), ("dshow", 1)]
 
 
 def test_save_selected_stores_backend(monkeypatch, tmp_path):

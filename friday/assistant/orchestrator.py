@@ -294,9 +294,12 @@ def handle_message(
     # Never force-reroute a bare greeting into web research ("Hey Friday" ≠ Wikipedia).
     from friday.assistant.reflexes import _is_greeting_only
 
+    from friday.assistant.intent import _SITUATION_ASK
+
     force_action = (
         result.skill_id == "chat"
         and not _is_greeting_only(message)
+        and not _SITUATION_ASK.match((message or "").strip())
         and (
             _fake_action_promise(result.reply or "", message)
             or _false_capability_denial(result.reply or "")
@@ -501,9 +504,17 @@ def _recover_action_objective(
     message: str, history: list[dict[str, str]], reply: str
 ) -> tuple[str, str]:
     """Pick a real objective + skill when chat faked an action or capability denial."""
-    from friday.assistant.intent import _last_substantive_user
+    from friday.assistant.intent import _SITUATION_ASK, _last_substantive_user
+
+    # Never promote small-talk into a desktop vision run.
+    if _SITUATION_ASK.match((message or "").strip()):
+        return message, "chat"
 
     prior = _last_substantive_user(history) or message
+    if _SITUATION_ASK.match((prior or "").strip()) and _SITUATION_ASK.match(
+        (message or "").strip()
+    ):
+        return message, "chat"
     blob = f"{message} {prior} {reply}".lower()
     if _fake_hardware_report(reply) or re.search(
         r"\b(system ?specs?|hardware|gpu|vram|ram|cpu|disk|nvme)\b",
@@ -515,7 +526,17 @@ def _recover_action_objective(
         r"\b(monitor|display|camera|webcam|peripheral|device|usb|wmic|hardware|screen)\b",
         blob,
     ):
-        return prior, "computer_use"
+        # Screen words in the *reply* alone (e.g. "on your screen") must not
+        # turn a sitrep into computer_use with objective = the chat line.
+        goal = prior if not _SITUATION_ASK.match((message or "").strip()) else prior
+        if _SITUATION_ASK.match((goal or "").strip()):
+            return message, "chat"
+        # Prefer look over act when the ask was describe/see, not click.
+        from friday.assistant.intent import is_screen_look_utterance
+
+        if is_screen_look_utterance(goal):
+            return goal, "observe"
+        return goal, "computer_use"
     if re.search(r"\b(click|type|notepad|desktop|screen|chrome|browser|powershell|open)\b", blob):
         # Prefer research for web lookups; computer_use when clearly desktop.
         if re.search(r"\b(reference|website|sites?|search|google|article|learn|research)\b", blob):

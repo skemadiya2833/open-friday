@@ -40,8 +40,12 @@ def camera_status() -> dict[str, Any]:
 
 
 @router.get("/api/camera/devices")
-def camera_devices() -> dict[str, Any]:
-    """List connected cameras (probe + release). No frames stored."""
+def camera_devices(deep: bool = False) -> dict[str, Any]:
+    """List connected cameras.
+
+    Default: DirectShow *names* only (no open). ``deep=1`` (Scan) opens the
+    selected device once for resolution — never walks every virtual cam.
+    """
     from friday.camera.capture import opencv_available
     from friday.camera.devices import devices_payload
 
@@ -54,7 +58,7 @@ def camera_devices() -> dict[str, Any]:
             "selected_index": 0,
             "error": "OpenCV missing — pip install -r requirements/camera.lock.txt",
         }
-    return devices_payload()
+    return devices_payload(deep=bool(deep))
 
 
 @router.post("/api/camera/select")

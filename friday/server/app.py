@@ -674,39 +674,7 @@ def voice_speak(body: TTSRequest):
             503,
             "Neural TTS unavailable — client should use browser SpeechSynthesis.",
         )
-    # Optional lip-sync after TTS (never blocks the audio response).
-    try:
-        from friday.avatar.pipeline import lipsync_enabled, render_for_active_skin
-
-        if lipsync_enabled() and data:
-            import tempfile
-            import threading
-            from pathlib import Path
-
-            def _avatar_job(payload: bytes, audio_mime: str) -> None:
-                suffix = (
-                    ".mp3" if "mpeg" in audio_mime or "mp3" in audio_mime else ".wav"
-                )
-                tmp = Path(tempfile.gettempdir()) / f"friday-tts-avatar{suffix}"
-                try:
-                    tmp.write_bytes(payload)
-                    render_for_active_skin(audio_path=tmp)
-                except Exception:  # noqa: BLE001
-                    pass
-                finally:
-                    try:
-                        tmp.unlink(missing_ok=True)
-                    except Exception:  # noqa: BLE001
-                        pass
-
-            threading.Thread(
-                target=_avatar_job,
-                args=(data, mime),
-                daemon=True,
-                name="friday-avatar-lipsync",
-            ).start()
-    except Exception:  # noqa: BLE001
-        pass
+    # Talking-head clips sync in the HUD with TTS — no server-side Wav2Lip job.
     return Response(
         content=data,
         media_type=mime,

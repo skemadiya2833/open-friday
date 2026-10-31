@@ -6,6 +6,35 @@ from friday.agent import direct_tools as DT
 from friday.agent import router as RT
 
 
+def test_process_running_routes_and_checks(monkeypatch):
+    from friday.assistant import intent as I
+
+    hit = I._deterministic_intent("is Face Sink running")
+    assert hit is not None and hit.skill_id == "computer_use"
+    assert "process" in (hit.reason or "")
+
+    assert DT._extract_process_query("is Face Sink running?") == "Face Sink"
+    assert DT._extract_process_query("check if notepad is running") == "notepad"
+
+    monkeypatch.setattr(
+        DT,
+        "_check_process_running",
+        lambda q: f"No — I don't see {q} running right now.",
+    )
+    r = DT.try_direct("is Face Sink running?")
+    assert r.handled and r.ok and r.tool == "process_check"
+    assert "Face Sink" in r.message
+
+
+def test_false_no_desktop_access_is_prompt_dump():
+    from friday.assistant.reply_guard import looks_like_prompt_dump
+
+    assert looks_like_prompt_dump(
+        "I cannot verify if Face Sink is running on your system because "
+        "I don't have access to your desktop environment or process list."
+    )
+
+
 def test_peripherals_spoken_brief_is_short():
     sample = (
         "Cameras (OpenCV): 3\n"

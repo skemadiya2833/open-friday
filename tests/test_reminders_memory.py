@@ -138,8 +138,9 @@ def test_reminder_followup_stays_on_tasks():
 
 def test_plain_conversation_skips_the_classifier_but_tools_do_not():
     assert I._deterministic_intent("tell me a joke about cats").skill_id == "chat"
-    assert I._deterministic_intent("remember that I like tea").skill_id == "chat"
-    assert I._deterministic_intent("what's the capital of France") .skill_id == "chat"
+    # Explicit memory store is a tool fastpath — not chat.
+    assert I._deterministic_intent("remember that I like tea").skill_id == "memory"
+    assert I._deterministic_intent("what's the capital of France").skill_id == "chat"
     # Explicit web lookup routes deterministically to research (no LLM classifier).
     assert I._deterministic_intent("search the web for rust tutorials").skill_id == "research"
     assert I._deterministic_intent("open notepad and type hello").skill_id == "computer_use"

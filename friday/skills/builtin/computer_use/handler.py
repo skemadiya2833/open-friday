@@ -18,8 +18,26 @@ class SkillHandler(Skill):
 
     def run(self, ctx: SkillContext) -> SkillResult:
         # Last-line architectural guard: never seize the mouse for look-questions.
+        import re
+
         from friday.assistant.intent import is_screen_look_utterance
+        from friday.persona import owner_name
         from friday.skills.registry import get_registry
+
+        # Sitrep / small talk must never become a vision desktop run.
+        if re.match(
+            r"(?i)^\s*(?:hey|hi|hello|uh|um|ok|okay|so|well)?\s*"
+            r"(?:friday\s*[,:]?\s*)?"
+            r"(?:what are you doing|what'?re you up to|what'?s up|how are you)"
+            r"\s*[?.!]?\s*$",
+            (ctx.message or "").strip(),
+        ):
+            who = owner_name()
+            return SkillResult(
+                reply=f"Right here, {who}. What's next?",
+                skill_id="chat",
+                metadata={"refused": True, "reason": "sitrep"},
+            )
 
         if is_screen_look_utterance(ctx.message):
             observe = get_registry().get("observe")
@@ -100,7 +118,21 @@ class SkillHandler(Skill):
                 continue
             ctx.emit(ev["type"], {**ev["payload"], "run_id": run.id})
         status_name = run.status or "unknown"
-        reply = f"Computer-use finished with status: **{status_name}**.\n\nObjective: {objective}"
+        # Speakable close — never dump "Computer-use finished with status…" + objective.
+        user_goal = (ctx.message or "").strip().split("\n")[0][:120]
+        if status_name in {"completed", "success", "done"}:
+            reply = "Done on the desktop."
+            if user_goal:
+                reply = f"Done — finished: {user_goal}."
+        elif status_name in {"failed", "error"}:
+            reply = (
+                "I couldn't finish that on the desktop. "
+                "Want me to try another way, or spell the steps differently?"
+            )
+        elif status_name in {"cancelled", "canceled", "aborted"}:
+            reply = "Stopped the desktop run."
+        else:
+            reply = f"Desktop run ended ({status_name})."
         ctx.emit("computer_use_end", {"status": status_name})
         return SkillResult(
             reply=reply,

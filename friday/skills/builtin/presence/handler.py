@@ -19,7 +19,30 @@ _SKIN_SWITCH_ANY = re.compile(
     r"\bbe\s+([A-Za-z][\w.-]{1,24})\s+(?:mode|callsign|persona|skin)\b|"
     r"\b(?:switch|change)\s+to\s+([A-Za-z][\w.-]{1,24})\b",
 )
-_KNOWN_SKINS = frozenset({"friday", "jarvis", "ultron", "vision", "karen", "edith"})
+_BUILTIN_SKINS = frozenset({"friday", "jarvis", "ultron", "vision", "karen", "edith"})
+
+
+def _known_skin_ids() -> frozenset[str]:
+    ids = set(_BUILTIN_SKINS)
+    try:
+        from friday.presence.user_skins import list_user_skins
+
+        ids.update(s.id for s in list_user_skins())
+    except Exception:  # noqa: BLE001
+        pass
+    return frozenset(ids)
+
+
+def _skin_roster() -> str:
+    try:
+        from friday.presence.skins import list_skins
+
+        names = [s.display_name.lower() for s in list_skins()]
+        if names:
+            return ", ".join(names[:-1]) + (f", and {names[-1]}" if len(names) > 1 else names[0])
+    except Exception:  # noqa: BLE001
+        pass
+    return "friday, jarvis, ultron, vision, karen, and edith"
 _MODEL_SWITCH = re.compile(
     r"(?i)\b(?:switch|change|use|load|set)\b.{0,28}\b(?:to\s+)?(?:model\s+)?"
     r"(qwen[\w.:-]*|gemma[\w.:-]*|llama[\w.:-]*|mistral[\w.:-]*|phi[\w.:-]*|"
@@ -198,8 +221,9 @@ class SkillHandler(Skill):
             raw = next((g for g in skin_any.groups() if g), "")
             sid = resolve_skin_id(raw) or resolve_skin_id(msg)
             token = (raw or "").strip().lower()
+            known = _known_skin_ids()
             if not sid:
-                if token and token not in _KNOWN_SKINS and token not in {
+                if token and token not in known and token not in {
                     "mode",
                     "callsign",
                     "persona",
@@ -213,13 +237,13 @@ class SkillHandler(Skill):
                     return SkillResult(
                         reply=(
                             f"No '{token}' callsign, {owner}. "
-                            "I have friday, jarvis, ultron, vision, karen, and edith."
+                            f"I have {_skin_roster()}."
                         ),
                         skill_id="presence",
                         metadata={"ok": False, "requested": token},
                     )
                 return SkillResult(
-                    reply=f"I know friday, jarvis, ultron, vision, karen, and edith, {owner}.",
+                    reply=f"I know {_skin_roster()}, {owner}.",
                     skill_id="presence",
                 )
             snap = apply_skin(sid, emit=ctx.emit)
@@ -245,8 +269,9 @@ class SkillHandler(Skill):
 
         return SkillResult(
             reply=(
-                f"I can switch skins (friday/jarvis/ultron/vision/karen/edith), "
-                f"models (switch to qwen/gemma), or camera presence, {owner}."
+                f"I can switch callsigns ({_skin_roster()}), "
+                f"models (switch to qwen/gemma), or camera presence, {owner}. "
+                "Create custom personas on Systems → Presence."
             ),
             skill_id="presence",
         )

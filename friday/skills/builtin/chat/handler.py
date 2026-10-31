@@ -160,8 +160,8 @@ class SkillHandler(Skill):
         from friday.models.local import query_model_text
         from friday.persona import owner_name
         from friday.prompts import (
-            CHAT_CHANNEL_ADDON,
             CHAT_ONGOING,
+            chat_channel_addon,
             chat_hard_retry_system,
             chat_memory_hits_block,
             chat_owner_facts_block,
@@ -235,7 +235,7 @@ class SkillHandler(Skill):
         system += f"\nNow: {datetime.now().strftime('%A %d %B %Y, %I:%M %p')}."
         system += chat_owner_facts_block(owner_facts(10))
         system += chat_memory_hits_block(list(ctx.memory_hits or []))
-        system += "\n\n" + CHAT_CHANNEL_ADDON
+        system += "\n\n" + chat_channel_addon()
         # Opt-in camera presence: one glance + appearance notes (discarded after turn).
         try:
             from friday.presence.camera_presence import presence_context_block
@@ -268,13 +268,6 @@ class SkillHandler(Skill):
         model_tag, route_meta = resolve_routed_chat_model(ctx.message)
         use_deep = deep_mode_enabled(ctx.message) and not ctx.voice_mode
         ctx.emit("status", {"status": "thinking"})
-        ctx.emit(
-            "activity",
-            {
-                "step": "chat_think",
-                "message": "Working on a reply…",
-            },
-        )
 
         def _think(t: str) -> None:
             # HUD / live captions only — never TTS the raw chain-of-thought.

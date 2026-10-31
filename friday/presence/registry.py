@@ -80,15 +80,46 @@ def presence_snapshot() -> dict[str, Any]:
         portraits[s.id] = (
             f"/api/presence/portrait/{s.id}" if p is not None and p.is_file() else None
         )
+    from friday.presence.talking import has_talking_video, mouth_atlas_url, talking_video_url
+
+    skins_out: list[dict[str, Any]] = []
+    try:
+        from friday.presence.user_skins import is_custom_id, user_skin_meta
+
+        for s in list_skins():
+            d = s.as_dict()
+            if is_custom_id(s.id):
+                d.update(user_skin_meta(s.id))
+            else:
+                d["custom"] = False
+            d["talking_video"] = has_talking_video(s.id)
+            skins_out.append(d)
+        skin_d = skin.as_dict()
+        if is_custom_id(skin.id):
+            skin_d.update(user_skin_meta(skin.id))
+        else:
+            skin_d["custom"] = False
+        skin_d["talking_video"] = has_talking_video(skin.id)
+    except Exception:  # noqa: BLE001
+        skins_out = [s.as_dict() for s in list_skins()]
+        skin_d = skin.as_dict()
+        skin_d["custom"] = False
+        skin_d["talking_video"] = has_talking_video(skin.id)
+
+    talk_url = talking_video_url(skin.id)
     return {
-        "skin": skin.as_dict(),
-        "skins": [s.as_dict() for s in list_skins()],
+        "skin": skin_d,
+        "skins": skins_out,
         "camera_presence": bool(_pref_bool("camera_presence", False)),
         "avatar_engine": str(_pref_str("avatar_engine", "auto") or "auto"),
         "avatar_lipsync": bool(_pref_bool("avatar_lipsync", False)),
         "portrait_url": f"/api/presence/portrait/{skin.id}"
         if portrait and portrait.is_file()
         else None,
+        # Prefer uploaded talking clip (TTS-synced in the HUD) over generated lipsync.
+        "video_url": talk_url,
+        "talking_video_url": talk_url,
+        "mouth_atlas_url": mouth_atlas_url(skin.id) if talk_url else None,
         "portraits": portraits,
         "clamp": CAPABILITY_CLAMP,
     }
@@ -109,7 +140,12 @@ def portrait_path_for(skin_id: str):
 
 def apply_skin(skin_id: str, *, emit=None) -> dict[str, Any]:
     """Switch callsign pack: prefs, TTS voice, humor level. Capabilities unchanged."""
-    skin = get_skin(skin_id)
+    from friday.presence.user_skins import get_user_skin, skin_exists, user_skin_meta
+
+    sid = (skin_id or "").strip().lower()
+    if not skin_exists(sid):
+        raise ValueError(f"Unknown skin: {sid}")
+    skin = get_skin(sid)
     from friday.runtime.prefs import update
 
     # Prefer Kokoro character voice; flip engine so Ultron never lands on female remaps.
@@ -122,6 +158,16 @@ def apply_skin(skin_id: str, *, emit=None) -> dict[str, Any]:
         "tts_engine": engine,
         "humor": skin.humor_level,
     }
+    # Talking video callsigns keep the speak-with-clip toggle on.
+    try:
+        from friday.presence.talking import has_talking_video
+
+        if has_talking_video(skin.id):
+            patch["avatar_lipsync"] = True
+        elif get_user_skin(skin.id) is not None:
+            patch["avatar_lipsync"] = bool(user_skin_meta(skin.id).get("lipsync"))
+    except Exception:  # noqa: BLE001
+        pass
     update(patch)
     try:
         from friday.humor import set_humor_override

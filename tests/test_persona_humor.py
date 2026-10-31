@@ -53,26 +53,24 @@ def test_humor_skips_stress_and_errors(monkeypatch):
     assert should_quip(user_text="hi", reply="Ok.", is_security=True) is False
 
 
-def test_fallback_quip_not_repeated(monkeypatch):
+def test_no_stock_fallback_quip(monkeypatch):
     monkeypatch.setenv("FRIDAY_HUMOR", "dry")
-    seen = set()
-    for _ in range(5):
-        q = pick_fallback_quip()
-        if q:
-            assert q not in seen or len(seen) >= 8
-            seen.add(q)
+    assert pick_fallback_quip() is None
+    assert maybe_append_quip("All done.", user_text="hello") == "All done."
 
 
 def test_deep_and_plan_helpers():
     assert deep_mode_enabled("please think carefully about this")
     assert looks_multi_step("Open Notepad then type hello and finally save")
     plan = plan_preamble("do the thing")
-    assert "PLAN" in plan
-    assert "VERIFY" in plan
+    assert "Execute for real" in plan
+    assert "verify" in plan.lower()
+    assert "Objective: do the thing" in plan
     combined = with_plan_if_needed(
         "SYS", "first open chrome then search the news and finally save a note"
     )
-    assert "OPERATOR PROTOCOL" in combined or "MULTI-STEP" in combined
+    assert "Execute for real" in combined
+    assert "Objective:" in combined
 
 
 def test_format_persona_placeholder():
